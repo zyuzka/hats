@@ -1,0 +1,154 @@
+# SwiftLint configured against ~/.claude/rules — not against SwiftLint's taste.
+#
+# Every entry below is either (a) an encoding of a norm that already exists in the
+# rulebook, (b) a threshold measured from this codebase rather than chosen, or
+# (c) a deliberate REMOVAL of a default whose norm the rulebook does not carry.
+# Anything the rulebook says that SwiftLint cannot express is listed at the bottom
+# rather than silently dropped — an unenforceable norm should be visible as such.
+
+included:
+  - Sources
+
+opt_in_rules:
+  # {#code-early-returns-max-nesting} — guard clauses first, happy path least indented.
+  # This is the only rule that encodes the shape directly: it bans `else` after a return.
+  - superfluous_else
+  - direct_return
+
+  # {#code-call-wrapping-all-or-nothing} — a call fits on one line, OR every argument
+  # goes on its own line. These four are that norm, split across SwiftLint's rules.
+  - multiline_arguments
+  - multiline_arguments_brackets
+  - multiline_parameters
+  - multiline_parameters_brackets
+  - vertical_parameter_alignment_on_call
+
+  # General hygiene the rulebook implies rather than states.
+  - sorted_imports
+  - no_empty_block
+  - empty_string
+  - empty_count
+  - first_where
+  - last_where
+  - contains_over_filter_count
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - redundant_nil_coalescing
+  - fatal_error_message
+  - force_unwrapping
+
+  # NOT enabled, and the reason is worth keeping: `one_declaration_per_file` looked like
+  # {#code-no-grabbag-files} and is not. That norm says files stay small and focused; the
+  # rule says one declaration per file, which would split `Slot` + `KeychainError` +
+  # `Keychain` — a cohesive trio — into three files. It produced 14 of 22 findings on
+  # first run, all of them the tool's opinion wearing our label.
+
+disabled_rules:
+  # {#swift-file-element-order-undecided}: the Swift order is deliberately undecided, and
+  # SwiftLint's `type_contents_order` encodes a DIFFERENT order (its own), so enabling it
+  # would enforce someone else's convention under the name of ours. The empty slot of
+  # {#code-file-has-a-fixed-element-order} is a finding, not an oversight.
+  - type_contents_order
+
+# {#code-call-wrapping-all-or-nothing} again: a wrapped literal keeps its trailing comma.
+# SwiftLint's default forbids exactly what the rulebook requires, so the rule is
+# inverted rather than switched off — the check still runs, it just checks our side.
+trailing_comma:
+  mandatory_comma: true
+
+# {#code-no-grabbag-files}: "consider splitting any file over ~100-150 lines; 500 lines
+# is a hard cap on production code". Those are the rulebook's own numbers, ported.
+file_length:
+  warning: 150
+  error: 500
+
+# NOT from the rulebook — SwiftLint's defaults, kept because nothing of ours contradicts
+# them and they express the same "small and focused" intent. Labelled so nobody later
+# mistakes them for a decision that was made.
+function_body_length:
+  warning: 50
+  error: 100
+type_body_length:
+  warning: 250
+  error: 400
+
+# Measured, not chosen: the longest line in this codebase is 112 characters and the 95th
+# percentile is 87, so SwiftLint's default of 120 already fits the code as written.
+line_length:
+  warning: 120
+  error: 160
+  ignores_urls: true
+
+# REMOVED default. SwiftLint ships a 3-character minimum for identifiers; the rulebook
+# carries no such norm, and short names in a narrow scope (`a`/`b` in a comparator, `i`
+# in a loop) are idiomatic in the author's Go too. Imposing it here would be the tool's
+# opinion wearing our label.
+identifier_name:
+  min_length:
+    warning: 1
+    error: 1
+  max_length:
+    warning: 50
+    error: 60
+
+custom_rules:
+  # {#swift-no-comments-in-source} — the first Swift norm, and the reason this file
+  # exists. `match_kinds` uses the lexer rather than a line-start regex, so a `//`
+  # inside a string literal is not a false positive.
+  no_comments_in_source:
+    name: "Comment in Swift source"
+    regex: '//|/\*'
+    match_kinds:
+      - comment
+      - doccomment
+    message: "Source carries no comments. What a name cannot say goes in NOTES.md beside the code."
+    severity: error
+
+  # {#code-bool-func-question-name} — a function returning a single Bool takes a
+  # question-form name.
+  # {#swift-no-ad-hoc-swift-concurrency} — база этого кода: GCD и NSLock, ни одного
+  # await/Task/actor. Правило держит именно базу: одиночный `Task {}` в GCD-коде
+  # создаёт границу изоляции, которую в файле не соблюдает больше ничто. Снимать
+  # его нужно вместе с решением о миграции, а не по одному файлу.
+  # `match_kinds` отсекает строковые литералы; `DispatchQueue.main.async` под
+  # регулярку не попадает намеренно — там нет `await`.
+  no_ad_hoc_swift_concurrency:
+    name: "Swift Concurrency в GCD-коде"
+    regex: '(\bawait\s|\bTask\s*\{|\bTask\.detached|@MainActor|\basync\s*(?:->|throws)|^\s*(?:public\s+|internal\s+|private\s+|final\s+)*actor\s+)'
+    match_kinds:
+      - keyword
+      - identifier
+      - attribute.builtin
+      - typeidentifier
+    message: "Этот код построен на GCD и NSLock. Переход на Swift Concurrency — решение о миграции, а не правка одного файла; см. {#swift-no-ad-hoc-swift-concurrency}."
+    severity: error
+
+  bool_func_question_name:
+    name: "Boolean function without a question-form name"
+    regex: 'func\s+(?!(is|has|can|should|must|needs|allows|wants|matches|contains|supports|requires|exists)([A-Z_]|\s*\())[a-z]\w*\s*(\([^)]*\))\s*(async\s+)?(throws\s+)?->\s*Bool\b'
+    message: "A function returning Bool reads as a question: is/has/can/should/must/needs/allows/wants/matches/contains/supports/requires/exists."
+    severity: warning
+
+# What the rulebook says that SwiftLint cannot check, listed so the gap stays visible.
+# Cross-language norms (~/.claude/rules/code-style.md):
+#   {#code-no-single-line-wrappers}                     no rule expresses it
+#   {#code-named-predicate-for-multi-clause-conditions} no rule counts boolean operands
+#   {#code-blank-line-before-final-return}              no rule
+#   {#code-optional-deps-stay-nil}                      design norm, not syntactic
+#   {#code-dependency-failure-direction}                design norm, not syntactic
+#   {#code-crypto-rand-for-security}                    needs intent, not syntax
+#   {#code-no-grabbag-files}, the filename half         SwiftLint matches content, not names
+# Swift norms (~/.claude/rules/swift.md):
+#   {#swift-no-ad-hoc-swift-concurrency}                needs a baseline, not syntax
+#   {#swift-unchecked-sendable-is-forced-not-chosen}    the invariant lives in NOTES.md
+#   {#swift-name-from-data-is-not-a-path-component}     needs data flow, not syntax
+#
+# Dropped from this list on 2026-09-06, because they turned out not to be Swift norms at all:
+# {#go-switch-many-cases-to-map} would trade the compiler's exhaustiveness check on an enum
+# switch for a runtime default, and {#go-string-building-choice} is about Sprintf and
+# strings.Builder, which Swift interpolation replaces. Both stayed in go.md.
+#
+# `unused_declaration` and `unused_import` WOULD be valuable here — an unused-declaration
+# check is exactly what would have caught the dead SessionLock class a reviewer mistook
+# for live code — but both are analyzer rules requiring `swiftlint analyze` against a
+# compiler log, so they are not part of this config yet.

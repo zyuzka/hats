@@ -1,0 +1,280 @@
+import XCTest
+@testable import Hats
+
+final class LoginWatchTests: XCTestCase {
+    private let old = "old@b.co"
+    private let new = "new@b.co"
+
+    private func watch(expecting: String?, before: LiveIdentity) -> LoginWatch {
+        LoginWatch(expecting: expecting, identityBefore: before)
+    }
+
+    func testALoginForAnotherAccountIsNotCompleteWhileTheStatusStillNamesTheOldOne() {
+        let watching = watch(expecting: new, before: .account(old))
+        XCTAssertFalse(watching.hasCompleted(identityNow: .account(old),
+                                                        credentialMoved: true))
+    }
+
+    func testALoginForAnotherAccountIsCompleteWhenTheStatusNamesIt() {
+        let watching = watch(expecting: new, before: .account(old))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account("New@B.co"),
+                                                      credentialMoved: false))
+    }
+
+    func testAnUnreadableStatusDoesNotCompleteALoginForAnotherAccount() {
+        let watching = watch(expecting: new, before: .account(old))
+        XCTAssertFalse(watching.hasCompleted(identityNow: .unreadable,
+                                                       credentialMoved: true))
+    }
+
+    func testAReLoginOfTheLiveAccountWaitsForTheCredentialToMove() {
+        let watching = watch(expecting: old, before: .account(old))
+        XCTAssertFalse(watching.hasCompleted(identityNow: .account(old),
+                                                        credentialMoved: false))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account(old),
+                                                       credentialMoved: true))
+    }
+
+    func testAnUnreadablePreLoginStatusNeedsTheCredentialToMoveAsWell() {
+        let watching = watch(expecting: new, before: .unreadable)
+        XCTAssertFalse(watching.hasCompleted(identityNow: .account(new),
+                                                        credentialMoved: false))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account(new),
+                                                       credentialMoved: true))
+    }
+
+    func testNobodyLoggedInBeforeAlsoNeedsTheCredentialToMove() {
+        let watching = watch(expecting: new, before: .loggedOut)
+        XCTAssertFalse(watching.hasCompleted(identityNow: .account(new),
+                                                        credentialMoved: false))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account(new),
+                                                       credentialMoved: true))
+    }
+
+    func testTheDeadlineStopsAWatchWhoseWindowIsStillOpen() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let deadline = start.addingTimeInterval(900)
+        XCTAssertFalse(WatchExpiry.hasExpired(now: start.addingTimeInterval(899),
+                                              deadline: deadline, windowClosedAt: nil))
+        XCTAssertTrue(WatchExpiry.hasExpired(now: deadline,
+                                             deadline: deadline, windowClosedAt: nil))
+    }
+
+    func testAClosedWindowGetsItsGraceEvenAtTheEndOfTheDeadline() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        let deadline = start.addingTimeInterval(900)
+        let closedLate = deadline.addingTimeInterval(-5)
+        XCTAssertFalse(WatchExpiry.hasExpired(now: deadline.addingTimeInterval(20),
+                                              deadline: deadline,
+                                              windowClosedAt: closedLate))
+        XCTAssertTrue(WatchExpiry.hasExpired(now: closedLate.addingTimeInterval(31),
+                                             deadline: deadline,
+                                             windowClosedAt: closedLate))
+    }
+
+    func testOnlyTheExpectedAccountSettlesTheWatch() {
+        let watching = watch(expecting: new, before: .account(old))
+        XCTAssertTrue(watching.hasSettled(onReconciled: "New@B.co"))
+        XCTAssertFalse(watching.hasSettled(onReconciled: old))
+    }
+
+    func testWithNoExpectedAddressAnyReconciledAccountSettlesTheWatch() {
+        XCTAssertTrue(watch(expecting: nil, before: .account(old)).hasSettled(onReconciled: old))
+    }
+
+    func testWithNoExpectedAddressEitherHalfMovingCounts() {
+        let watching = watch(expecting: nil, before: .account(old))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account(new),
+                                                       credentialMoved: false))
+        XCTAssertTrue(watching.hasCompleted(identityNow: .account(old),
+                                                       credentialMoved: true))
+        XCTAssertFalse(watching.hasCompleted(identityNow: .account(old),
+                                                        credentialMoved: false))
+    }
+}
+
+final class LoginWatchDutyTests: XCTestCase {
+    private final class Probe {
+        private(set) var asked = 0
+        private let answer: Bool?
+        init(_ answer: Bool?) { self.answer = answer }
+        func read() -> Bool? { asked += 1; return answer }
+    }
+
+    private func duty(onDuty: Int,
+                      pollAlive: Int,
+                      loginInFlight: Bool = false,
+                      probe: Probe) -> LoginWatchDuty {
+        LoginWatchDuty.of(onDuty: onDuty,
+                          pollAlive: pollAlive,
+                          loginInFlight: loginInFlight,
+                          scriptRunning: probe.read())
+    }
+
+    func testNoWatchOnDutyAsksNothing() {
+        let probe = Probe(true)
+
+        XCTAssertEqual(duty(onDuty: 0, pollAlive: 0, probe: probe), LoginWatchDuty.none)
+        XCTAssertEqual(probe.asked, 0)
+    }
+
+    func testALiveWatchIsLeftAloneWithoutReadingTheProcessTable() {
+        let probe = Probe(false)
+
+        XCTAssertEqual(duty(onDuty: 7, pollAlive: 7, probe: probe), .onDuty)
+        XCTAssertEqual(probe.asked, 0)
+    }
+
+    func testAStaleWatchWhoseScriptIsGoneIsReleased() {
+        let duty = duty(onDuty: 7, pollAlive: 0, probe: Probe(false))
+
+        XCTAssertEqual(duty, .staleAndGone)
+        XCTAssertTrue(duty.releasesTheWatch)
+        XCTAssertFalse(duty.isOnDuty)
+    }
+
+    func testAStaleWatchWhoseScriptStillRunsKeepsTheGuard() {
+        let duty = duty(onDuty: 7, pollAlive: 0, probe: Probe(true))
+
+        XCTAssertEqual(duty, .staleButUnclear)
+        XCTAssertFalse(duty.releasesTheWatch)
+        XCTAssertTrue(duty.isOnDuty)
+    }
+
+    func testAnUnreadableProcessTableKeepsTheGuard() {
+        let duty = duty(onDuty: 7, pollAlive: 0, probe: Probe(nil))
+
+        XCTAssertEqual(duty, .staleButUnclear)
+        XCTAssertFalse(duty.releasesTheWatch)
+        XCTAssertTrue(duty.isOnDuty)
+    }
+
+    func testOnlyAConfirmedAbsenceCountsAsGone() {
+        XCTAssertTrue(LoginWatchDuty.isTheScriptConfirmedGone(false))
+        XCTAssertFalse(LoginWatchDuty.isTheScriptConfirmedGone(true))
+        XCTAssertFalse(LoginWatchDuty.isTheScriptConfirmedGone(nil))
+    }
+
+    func testAReleasedWatchStopsBlockingBothTheLoginAndTheSync() {
+        let released = duty(onDuty: 7, pollAlive: 0, probe: Probe(false))
+        let held = duty(onDuty: 7, pollAlive: 0, probe: Probe(nil))
+
+        XCTAssertEqual(CredentialClaim.forSync(duty: released), .noWatch)
+        XCTAssertEqual(CredentialClaim.forSync(duty: held), .watchInProgress)
+    }
+}
+
+final class OrphanLoginScriptTests: XCTestCase {
+    private final class Probe {
+        private(set) var asked = 0
+        private let answer: Bool?
+        init(_ answer: Bool?) { self.answer = answer }
+        func read() -> Bool? { asked += 1; return answer }
+    }
+
+    private func duty(loginInFlight: Bool, probe: Probe) -> LoginWatchDuty {
+        LoginWatchDuty.of(onDuty: 0,
+                          pollAlive: 0,
+                          loginInFlight: loginInFlight,
+                          scriptRunning: probe.read())
+    }
+
+    func testTheOrdinaryCaseReadsNoProcessTableAtAll() {
+        let probe = Probe(true)
+
+        XCTAssertEqual(duty(loginInFlight: false, probe: probe), LoginWatchDuty.none)
+        XCTAssertEqual(probe.asked, 0)
+    }
+
+    func testALoginLeftRunningByARestartIsFoundWithoutAGeneration() {
+        let duty = duty(loginInFlight: true, probe: Probe(true))
+
+        XCTAssertEqual(duty, .orphanScript)
+        XCTAssertTrue(duty.isOnDuty)
+        XCTAssertFalse(duty.releasesTheWatch)
+        XCTAssertEqual(CredentialClaim.forSync(duty: duty), .watchInProgress)
+    }
+
+    func testAnUnreadableTableWithNoGenerationIsTreatedAsALoginInFlight() {
+        let duty = duty(loginInFlight: true, probe: Probe(nil))
+
+        XCTAssertEqual(duty, .orphanScript)
+        XCTAssertTrue(duty.isOnDuty)
+    }
+
+    func testAScriptFileLeftBehindByAFinishedLoginBlocksNothing() {
+        let duty = duty(loginInFlight: true, probe: Probe(false))
+
+        XCTAssertEqual(duty, LoginWatchDuty.none)
+        XCTAssertFalse(duty.isOnDuty)
+        XCTAssertEqual(CredentialClaim.forSync(duty: duty), .noWatch)
+    }
+
+    func testAFinishedLoginIsNotProbedAtAll() {
+        let probe = Probe(nil)
+        let inFlight = Terminal.hasALoginInFlight(isDone: true, scriptExists: true)
+
+        let duty = LoginWatchDuty.of(onDuty: 0, pollAlive: 0,
+                                     loginInFlight: inFlight,
+                                     scriptRunning: probe.read())
+
+        XCTAssertEqual(duty, LoginWatchDuty.none)
+        XCTAssertEqual(probe.asked, 0)
+        XCTAssertEqual(CredentialClaim.forSync(duty: duty), .noWatch)
+    }
+
+    func testALoginWhoseScriptWasRemovedOnReleaseIsNotProbedEither() {
+        let probe = Probe(nil)
+        let inFlight = Terminal.hasALoginInFlight(isDone: false, scriptExists: false)
+
+        let duty = LoginWatchDuty.of(onDuty: 0, pollAlive: 0,
+                                     loginInFlight: inFlight,
+                                     scriptRunning: probe.read())
+
+        XCTAssertEqual(duty, LoginWatchDuty.none)
+        XCTAssertEqual(probe.asked, 0)
+    }
+
+    func testALoginIsInFlightOnlyWhenTheMarkerIsAbsentAndTheScriptExists() {
+        XCTAssertTrue(Terminal.hasALoginInFlight(isDone: false, scriptExists: true))
+        XCTAssertFalse(Terminal.hasALoginInFlight(isDone: true, scriptExists: true))
+        XCTAssertFalse(Terminal.hasALoginInFlight(isDone: false, scriptExists: false))
+        XCTAssertFalse(Terminal.hasALoginInFlight(isDone: true, scriptExists: false))
+    }
+
+    func testAScriptSeenRunningAndThenGoneBeforeTheMarkerHasDied() {
+        XCTAssertTrue(LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: true, scriptRunning: false))
+    }
+
+    func testAScriptNeverSeenRunningHasNotDiedButNotStartedYet() {
+        XCTAssertFalse(LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
+            seenRunning: false, loginInFlight: true, scriptRunning: false))
+    }
+
+    func testAScriptThatWroteItsMarkerHasFinishedNotDied() {
+        XCTAssertFalse(LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: false, scriptRunning: false))
+    }
+
+    func testOnlyAReadableTableWithoutTheScriptDeclaresItDead() {
+        XCTAssertFalse(LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: true, scriptRunning: nil))
+        XCTAssertFalse(LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: true, scriptRunning: true))
+    }
+
+    func testReleasingTheCountersDoesNotOpenASecondLoginWhileAScriptIsAlive() {
+        let alive = LoginWatchDuty.of(onDuty: 0, pollAlive: 0, loginInFlight: true,
+                                      scriptRunning: true)
+        XCTAssertEqual(alive, .orphanScript)
+        XCTAssertTrue(alive.isOnDuty,
+                      "the timeout now releases the counters without waiting for the window close, "
+                          + "which is only safe because a genuinely live login script still answers "
+                          + "on duty through its own liveness check rather than through the counter")
+
+        let gone = LoginWatchDuty.of(onDuty: 0, pollAlive: 0, loginInFlight: true,
+                                     scriptRunning: false)
+        XCTAssertFalse(gone.isOnDuty, "and a script confirmed gone must not hold the guard")
+    }
+}

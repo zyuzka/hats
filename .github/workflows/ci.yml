@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build
+
+      # HATS_STATE_HOME is not optional. Without it the suite reaches the real state
+      # directory: it would mix test events into the operations log and perform the
+      # first-run adoption of an older install ahead of the app. HOME does not help —
+      # NSHomeDirectory() ignores it, which is why this variable exists at all.
+      - name: Test
+        run: HATS_STATE_HOME="$(mktemp -d)" swift test
+
+      # The bundle stamps a version and the app shows CHANGELOG.md to whoever installs
+      # it, so a version with no entry reads as a version that changed nothing. The
+      # script that checks this lives in Dev/, which is not part of the repository, so
+      # the check is inlined here rather than skipped.
+      - name: Every stamped version is described
+        run: |
+          stamped="$(sed -n '/CFBundleShortVersionString/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' \
+            Build/build-app.sh)"
+          test -n "$stamped" || { echo "no version stamped in Build/build-app.sh" >&2; exit 1; }
+          grep -qE "^## ${stamped//./\\.}([[:space:]]|$)" CHANGELOG.md \
+            || { echo "CHANGELOG.md has no entry for $stamped" >&2; exit 1; }
+          echo "$stamped is described"
+
+  lint:
+    runs-on: macos-15
+    # Blocking since AccountStore.swift was split: swiftlint exits 0 here, so anything
+    # that turns it red is new. Warnings still ride along without failing the job —
+    # only error-severity rules stop it.
+    steps:
+      - uses: actions/checkout@v5
+      - name: SwiftLint
+        run: |
+          brew install swiftlint
+          swiftlint --reporter github-actions-logging

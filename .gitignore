@@ -1,0 +1,29 @@
+# Swift build output, and the app bundle Dev/build-app.sh produces
+.build/
+*.app/
+dist/
+
+# Python bytecode and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# IDE
+.idea/
+
+# macOS
+.DS_Store
+
+# The development journals, at the root and in token-probe. They stay on disk and
+# out of the repository.
+NOTES.md
+
+# Release and maintenance scripts. Building the app needs none of them — everything
+# the build uses lives in Build/, which is part of the repository.
+Dev/
+
+# The design note behind moving a running session, and the command-line probe that
+# measured the behaviour the app rests on. Both stay on disk.
+DESIGN-live-session-move.md
+token-probe/

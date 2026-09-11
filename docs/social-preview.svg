@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <rect width="1280" height="640" fill="#0d1117"/>
+  <g transform="translate(113,165) scale(4.3125)"><path d="M9.2 18.6C8.6 12.4 11 8.6 16 8.6C21 8.6 23.4 12.4 22.8 18.6Z" fill="#e6edf3"/><ellipse cx="16" cy="19.4" rx="13.2" ry="3.4" fill="#e6edf3"/></g>
+  <text x="290" y="237" font-family="SF Pro Display,Helvetica Neue,Helvetica,sans-serif" font-size="94" font-weight="700" letter-spacing="-2.3" fill="#e6edf3">Hats</text>
+  <text x="290" y="295" font-family="SF Pro Text,Helvetica Neue,Helvetica,sans-serif" font-size="34" fill="#9198a1">Put on the account Claude Code uses.</text>
+  <rect x="113" y="347" width="178" height="54" rx="15" fill="none" stroke="#2f353d" stroke-width="2"/>
+  <text x="135" y="382" font-family="SF Mono,Menlo,monospace" font-size="28" fill="#9198a1">menu bar</text>
+  <rect x="311.4" y="347" width="195" height="54" rx="15" fill="none" stroke="#2f353d" stroke-width="2"/>
+  <text x="333.4" y="382" font-family="SF Mono,Menlo,monospace" font-size="28" fill="#9198a1">one click</text>
+  <rect x="526.6" y="347" width="380" height="54" rx="15" fill="none" stroke="#2f353d" stroke-width="2"/>
+  <text x="548.6" y="382" font-family="SF Mono,Menlo,monospace" font-size="28" fill="#9198a1">live sessions follow</text>
+  <rect x="113" y="421" width="397" height="54" rx="15" fill="none" stroke="#2f353d" stroke-width="2"/>
+  <text x="135" y="456" font-family="SF Mono,Menlo,monospace" font-size="28" fill="#9198a1">auto-switch on limits</text>
+</svg>
