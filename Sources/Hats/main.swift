@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var liveIdentity: LiveIdentity = .unreadable
     var settings = AppSettings.loaded()
     var lastSyncFailure: String?
+    var lastAutoSwitchHold: AutoSwitchHold?
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??

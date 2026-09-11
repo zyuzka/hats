@@ -48,6 +48,15 @@ enum AutoSwitchEngine {
         }
     }
 
+    static func reasonForHolding(policy: AutoSwitchPolicy, world: AutoSwitchWorld) -> AutoSwitchHold? {
+        guard policy.isOn else { return .off }
+        guard let wearing = world.wearing else { return .noHatOn }
+        guard let reading = world.readings[wearing] else { return .noReading }
+        guard policy.crossedLimit(in: reading) == nil else { return nil }
+
+        return .underTheThresholds
+    }
+
     static func eligible(in rows: [HatRowState]) -> [String] {
         rows.filter(\.isSwitchable).map(\.id)
     }

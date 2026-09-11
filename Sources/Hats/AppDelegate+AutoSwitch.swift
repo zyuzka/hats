@@ -9,6 +9,11 @@ extension AppDelegate {
             eligible: AutoSwitchEngine.eligible(in: snapshot.rows)
         )
         let outcome = AutoSwitchEngine.outcome(policy: settings.autoSwitch, world: world, now: Date())
+        if case .hold = outcome.decision {
+            noteHolding(AutoSwitchEngine.reasonForHolding(policy: settings.autoSwitch, world: world))
+            return
+        }
+        lastAutoSwitchHold = nil
         if case .nowhereToGo(let limit) = outcome.decision {
             Journal.log("autoSwitch.nowhereToGo", [
                 "limit": limit.rawValue,
@@ -46,6 +51,13 @@ extension AppDelegate {
             Journal.log("autoSwitch.failed", ["to": id, "reason": error.localizedDescription])
             redrawAfterTheLiveSlotMayHaveMoved()
         }
+    }
+
+    func noteHolding(_ reason: AutoSwitchHold?) {
+        guard lastAutoSwitchHold != reason else { return }
+        lastAutoSwitchHold = reason
+        guard let reason else { return }
+        Journal.log("autoSwitch.holding", ["reason": reason.rawValue])
     }
 
     func updateAutoSwitch(_ policy: AutoSwitchPolicy) {

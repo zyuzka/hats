@@ -63,6 +63,13 @@ enum HatRoom: Equatable {
     case spent
 }
 
+enum AutoSwitchHold: String, Equatable {
+    case off
+    case noHatOn
+    case noReading
+    case underTheThresholds
+}
+
 enum AutoSwitchDecision: Equatable {
     case hold
     case nowhereToGo(UsageLimit)
