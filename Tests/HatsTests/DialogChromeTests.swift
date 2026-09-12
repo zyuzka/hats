@@ -3,15 +3,7 @@ import XCTest
 @testable import Hats
 
 final class DialogChromeTests: XCTestCase {
-    func testTheStandInForTheLogoTakesNoRoom() {
-        XCTAssertEqual(HatDialogs.noLogo.size, NSSize(width: 1, height: 1),
-                       "left alone an NSAlert draws the app icon at full size, which is what made "
-                           + "the sign-in refusal look like a poster rather than a sentence. The "
-                           + "alert itself cannot be built here: NSAlert needs a running "
-                           + "application and segfaults in a unit test")
-    }
-
-    func testEveryDialogInTheAppIsBuiltThroughThatOneFactory() throws {
+    func testNoDialogIsAnNSAlertAnyMore() throws {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/Hats")
@@ -19,12 +11,13 @@ final class DialogChromeTests: XCTestCase {
         var raw: [String] = []
         for file in files where file.pathExtension == "swift" {
             let text = try String(contentsOf: file, encoding: .utf8)
-            guard text.contains("= NSAlert()") else { continue }
+            guard text.contains("NSAlert") else { continue }
             raw.append(file.lastPathComponent)
         }
 
-        XCTAssertEqual(raw, ["Dialogs.swift"],
-                       "a dialog built straight from NSAlert() keeps the logo, and the next one "
-                           + "written somewhere else would quietly bring it back: \(raw)")
+        XCTAssertEqual(raw, [],
+                       "an NSAlert keeps a slot for the app icon whether or not one is set, which "
+                           + "is the empty space this app went to its own windows to be rid of: "
+                           + "\(raw)")
     }
 }

@@ -45,17 +45,17 @@ extension AppDelegate {
 
     private func announce(_ verdict: UpdateVerdict) {
         let copy = HatsCopy.updateVerdict(verdict)
-        let alert = HatDialogs.plain()
-        alert.messageText = copy.message
-        alert.informativeText = copy.detail
         guard case .available(let release) = verdict else {
-            alert.addButton(withTitle: "OK")
-            _ = HatDialogs.run(alert)
+            HatDialogs.inform(copy.message, copy.detail)
             return
         }
-        alert.addButton(withTitle: release.asset == nil ? "Open the release page" : "Download")
-        alert.addButton(withTitle: "Later")
-        guard HatDialogs.run(alert) == .alertFirstButtonReturn else { return }
+        let take = release.asset == nil ? "Open the release page" : "Download"
+        let chosen = PromptWindow.ask(HatPrompt(
+            title: copy.message,
+            text: copy.detail,
+            buttons: [take, "Later"]
+        ))
+        guard chosen == 0 else { return }
         NSWorkspace.shared.open(release.asset ?? release.page)
         Journal.log("update.offered", ["version": release.version])
     }

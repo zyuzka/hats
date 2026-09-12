@@ -60,7 +60,7 @@ enum CLI {
     }
 }
 
-enum BrowserChoice: Codable, Equatable {
+enum BrowserChoice: Codable, Equatable, Hashable {
     case chromeProfile(String)
     case chrome(ChromeChannel, String)
     case firefox
