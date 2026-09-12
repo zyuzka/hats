@@ -32,6 +32,7 @@ final class PromptWindow: NSObject, NSWindowDelegate {
         window.delegate = keeper
         window.center()
         window.level = .modalPanel
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         NSApp.runModal(for: window)

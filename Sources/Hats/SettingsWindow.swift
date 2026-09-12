@@ -34,6 +34,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         window.title = "Hats Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.delegate = self
         window.center()
         self.window = window

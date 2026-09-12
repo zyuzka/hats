@@ -18,6 +18,7 @@ final class SignInWindow: NSObject, NSWindowDelegate {
         window.title = "Sign in"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.level = .floating
         window.delegate = self
         window.center()

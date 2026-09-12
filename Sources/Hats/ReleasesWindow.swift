@@ -80,6 +80,7 @@ final class ReleasesWindow: NSObject, NSWindowDelegate {
         window.title = "Hats releases"
         window.styleMask = [.titled, .closable, .resizable]
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.delegate = self
         window.center()
         self.window = window

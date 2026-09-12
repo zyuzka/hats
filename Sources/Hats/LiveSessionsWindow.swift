@@ -164,6 +164,7 @@ final class LiveSessionsWindow: NSObject, NSWindowDelegate {
         window.title = "Live sessions"
         window.styleMask = [.titled, .closable, .resizable]
         window.isReleasedWhenClosed = false
+        window.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         window.delegate = self
         fitToItsContent(window)
         window.center()
