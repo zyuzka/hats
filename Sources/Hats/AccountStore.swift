@@ -121,7 +121,9 @@ final class AccountStore {
     ) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts[index].hasStoredCredentials = true
-        accounts[index].refreshExpiresAt = payload.oauth?.refreshExpires
+        if let refreshExpires = payload.oauth?.refreshExpires {
+            accounts[index].refreshExpiresAt = refreshExpires
+        }
         accounts[index].accessExpiresAt = payload.accessExpires
         accounts[index].identityDisagreement = disagreement
         if let identity { accounts[index].identity = identity }
