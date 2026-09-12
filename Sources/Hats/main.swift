@@ -18,6 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??
+    var updateWaiting: String?
+    let updates = UpdateWatch()
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
@@ -70,6 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         usage.onRenewals = { [weak self] renewals in self?.store.noteRenewed(renewals) }
         usage.onReadings = { [weak self] _ in self?.redrawAndDecide() }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
+        watchForUpdates()
 
         redraw()
         DispatchQueue.main.async { [weak self] in self?.syncWithWorld() }

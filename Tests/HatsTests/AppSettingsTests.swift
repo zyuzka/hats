@@ -30,6 +30,7 @@ final class AppSettingsTests: XCTestCase {
         settings.autoSwitch.isOn = true
         settings.autoSwitch.order = ["b", "a"]
         settings.foreignProfileResolution = .keepMine
+        settings.announcedUpdate = "0.2.0"
         try settings.save(to: url)
         XCTAssertEqual(AppSettings.loaded(from: url), settings)
     }

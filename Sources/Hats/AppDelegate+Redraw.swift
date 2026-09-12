@@ -34,6 +34,7 @@ extension AppDelegate {
         snapshot.banner = settings.autoSwitchRecord.flatMap { $0.seenInPopover ? nil : $0 }
         snapshot.bannerFromTitle = settings.autoSwitchRecord.map { snapshot.title(of: $0.from) } ?? ""
         snapshot.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
+        snapshot.updateWaiting = updateWaiting
         snapshot.changing = changing
         snapshot.startAtLogin = LoginItem.currentFace
         snapshot.retiredPort = GatewayProcess.retiredPort

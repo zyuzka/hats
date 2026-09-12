@@ -3,12 +3,20 @@ import AppKit
 extension AppDelegate {
     func checkForUpdates() {
         popover.close()
-        guard let repository = UpdateCheck.repository() else {
-            announce(.notConfigured)
-            return
+        askGitHub { [weak self] verdict in self?.announce(verdict) }
+    }
+
+    func watchForUpdates() {
+        Notifier.askOnce()
+        updates.start { [weak self] in
+            self?.askGitHub { [weak self] verdict in self?.noteQuietly(verdict) }
         }
+    }
+
+    private func askGitHub(then answer: @escaping (UpdateVerdict) -> Void) {
+        guard let repository = UpdateCheck.repository() else { return answer(.notConfigured) }
         let running = popover.model.snapshot.version
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        DispatchQueue.global(qos: .userInitiated).async {
             let verdict = OneShotRequest.answer(
                 to: UpdateCheck.request(endpoint: UpdateCheck.endpoint(for: repository)),
                 within: UpdateCheck.budget,
@@ -17,8 +25,22 @@ extension AppDelegate {
                     UpdateCheck.verdict(status: status, body: body, running: running)
                 }
             )
-            DispatchQueue.main.async { self?.announce(verdict) }
+            DispatchQueue.main.async { answer(verdict) }
         }
+    }
+
+    private func noteQuietly(_ verdict: UpdateVerdict) {
+        guard case .available(let release) = verdict else { return }
+        updateWaiting = release.version
+        redraw()
+        guard UpdateAnnouncement.isWorthAnnouncing(
+            release.version, announced: settings.announcedUpdate
+        ) else { return }
+        settings.announcedUpdate = release.version
+        saveSettings()
+        let notice = HatsCopy.updateAnnouncement(release.version)
+        Notifier.post(title: notice.title, body: notice.body)
+        Journal.log("update.announced", ["version": release.version])
     }
 
     private func announce(_ verdict: UpdateVerdict) {

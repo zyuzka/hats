@@ -61,8 +61,10 @@ struct GeneralPanel: View {
                 .buttonStyle(.link)
                 .help("What changed in this and every earlier version")
             Spacer()
-            Button("Check for Updates…") { model.actions?.checkForUpdates() }
-                .controlSize(.small)
+            Button(HatsCopy.updateButton(waiting: snapshot.updateWaiting)) {
+                model.actions?.checkForUpdates()
+            }
+            .controlSize(.small)
         }
         .padding(.horizontal, 14)
     }

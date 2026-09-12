@@ -1,6 +1,15 @@
 import Foundation
 
 extension HatsCopy {
+    static func updateAnnouncement(_ version: String) -> (title: String, body: String) {
+        ("Hats \(version) is out", "Open Settings \u{2192} General to download it.")
+    }
+
+    static func updateButton(waiting version: String?) -> String {
+        guard let version else { return "Check for Updates\u{2026}" }
+        return "Update to \(version)\u{2026}"
+    }
+
 static func updateVerdict(_ verdict: UpdateVerdict) -> (message: String, detail: String) {
         switch verdict {
         case .upToDate(let running):

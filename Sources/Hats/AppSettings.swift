@@ -14,6 +14,7 @@ struct AppSettings: Codable, Equatable {
     var gatewaySettleSeconds = Int(GatewayRefusal.defaultSettle)
     var showsHatNameInTheMenuBar = true
     var blinksTheCursorInTheMenuBar = true
+    var announcedUpdate: String?
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -34,6 +35,7 @@ struct AppSettings: Codable, Equatable {
         showsHatNameInTheMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showsHatNameInTheMenuBar) ?? true
         blinksTheCursorInTheMenuBar =
             try c.decodeIfPresent(Bool.self, forKey: .blinksTheCursorInTheMenuBar) ?? true
+        announcedUpdate = try c.decodeIfPresent(String.self, forKey: .announcedUpdate)
     }
 
     static var defaultURL: URL {
