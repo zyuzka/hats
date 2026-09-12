@@ -58,6 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.syncWithWorld(reportingErrors: reporting, claiming: claim)
         }
         login.lastTrouble = { [weak self] in self?.lastSyncFailure }
+        login.signInSettled = { [weak self] in
+            guard let self else { return }
+            Journal.log("usage.pollAfterASignIn")
+            usage.poll(hatsForUsage())
+        }
 
         usage.onAuthObservation = { [weak self] refused, accepted in
             self?.store.noteAuthObservation(refused: refused, accepted: accepted)

@@ -29,6 +29,7 @@ final class LoginWatchRun {
     var syncWithWorld: (Bool, CredentialClaim?) -> String? = { _, _ in nil }
     var lastTrouble: () -> String? = { nil }
     var closeTheLoginWindow: () -> Void = { Journal.log("login.closeIgnored") }
+    var signInSettled: () -> Void = { Journal.log("login.settledIgnored") }
 
     init(
         reader: LoginWatchReader,
@@ -102,6 +103,7 @@ final class LoginWatchRun {
             let reconciled = syncWithWorld(false, claim)
             if completed, let reconciled, watch.hasSettled(onReconciled: reconciled) {
                 observedTheLogin = true
+                signInSettled()
             }
         }
 

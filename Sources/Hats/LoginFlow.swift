@@ -17,6 +17,7 @@ final class LoginFlow {
     var liveLoginMoved: (LiveIdentity) -> Void = { _ in Journal.log("login.moveIgnored") }
     var syncWithWorld: (Bool, CredentialClaim?) -> String? = { _, _ in nil }
     var lastTrouble: () -> String? = { nil }
+    var signInSettled: () -> Void = { Journal.log("login.settledIgnored") }
 
     init(store: AccountStore, world injected: LoginWatchWorld? = nil) {
         let inFlight = SignInInFlight()
@@ -144,6 +145,7 @@ final class LoginFlow {
             return lastTrouble()
         }
         run.closeTheLoginWindow = { [weak self] in self?.cancelTheSignIn() }
+        run.signInSettled = { [weak self] in self?.signInSettled() }
         run.start()
     }
 }
