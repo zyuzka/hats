@@ -53,6 +53,14 @@ enum UsageFetch: Equatable {
         return reading
     }
 
+    var needsAWait: Bool {
+        switch self {
+        case .refused: return true
+        case .errored(let status): return status == 429
+        case .reading, .unreachable, .unreadable: return false
+        }
+    }
+
     var refusedAuthorization: Bool {
         guard case .refused(let status) = self else { return false }
 

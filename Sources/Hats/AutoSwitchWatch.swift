@@ -68,7 +68,7 @@ final class AutoSwitchWatch {
     private func landed(_ batch: Batch, polled: Hats) {
         inFlight = false
         if !batch.renewals.isEmpty { onRenewals(batch.renewals) }
-        Self.noteRenewalOutcomes(into: &backoff, batch: batch, every: interval, at: Date())
+        Self.noteOutcomes(into: &backoff, batch: batch, every: interval, at: Date())
         guard timer != nil else {
             pending = nil
             return
@@ -107,15 +107,17 @@ final class AutoSwitchWatch {
         }
     }
 
-    static func noteRenewalOutcomes(into backoff: inout RenewalBackoff,
-                                    batch: Batch,
-                                    every interval: TimeInterval,
-                                    at now: Date) {
+    static func noteOutcomes(into backoff: inout RenewalBackoff,
+                             batch: Batch,
+                             every interval: TimeInterval,
+                             at now: Date) {
         for id in batch.renewals.keys { backoff.succeeded(id) }
+        for id in batch.readings.keys where !batch.waiting.contains(id) { backoff.succeeded(id) }
         for (id, trouble) in batch.troubles {
             guard case .renewalFailed = trouble else { continue }
             backoff.failed(id, at: now, pollingEvery: interval)
         }
+        for id in batch.waiting { backoff.failed(id, at: now, pollingEvery: interval) }
     }
 
     var roseWhileParked: [String: Int] { parked.rises }

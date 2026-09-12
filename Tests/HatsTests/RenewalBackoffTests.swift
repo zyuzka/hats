@@ -68,7 +68,7 @@ final class RenewalBackoffTests: XCTestCase {
         var batch = AutoSwitchWatch.Batch()
         batch.troubles = ["parked": .renewalFailed("http 429"), "worn": .fetchFailed("http 429")]
 
-        AutoSwitchWatch.noteRenewalOutcomes(into: &backoff, batch: batch, every: interval, at: now)
+        AutoSwitchWatch.noteOutcomes(into: &backoff, batch: batch, every: interval, at: now)
 
         XCTAssertFalse(backoff.allows("parked", at: now))
         XCTAssertTrue(backoff.allows("worn", at: now),
