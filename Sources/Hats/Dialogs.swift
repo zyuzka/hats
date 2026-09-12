@@ -93,77 +93,66 @@ enum HatDialogs {
     }
 
     static func hasConfirmedRemoval(of hat: Account) -> Bool {
-        let alert = Self.plain()
-        alert.messageText = "Remove \(hat.title)?"
-        alert.informativeText = "Its stored login is deleted from this Mac. You can add the hat again later."
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
-        return run(alert) == .alertFirstButtonReturn
+        PromptWindow.ask(HatPrompt(
+            title: "Remove \(hat.title)?",
+            text: "Its stored login is deleted from this Mac. You can add the hat again later.",
+            buttons: ["Remove", "Cancel"]
+        )) == 0
     }
 
     static func hasConfirmedLoginAnyway(for hat: Account) -> Bool {
-        let alert = Self.plain()
-        alert.messageText = "\(hat.title) does not need a login"
         var text = "Putting it on works without logging in. A new login replaces the token that already works."
         if let validity = HatsCopy.loginValidity(for: hat) { text = "Its stored login is \(validity). " + text }
-        alert.informativeText = text
-        alert.addButton(withTitle: "Log in anyway")
-        alert.addButton(withTitle: "Cancel")
-        return run(alert) == .alertFirstButtonReturn
+
+        return PromptWindow.ask(HatPrompt(
+            title: "\(hat.title) does not need a login",
+            text: text,
+            buttons: ["Log in anyway", "Cancel"]
+        )) == 0
     }
 
     static func hasConfirmedQuit(cost: String) -> Bool {
-        let alert = Self.plain()
-        alert.messageText = "Quit Hats?"
-        alert.informativeText = cost
-        alert.addButton(withTitle: "Quit")
-        alert.addButton(withTitle: "Cancel")
-        return run(alert) == .alertFirstButtonReturn
+        PromptWindow.ask(HatPrompt(
+            title: "Quit Hats?",
+            text: cost,
+            buttons: ["Quit", "Cancel"]
+        )) == 0
     }
 
     static func hasConfirmedStoppingTheGateway(cost: String) -> Bool {
-        let alert = Self.plain()
-        alert.messageText = "Turn the gateway off?"
-        alert.informativeText = cost
-        alert.addButton(withTitle: "Turn it off")
-        alert.addButton(withTitle: "Cancel")
-        return run(alert) == .alertFirstButtonReturn
+        PromptWindow.ask(HatPrompt(
+            title: "Turn the gateway off?",
+            text: cost,
+            buttons: ["Turn it off", "Cancel"]
+        )) == 0
     }
 
     static func hasConfirmedRestartingTheGateway(cost: String) -> Bool {
-        let alert = Self.plain()
-        alert.messageText = "Restart the gateway?"
-        alert.informativeText = cost
-        alert.addButton(withTitle: "Restart it")
-        alert.addButton(withTitle: "Cancel")
-        return run(alert) == .alertFirstButtonReturn
+        PromptWindow.ask(HatPrompt(
+            title: "Restart the gateway?",
+            text: cost,
+            buttons: ["Restart it", "Cancel"]
+        )) == 0
     }
 
     static func askAboutTheSignInInFlight(_ text: String) -> SignInInFlightChoice {
-        let alert = Self.plain()
-        alert.messageText = "A sign-in is already running"
-        alert.informativeText = text
-        alert.addButton(withTitle: "Show it")
-        alert.addButton(withTitle: "Cancel that sign-in")
-        alert.addButton(withTitle: "Cancel")
-        return SignInInFlightChoice.of(run(alert))
+        SignInInFlightChoice.of(PromptWindow.ask(HatPrompt(
+            title: "A sign-in is already running",
+            text: text,
+            buttons: ["Show it", "Cancel that sign-in", "Cancel"]
+        )))
     }
 
     static func inform(_ title: String, _ text: String) {
-        let alert = Self.plain()
-        alert.messageText = title
-        alert.informativeText = text
-        alert.addButton(withTitle: "OK")
-        _ = run(alert)
+        _ = PromptWindow.ask(HatPrompt(title: title, text: text, buttons: ["OK"]))
     }
 
     static func present(_ error: Error, title: String = "Could not put that hat on") {
-        let alert = Self.plain()
-        alert.alertStyle = .warning
-        alert.messageText = title
-        alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "OK")
-        _ = run(alert)
+        _ = PromptWindow.ask(HatPrompt(
+            title: title,
+            text: error.localizedDescription,
+            buttons: ["OK"]
+        ))
     }
 
     private static func field(y: CGFloat, placeholder: String) -> NSTextField {

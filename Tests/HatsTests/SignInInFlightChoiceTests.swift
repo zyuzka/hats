@@ -1,20 +1,19 @@
-import AppKit
 import XCTest
 @testable import Hats
 
 final class SignInInFlightChoiceTests: XCTestCase {
     func testTheTwoWaysOutAreTheFirstTwoButtons() {
-        XCTAssertEqual(SignInInFlightChoice.of(.alertFirstButtonReturn), .showTheWindow)
-        XCTAssertEqual(SignInInFlightChoice.of(.alertSecondButtonReturn), .abandonIt,
+        XCTAssertEqual(SignInInFlightChoice.of(0), .showTheWindow)
+        XCTAssertEqual(SignInInFlightChoice.of(1), .abandonIt,
                        "a person who cannot find the window has to be able to drop that sign-in, "
                            + "or the app is a wall — which is how the second account became "
                            + "impossible to add")
     }
 
     func testAnythingElseLeavesTheSignInAlone() {
-        XCTAssertEqual(SignInInFlightChoice.of(.alertThirdButtonReturn), .leaveItAlone)
-        XCTAssertEqual(SignInInFlightChoice.of(.cancel), .leaveItAlone)
-        XCTAssertEqual(SignInInFlightChoice.of(.stop), .leaveItAlone)
+        XCTAssertEqual(SignInInFlightChoice.of(2), .leaveItAlone)
+        XCTAssertEqual(SignInInFlightChoice.of(7), .leaveItAlone,
+                       "an index nobody offered is not a way to start a second sign-in")
     }
 
     func testTheRefusalSaysWhereTheWindowIsRatherThanHowTheAppIsBuilt() {
