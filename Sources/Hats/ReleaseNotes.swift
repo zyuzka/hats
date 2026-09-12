@@ -20,7 +20,7 @@ enum ReleaseNotes {
 
         func close() {
             guard let version else { return }
-            notes.append(ReleaseNote(version: version, dateline: dateline, lines: trimmed(lines)))
+            notes.append(ReleaseNote(version: version, dateline: dateline, lines: paragraphs(lines)))
         }
 
         for line in markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
@@ -35,6 +35,39 @@ enum ReleaseNotes {
         }
         close()
         return notes
+    }
+
+    static func paragraphs(_ lines: [String]) -> [String] {
+        var paragraphs: [String] = []
+        var current = ""
+
+        func close() {
+            let trimmed = current.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { paragraphs.append(trimmed) }
+            current = ""
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                close()
+                continue
+            }
+            if line.hasPrefix("- ") || line.hasPrefix("#") {
+                close()
+                current = trimmed
+                continue
+            }
+            current = current.isEmpty ? trimmed : current + " " + trimmed
+        }
+        close()
+
+        return paragraphs
+    }
+
+    static func bullet(_ paragraph: String) -> String? {
+        guard paragraph.hasPrefix("- ") else { return nil }
+        return String(paragraph.dropFirst(2))
     }
 
     static func heading(of line: String) -> (version: String, dateline: String)? {
@@ -54,17 +87,6 @@ enum ReleaseNotes {
         return parts.allSatisfy { part in
             !part.isEmpty && part.allSatisfy { $0.isASCII && $0.isNumber }
         }
-    }
-
-    private static func trimmed(_ lines: [String]) -> [String] {
-        var lines = lines
-        while let first = lines.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-            lines.removeFirst()
-        }
-        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
-            lines.removeLast()
-        }
-        return lines
     }
 
     static func fromTheBundle(_ bundle: Bundle = .main) -> [ReleaseNote] {

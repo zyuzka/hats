@@ -26,6 +26,22 @@ struct ReleasesView: View {
         }
     }
 
+    @ViewBuilder private func paragraph(_ line: String) -> some View {
+        if let body = ReleaseNotes.bullet(line) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\u{2022}").foregroundStyle(.secondary)
+                styled(body).fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            styled(line).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func styled(_ text: String) -> Text {
+        guard let attributed = try? AttributedString(markdown: text) else { return Text(text) }
+        return Text(attributed)
+    }
+
     private func entry(_ note: ReleaseNote) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -40,7 +56,7 @@ struct ReleasesView: View {
                 Text(note.dateline).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(Array(note.lines.enumerated()), id: \.offset) { _, line in
-                Text(line)
+                paragraph(line)
                     .font(.system(size: 12))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
