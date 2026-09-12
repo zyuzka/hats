@@ -8,6 +8,45 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.2.0 — 2026-09-12
+
+Everything here came from two colleagues using 0.1.0 for a day and writing down what went wrong.
+
+- **Signing in no longer opens Terminal.** The app runs the sign-in itself and shows it in a window
+  of its own, with the browser link, a field for the code the page gives you, and a way to cancel.
+  Before this it wrote a shell script and handed it to Terminal.app — not whichever terminal you
+  use, and on a machine where Terminal already sat on another desktop the window never surfaced, so
+  a second account could not be added at all. The permission to control Terminal is gone with it:
+  the app no longer asks for it, because it no longer needs it.
+- **A sign-in already running offers a way out.** Starting another one used to say so and give you a
+  single OK. Now it offers to raise the window that is open, or to cancel that sign-in and go on
+  with what you asked for.
+- **A cancelled sign-in frees the next one at once.** There was a delay of about half a minute
+  during which the app still refused, because the question "may another sign-in start" was put to
+  the watch that reads the credential back rather than to the sign-in itself.
+- **Chrome Beta, Dev and Canary are offered like any other browser.** Only ordinary Chrome was
+  looked for, so a Claude living in Canary could not be given a hat. Each channel keeps its own
+  wrapper, so the same profile name in two of them cannot collide.
+- **The limits are read as soon as a sign-in settles** instead of leaving the last refusal on screen
+  until the next poll came round, up to five minutes later.
+- **The app tells you when a new version is out.** It asks GitHub every six hours, notifies once per
+  version, and the button in Settings keeps saying which version is waiting until you act on it.
+- **When Claude Code and its state file name different accounts, the app says so.** It used to show
+  "needs one more login", which asks you to do the one thing that cannot help: the next login writes
+  the same two disagreeing places again.
+- **The app appears in the dock while one of its windows is open**, so a window that slipped behind
+  something else can be raised, and disappears again when the last one closes.
+- **The line about live sessions no longer names the hat a direct session keeps.** The app does not
+  know it — the sessions window says as much two lines below — and naming the hat worn right now was
+  the app contradicting itself.
+- **Smaller things a person notices.** Dialogs are the app's own windows, without the slot macOS
+  keeps for an icon; both session lists lost their scrollbars and their cut-off rows; release notes
+  wrap to the window instead of to the file they are written in; Settings opens on General, Hats,
+  Auto-switch, Gateway in that order; and the log button moved to General, beside the version, where
+  people look for it.
+- **A request the gateway cannot forward is written to the log.** The count lived only in memory and
+  died with the app, so a report of the gateway swallowing something left nothing to read.
+
 ## 0.1.0 — 2026-09-08
 
 The first version published anywhere.
