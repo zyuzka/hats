@@ -15,6 +15,7 @@ final class PromptWindow: NSObject, NSWindowDelegate {
         @ViewBuilder content: (@escaping (Int) -> Void) -> Content
     ) -> Int {
         var chosen = PromptButtons.dismissed(of: buttons)
+        let asked = NSApp.keyWindow
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 120),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -30,9 +31,12 @@ final class PromptWindow: NSObject, NSWindowDelegate {
         window.isReleasedWhenClosed = false
         window.delegate = keeper
         window.center()
+        window.level = .modalPanel
         NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
         NSApp.runModal(for: window)
         window.orderOut(nil)
+        asked?.makeKeyAndOrderFront(nil)
 
         return chosen
     }
