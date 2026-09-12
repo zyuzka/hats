@@ -148,6 +148,7 @@ final class LiveSessionsWindow: NSObject, NSWindowDelegate {
 
     func show(model: HatsModel) {
         if let window {
+            fitToItsContent(window)
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
@@ -158,10 +159,17 @@ final class LiveSessionsWindow: NSObject, NSWindowDelegate {
         window.styleMask = [.titled, .closable, .resizable]
         window.isReleasedWhenClosed = false
         window.delegate = self
+        fitToItsContent(window)
         window.center()
         self.window = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func fitToItsContent(_ window: NSWindow) {
+        guard let view = window.contentViewController?.view else { return }
+        view.layoutSubtreeIfNeeded()
+        window.setContentSize(view.fittingSize)
     }
 
     func windowDidResignKey(_ notification: Notification) {
