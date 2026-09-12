@@ -276,7 +276,7 @@ final class AccountStore {
         return account
     }
 
-    func beginLogin(_ id: String) throws {
+    func beginLogin(_ id: String) throws -> SignInCommand {
         try requireReadableIndex()
         let before = snapshot
         guard let account = accounts.first(where: { $0.id == id }) else {
@@ -285,12 +285,13 @@ final class AccountStore {
         guard let browser = account.browser, browser.overridesBrowser else {
             throw SwitchError.noBrowser(account.display)
         }
-        let command = try CLI.loginCommand(email: account.email, browser: account.browser)
+        let command = try SignInCommand.of(email: account.email, browser: account.browser)
         if let index = accounts.firstIndex(of: account) {
             accounts[index].lastLoginAt = Date()
             try persist(orRestore: before)
         }
-        try Terminal.open(command: command)
+
+        return command
     }
 
     func remove(_ id: String) throws {

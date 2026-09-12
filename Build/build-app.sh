@@ -89,12 +89,6 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <!-- Required for the Automation permission dialog to appear AT ALL. Without
-         this key macOS denies Apple events silently: no prompt, no error the user
-         can act on, and the window this app opens never closes. Measured
-         2026-08-20 — the missing key, not a missing grant, was the cause. -->
-    <key>NSAppleEventsUsageDescription</key>
-    <string>Hats closes the Terminal window it opened for a sign-in.</string>
 </dict>
 </plist>
 PLIST

@@ -30,25 +30,6 @@ final class ProcessTableOutcomeTests: XCTestCase {
         XCTAssertNil(ProcessTable.output(data: table, reason: .uncaughtSignal, status: 9))
     }
 
-    func testUsageTextWouldHaveAnsweredTheScriptQuestionWithNo() {
-        let lines = String(data: usageText, encoding: .utf8)!
-            .split(separator: "\n").map(String.init)
-
-        XCTAssertFalse(Terminal.isScriptRunning(
-            among: lines,
-            scriptPath: "/Users/x/Library/Application Support/Hats/login.sh"))
-        XCTAssertNil(ProcessTable.output(data: usageText, reason: .exit, status: 1))
-    }
-
-    func testATableCarryingTheScriptAnswersYes() {
-        let lines = String(data: table, encoding: .utf8)!
-            .split(separator: "\n").map(String.init)
-
-        XCTAssertTrue(Terminal.isScriptRunning(
-            among: lines,
-            scriptPath: "/Users/x/Library/Application Support/Hats/login.sh"))
-    }
-
     func testAReadThatOutstaysItsBudgetIsRefusedRatherThanWaitedOut() {
         let started = ContinuousClock.now
 

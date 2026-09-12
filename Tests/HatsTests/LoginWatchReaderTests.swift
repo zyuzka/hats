@@ -27,14 +27,12 @@ final class LoginWatchReaderTests: XCTestCase {
                 return .empty },
             resolvedSlot: { w.note("resolvedSlot"); return nil },
             isDone: { w.note("isDone"); return false },
-            scriptRunning: { w.note("scriptRunning"); return nil },
-            loginInFlight: { w.note("loginInFlight"); return false },
-            closeTheWindow: { w.note("closeTheWindow"); return .couldNotAsk },
-            removeScript: { w.note("removeScript") }
+            signInRunning: { w.note("signInRunning"); return nil },
+            loginInFlight: { w.note("loginInFlight"); return false }
         )
     }
 
-    private static let readers = ["identity", "slot", "resolvedSlot", "isDone", "scriptRunning", "loginInFlight"]
+    private static let readers = ["identity", "slot", "resolvedSlot", "isDone", "signInRunning", "loginInFlight"]
 
     func testEveryReadOfTheWorldLeavesTheMainThread() {
         let w = Where()
@@ -81,40 +79,8 @@ final class LoginWatchReaderTests: XCTestCase {
         XCTAssertEqual(seen?.identity, .loggedOut)
         XCTAssertEqual(seen?.slot, .empty)
         XCTAssertEqual(seen?.isDone, false)
-        XCTAssertNil(seen?.scriptRunning)
+        XCTAssertNil(seen?.signInRunning)
         XCTAssertEqual(seen?.loginInFlight, false)
     }
 
-    func testClosingTheWindowAlsoLeavesTheMainThread() {
-        let w = Where()
-        let reader = LoginWatchReader.of(world: world(w))
-        let reported = expectation(description: "close reported")
-        var reportedOnMain: Bool?
-
-        reader.closeTheWindow { _, _ in
-            reportedOnMain = Thread.isMainThread
-            reported.fulfill()
-        }
-        wait(for: [reported], timeout: 5)
-
-        XCTAssertEqual(w.ranOnMain("closeTheWindow"), false,
-                       "closeLoginWindow runs osascript, which must not block the main thread")
-        XCTAssertEqual(w.ranOnMain("scriptRunning"), false)
-        XCTAssertEqual(reportedOnMain, true,
-                       "the outcome decides whether the watch guard is released, which is main-thread state")
-    }
-
-    func testAClosureWithNothingToReportStillCloses() {
-        let w = Where()
-        let reader = LoginWatchReader.of(world: world(w))
-        reader.closeTheWindow(then: nil)
-
-        let settled = expectation(description: "queue drained")
-        reader.queue.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5)
-
-        XCTAssertEqual(w.ranOnMain("closeTheWindow"), false)
-        XCTAssertNil(w.ranOnMain("scriptRunning"),
-                     "with nobody to report to there is no reason to spend a second ps read")
-    }
 }

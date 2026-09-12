@@ -1,20 +1,27 @@
 import AppKit
 
+final class SignInInFlight {
+    var run: SignInRun?
+}
+
 final class LoginFlow {
     private let store: AccountStore
     private let world: LoginWatchWorld
     private let reader: LoginWatchReader
-    private var automationAnswerIsSettled = false
-    private var hasExplainedAutomation = false
+    private let inFlight: SignInInFlight
+    private let window = SignInWindow()
+    private var model: SignInModel?
     private var generations = WatchGeneration()
 
     var liveLoginMoved: (LiveIdentity) -> Void = { _ in Journal.log("login.moveIgnored") }
     var syncWithWorld: (Bool, CredentialClaim?) -> String? = { _, _ in nil }
     var lastTrouble: () -> String? = { nil }
 
-    init(store: AccountStore, world: LoginWatchWorld? = nil) {
+    init(store: AccountStore, world injected: LoginWatchWorld? = nil) {
+        let inFlight = SignInInFlight()
         self.store = store
-        let world = world ?? .of(store: store)
+        self.inFlight = inFlight
+        let world = injected ?? .of(store: store, signIn: { inFlight.run })
         self.world = world
         self.reader = .of(world: world)
     }
@@ -23,13 +30,12 @@ final class LoginFlow {
         let duty = LoginWatchDuty.of(
             onDuty: generations.dutyHolder,
             pollAlive: generations.pollHolder,
-            loginInFlight: Terminal.hasALoginInFlight(),
-            scriptRunning: Terminal.isScriptRunning()
+            loginInFlight: world.loginInFlight(),
+            signInRunning: world.signInRunning()
         )
         if duty.releasesTheWatch {
             generations.standDown(generations.dutyHolder)
-            Terminal.removeScript()
-            Journal.log("login.staleWatchReleased", ["loginScriptRunning": "no"])
+            Journal.log("login.staleWatchReleased", ["signInRunning": "no"])
         }
         return duty
     }
@@ -42,7 +48,8 @@ final class LoginFlow {
         let liveSlot = configuration.credentialService
         let pinned = configuration.source == .liveCLI
         let credentialBefore = store.liveSlotNow(inSlot: liveSlot)
-        try store.beginLogin(id)
+        let command = try store.beginLogin(id)
+        try openTheSignIn(command, expecting: expecting)
         awaitCompletion(
             expecting: expecting,
             identityBefore: identityBefore,
@@ -52,19 +59,36 @@ final class LoginFlow {
         )
     }
 
-    private func ensureAutomationPermission() {
-        guard !automationAnswerIsSettled else { return }
-        let verdict = Automation.requestPermission(toAutomate: "com.apple.Terminal")
-        automationAnswerIsSettled = Automation.isSettled(verdict)
-        guard !hasExplainedAutomation,
-              let explanation = Automation.explanation(for: verdict, appName: "Hats") else { return }
-        hasExplainedAutomation = true
-        HatDialogs.inform("The sign-in window will stay open", explanation)
+    private func openTheSignIn(_ command: SignInCommand, expecting: String?) throws {
+        let run = SignInRun()
+        let model = SignInModel(title: HatsCopy.signingInAs(expecting))
+        model.submit = { [weak run, weak model] code in
+            run?.send(code)
+            model?.code = ""
+        }
+        model.stop = { [weak self] in self?.cancelTheSignIn() }
+        run.changed = { [weak model] transcript in model?.transcript = transcript }
+        run.ended = { [weak self] ending in self?.theSignInEnded(ending) }
+        window.wasClosedByAPerson = { [weak self] in self?.cancelTheSignIn() }
+        inFlight.run = run
+        self.model = model
+        window.show(model)
+        try run.start(command)
     }
 
-    private func askThenCloseTheLoginWindow(reporting report: ((WindowOutcome, Bool?) -> Void)? = nil) {
-        ensureAutomationPermission()
-        reader.closeTheWindow(then: report)
+    private func cancelTheSignIn() {
+        guard let run = inFlight.run, run.isInFlight else { return window.close() }
+        run.cancel()
+    }
+
+    private func theSignInEnded(_ ending: SignInRun.Ending) {
+        switch ending {
+        case .signedIn, .cancelled:
+            window.close()
+            model = nil
+        case .failed(let status):
+            model?.trouble = HatsCopy.signInFailed(status)
+        }
     }
 
     private func awaitCompletion(
@@ -100,9 +124,7 @@ final class LoginFlow {
             guard let self else { return nil }
             return lastTrouble()
         }
-        run.closeTheLoginWindow = { [weak self] report in
-            self?.askThenCloseTheLoginWindow(reporting: report)
-        }
+        run.closeTheLoginWindow = { [weak self] in self?.cancelTheSignIn() }
         run.start()
     }
 }

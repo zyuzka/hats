@@ -132,10 +132,8 @@ enum HatDialogs {
     }
 
     static func refuseASecondLogin() {
-        let text = "One login window is open and its command is still running. The login command, its "
-            + "Terminal window and the marker that says it finished are one set, shared by every login this "
-            + "app starts — so a second one now would close the first one's window and could store the "
-            + "wrong credentials. Finish or close that window, then start this login."
+        let text = "Hats runs one sign-in at a time, and one is open right now. Finish it or "
+            + "cancel it in its own window, then start this one."
         inform("A sign-in is already running", text)
     }
 

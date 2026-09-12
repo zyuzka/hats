@@ -2,6 +2,7 @@ import Foundation
 
 enum SwitchError: LocalizedError {
     case unknownAccount(String)
+    case cliNotFound
     case notCaptured(String)
     case nothingToCapture
     case noBrowser(String)
@@ -27,6 +28,9 @@ enum SwitchError: LocalizedError {
         switch self {
         case .unknownAccount(let id):
             return "no account with id \(id)"
+        case .cliNotFound:
+            return "the Claude Code command line tool was not found, so there is nothing to sign "
+                + "in with. Install it, then try again."
         case .notCaptured(let label):
             return "\(label) has no stored credentials yet — log in as that account, then capture it"
         case .nothingToCapture:

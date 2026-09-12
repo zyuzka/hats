@@ -20,7 +20,7 @@ final class LoginWatchRun {
 
     var observedTheLogin = false
     var windowClosedAt: Date?
-    private var sawTheScriptRunning = false
+    private var sawTheSignInRunning = false
     private var watchedSlot: String
     private var watchedBefore: LiveSlotNow
     private var awaitingABaseline = false
@@ -28,9 +28,7 @@ final class LoginWatchRun {
     var liveLoginMoved: (LiveIdentity) -> Void = { _ in Journal.log("login.moveIgnored") }
     var syncWithWorld: (Bool, CredentialClaim?) -> String? = { _, _ in nil }
     var lastTrouble: () -> String? = { nil }
-    var closeTheLoginWindow: (((WindowOutcome, Bool?) -> Void)?) -> Void = { _ in
-        Journal.log("login.closeIgnored")
-    }
+    var closeTheLoginWindow: () -> Void = { Journal.log("login.closeIgnored") }
 
     init(
         reader: LoginWatchReader,
@@ -122,17 +120,16 @@ final class LoginWatchRun {
 
     private func hasTheLoginWindowClosed(_ reading: LoginWatchReading, completed: Bool) -> Bool {
         if reading.isDone {
-            closeTheLoginWindow(nil)
+            closeTheLoginWindow()
             return true
         }
-        if reading.scriptRunning == true { sawTheScriptRunning = true }
-        guard LoginWatchDuty.hasTheScriptDiedWithoutFinishing(
-            seenRunning: sawTheScriptRunning,
+        if reading.signInRunning == true { sawTheSignInRunning = true }
+        guard LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
+            seenRunning: sawTheSignInRunning,
             loginInFlight: reading.loginInFlight,
-            scriptRunning: reading.scriptRunning
+            signInRunning: reading.signInRunning
         ) else { return false }
-        world.removeScript()
-        Journal.log("login.scriptGone", ["completed": String(completed)])
+        Journal.log("login.signInGone", ["completed": String(completed)])
         return true
     }
 }

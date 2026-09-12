@@ -8,21 +8,9 @@ extension LoginWatchRun {
             return
         }
         releaseThePoll()
-        closeTheLoginWindow { [self] outcome, stillRunning in
-            duty.standDown(generation)
-            guard duty.isTheCurrent(generation) else {
-                Journal.log("login.closeAnsweredForAnOlderWatch", ["expecting": expecting ?? "-"])
-                return
-            }
-            let gone = LoginWatchDuty.isTheScriptConfirmedGone(stillRunning)
-            if gone { world.removeScript() }
-            Journal.log("login.timedOut", [
-                "expecting": expecting ?? "-",
-                "closeAnswered": String(outcome != .couldNotAsk),
-                "scriptStillRunning": stillRunning.map(String.init) ?? "unknown",
-                "scriptRemoved": String(gone),
-            ])
-        }
+        duty.standDown(generation)
+        closeTheLoginWindow()
+        Journal.log("login.timedOut", ["expecting": expecting ?? "-"])
     }
 
     private func releaseThePoll() {

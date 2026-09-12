@@ -183,36 +183,36 @@ enum LoginWatchDuty: Equatable {
     case onDuty
     case staleAndGone
     case staleButUnclear
-    case orphanScript
+    case orphanSignIn
 
-    static func isTheScriptConfirmedGone(_ scriptRunning: Bool?) -> Bool {
-        scriptRunning == false
+    static func isTheSignInConfirmedGone(_ signInRunning: Bool?) -> Bool {
+        signInRunning == false
     }
 
-    static func hasTheScriptDiedWithoutFinishing(
+    static func hasTheSignInDiedWithoutFinishing(
         seenRunning: Bool,
         loginInFlight: Bool,
-        scriptRunning: Bool?
+        signInRunning: Bool?
     ) -> Bool {
-        seenRunning && loginInFlight && isTheScriptConfirmedGone(scriptRunning)
+        seenRunning && loginInFlight && isTheSignInConfirmedGone(signInRunning)
     }
 
     static func of(onDuty: Int,
                    pollAlive: Int,
                    loginInFlight: Bool,
-                   scriptRunning: @autoclosure () -> Bool?) -> LoginWatchDuty {
+                   signInRunning: @autoclosure () -> Bool?) -> LoginWatchDuty {
         guard onDuty != 0 else {
             guard loginInFlight else { return .none }
-            return isTheScriptConfirmedGone(scriptRunning()) ? .none : .orphanScript
+            return isTheSignInConfirmedGone(signInRunning()) ? .none : .orphanSignIn
         }
         guard pollAlive != onDuty else { return .onDuty }
-        return isTheScriptConfirmedGone(scriptRunning()) ? .staleAndGone : .staleButUnclear
+        return isTheSignInConfirmedGone(signInRunning()) ? .staleAndGone : .staleButUnclear
     }
 
     var isOnDuty: Bool {
         switch self {
         case .none, .staleAndGone: return false
-        case .onDuty, .staleButUnclear, .orphanScript: return true
+        case .onDuty, .staleButUnclear, .orphanSignIn: return true
         }
     }
 
