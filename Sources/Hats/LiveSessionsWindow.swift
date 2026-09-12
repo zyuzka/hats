@@ -89,13 +89,15 @@ struct LiveSessionsView: View {
             case .unknown:
                 Text("the process table could not be read").font(.system(size: 12)).foregroundStyle(.secondary)
             case .counted(let live):
-                Table(rows(live)) {
-                    TableColumn("pid") { Text(String($0.id)) }.width(60)
-                    TableColumn("wearing") { Text($0.wearing) }
-                    TableColumn("running") { Text($0.running) }.width(80)
-                    TableColumn("moves") { Text($0.moves) }
-                }
-                .frame(height: TableHeight.forRows(rows(live).count, upTo: 12))
+                PlainTable(
+                    columns: [
+                        PlainColumn("pid", width: 54),
+                        PlainColumn("wearing"),
+                        PlainColumn("running", width: 76),
+                        PlainColumn("moves"),
+                    ],
+                    rows: rows(live).map { [String($0.id), $0.wearing, $0.running, $0.moves] }
+                )
             }
             Text("A direct session — started in a shell opened before the app was up — keeps the hat it started "
                 + "on until its next token renewal, and which hat that is, nobody here knows.")
@@ -112,13 +114,18 @@ struct LiveSessionsView: View {
             Text(HatsCopy.relaySessions(snapshot.gatewaySessions, serving: snapshot.gateway.isServing))
                 .font(.system(size: 13, weight: .semibold))
             if !snapshot.gatewaySessions.isEmpty {
-                Table(snapshot.gatewaySessions) {
-                    TableColumn("session") { Text(HatsCopy.shortSession($0.session)) }.width(90)
-                    TableColumn("requests") { Text(String($0.requests)) }.width(70)
-                    TableColumn("last") { Text(String($0.lastStatus)) }.width(50)
-                    TableColumn("credential") { Text($0.credential) }
-                }
-                .frame(height: TableHeight.forRows(snapshot.gatewaySessions.count, upTo: 8))
+                PlainTable(
+                    columns: [
+                        PlainColumn("session", width: 84),
+                        PlainColumn("requests", width: 64),
+                        PlainColumn("last", width: 44),
+                        PlainColumn("credential"),
+                    ],
+                    rows: snapshot.gatewaySessions.map {
+                        [HatsCopy.shortSession($0.session), String($0.requests),
+                         String($0.lastStatus), $0.credential]
+                    }
+                )
             }
             Text(HatsCopy.theTwoSessionListsDiffer)
                 .font(.system(size: 11)).foregroundStyle(.secondary)
