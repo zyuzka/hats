@@ -20,6 +20,8 @@ final class AccountStore {
 
     private(set) var hasUnsavedChanges = false
 
+    private var unclaimedMismatch = NoteOnChange()
+
     let identityQueue = DispatchQueue(label: "hats.identity-from-token")
 
     var fetchingTokenIdentity: (String) -> ProfileFetch = { ProfileFetcher.fetch(token: $0) }
@@ -223,12 +225,17 @@ final class AccountStore {
                 return .reconciled(account: email, changed: true)
             }
             if stored != live {
-                Journal.log("reconcile.credentialNotClaimed", [
-                    "account": match.email,
-                    "live": Journal.fingerprint(live),
-                    "stored": Journal.fingerprint(stored),
-                ])
+                let observation = "\(match.email) \(Journal.fingerprint(live)) \(Journal.fingerprint(stored))"
+                if unclaimedMismatch.shouldWrite(observation) {
+                    Journal.log("reconcile.credentialNotClaimed", [
+                        "account": match.email,
+                        "live": Journal.fingerprint(live),
+                        "stored": Journal.fingerprint(stored),
+                    ])
+                }
                 guard claim.allowsAnUnclaimedMismatch else { return .credentialUnclaimed }
+            } else {
+                unclaimedMismatch.clear()
             }
             let changed = activeID != match.id
             activeID = match.id
