@@ -61,6 +61,10 @@ struct GeneralPanel: View {
                 .buttonStyle(.link)
                 .help("What changed in this and every earlier version")
             Spacer()
+            Button("Open log") { model.actions?.openLog() }
+                .controlSize(.small)
+                .help("Everything this app did, in the order it did it — the file to send when "
+                    + "something needs explaining")
             Button(HatsCopy.updateButton(waiting: snapshot.updateWaiting)) {
                 model.actions?.checkForUpdates()
             }

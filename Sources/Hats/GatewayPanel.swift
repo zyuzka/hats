@@ -20,7 +20,6 @@ struct GatewayPanel: View {
                     Button("Restart gateway") { model.actions?.restartGateway() }
                 }
                 Button("Copy variables") { model.actions?.copyVariables() }
-                Button("Open log") { model.actions?.openLog() }
             }
             .controlSize(.small).padding(.horizontal, 14)
         }
