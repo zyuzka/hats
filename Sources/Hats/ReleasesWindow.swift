@@ -69,6 +69,7 @@ final class ReleasesWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     func show(running: String, notes: [ReleaseNote]? = nil) {
+        DockPresence.aWindowIsAboutToOpen()
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

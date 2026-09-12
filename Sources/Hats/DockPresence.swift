@@ -11,12 +11,17 @@ enum DockPresence {
     }
 
     static func watch() {
-        let centre = NotificationCenter.default
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.willCloseNotification] {
-            centre.addObserver(forName: name, object: nil, queue: .main) { _ in
-                DispatchQueue.main.async { refresh() }
-            }
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: nil, queue: .main
+        ) { _ in
+            DispatchQueue.main.async { refresh() }
         }
+    }
+
+    static func aWindowIsAboutToOpen() {
+        guard NSApp.activationPolicy() != .regular else { return }
+        NSApp.setActivationPolicy(.regular)
+        Journal.log("dock.presence", ["shown": "true"])
     }
 
     static func refresh() {

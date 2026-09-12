@@ -24,6 +24,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
     func show(model: HatsModel) {
+        DockPresence.aWindowIsAboutToOpen()
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

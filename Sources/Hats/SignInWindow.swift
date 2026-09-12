@@ -8,6 +8,7 @@ final class SignInWindow: NSObject, NSWindowDelegate {
     var wasClosedByAPerson: () -> Void = { Journal.log("signIn.closeIgnored") }
 
     func show(_ model: SignInModel) {
+        DockPresence.aWindowIsAboutToOpen()
         if let window {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

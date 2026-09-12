@@ -14,6 +14,7 @@ final class PromptWindow: NSObject, NSWindowDelegate {
         buttons: Int,
         @ViewBuilder content: (@escaping (Int) -> Void) -> Content
     ) -> Int {
+        DockPresence.aWindowIsAboutToOpen()
         var chosen = PromptButtons.dismissed(of: buttons)
         let asked = NSApp.keyWindow
         let window = NSWindow(

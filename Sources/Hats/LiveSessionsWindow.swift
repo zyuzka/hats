@@ -153,6 +153,7 @@ final class LiveSessionsWindow: NSObject, NSWindowDelegate {
     var isVisible: Bool { window?.isVisible ?? false }
 
     func show(model: HatsModel) {
+        DockPresence.aWindowIsAboutToOpen()
         if let window {
             fitToItsContent(window)
             window.makeKeyAndOrderFront(nil)

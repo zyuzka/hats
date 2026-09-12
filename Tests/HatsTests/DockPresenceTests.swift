@@ -28,3 +28,26 @@ final class DockPresenceTests: XCTestCase {
         XCTAssertTrue(DockPresence.isNeeded(for: [closedSettings, settings, popover]))
     }
 }
+
+final class DockBeforeTheWindowTests: XCTestCase {
+    func testEveryWindowAsksForTheDockBeforeItOpens() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/Hats")
+        let files = try FileManager.default.contentsOfDirectory(at: sources, includingPropertiesForKeys: nil)
+        var missing: [String] = []
+        for file in files where file.pathExtension == "swift" {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            guard text.contains("NSWindow(") else { continue }
+            guard !text.contains("DockPresence.aWindowIsAboutToOpen()") else { continue }
+            missing.append(file.lastPathComponent)
+        }
+
+        XCTAssertEqual(missing, [],
+                       "changing the app from accessory to regular makes macOS show the app, and "
+                           + "it travels to whichever desktop it thinks the app lives on, taking "
+                           + "the person with it. Measured on a live machine: the settings window "
+                           + "opened here and the person was thrown to another desktop. Doing it "
+                           + "before any window exists leaves macOS nowhere to go: \(missing)")
+    }
+}
