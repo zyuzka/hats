@@ -44,10 +44,25 @@ Download the `.dmg` from [Releases](../../releases), open it and drag Hats to Ap
 
 macOS 13 or later, and Claude Code already installed and logged in.
 
-The build is signed with a self-signed certificate rather than by a registered developer, so
-Gatekeeper refuses the first launch: right-click the app → Open → Open, once. What the certificate
-buys is a signature that survives a rebuild, which is what keeps the permission to control Terminal
-from being asked for again after every update.
+The build is signed with a self-signed certificate rather than by a registered Apple developer, so
+Gatekeeper refuses the first launch and says it "could not verify Hats.app is free of malware".
+Nothing is wrong with the download — Gatekeeper simply has nothing it trusts to check against.
+
+On macOS 15 and later, including 26:
+
+1. Open the app once and let it fail.
+2. System Settings → Privacy & Security → scroll down.
+3. There: *"Hats.app was blocked"* → **Open Anyway** → Touch ID.
+4. Open it again; it launches from then on.
+
+On macOS 14 and earlier, right-click → Open → Open did the same thing, and `xattr -dr
+com.apple.quarantine` was the fallback. Apple closed both in 15: the menu no longer offers Open for
+an unnotarised app, and the flag it blocks on is `com.apple.provenance`, which `xattr` will not
+remove. Measured on 26.6.2.
+
+This goes away only with notarisation, which needs a paid Apple Developer account. What the
+self-signed certificate does buy is a signature that survives a rebuild — that is what keeps macOS
+treating each new version as the same app rather than asking for its permissions again.
 
 ### Build it yourself
 
@@ -74,7 +89,7 @@ the Gatekeeper step does not cure that, because it is not Gatekeeper.
 
 Your hats and their stored logins live in `~/Library/Application Support/Hats` and the keychain, not
 inside the app, so they survive an update untouched. What you do have to redo is the Gatekeeper step,
-once per download: the quarantine flag is per file. What you do not have to redo is the permission to
+once per download, since the block is per file. What you do not have to redo is the permission to
 control Terminal — builds carry a stable signing identity, so macOS sees a new version as the same
 app.
 

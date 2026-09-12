@@ -26,3 +26,30 @@ final class UpdateAnnouncementTests: XCTestCase {
                            + "implying an update exists")
     }
 }
+
+final class UpdateOfferTests: XCTestCase {
+    private let release = ReleaseOnGitHub(
+        version: "0.3.0",
+        page: URL(string: "https://example.com/releases/0.3.0")!,
+        asset: URL(string: "https://example.com/Hats-0.3.0.dmg")!
+    )
+
+    func testTheOfferToDownloadWarnsAboutTheBlockThatFollows() {
+        let detail = HatsCopy.updateVerdict(.available(release)).detail
+
+        XCTAssertTrue(detail.contains("Privacy & Security"), detail)
+        XCTAssertTrue(detail.contains("Open Anyway"),
+                      "the person is about to download an app macOS will refuse to open, and the "
+                          + "screen that refuses it says 'malware' — saying so here, before the "
+                          + "download, is the difference between a step and a scare")
+    }
+
+    func testAReleaseWithNoDiskImageDoesNotPromiseADownload() {
+        let pageOnly = ReleaseOnGitHub(version: "0.3.0",
+                                       page: URL(string: "https://example.com/r")!,
+                                       asset: nil)
+
+        XCTAssertEqual(HatsCopy.updateVerdict(.available(pageOnly)).detail,
+                       "The release page has the details.")
+    }
+}

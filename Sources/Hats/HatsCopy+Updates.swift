@@ -1,6 +1,11 @@
 import Foundation
 
 extension HatsCopy {
+    static let gatekeeperStep =
+        "macOS will refuse the first launch — it cannot verify an app signed by anyone but a paid "
+            + "Apple developer. Open it once, let it fail, then System Settings \u{2192} Privacy & "
+            + "Security \u{2192} Open Anyway."
+
     static func updateAnnouncement(_ version: String) -> (title: String, body: String) {
         ("Hats \(version) is out", "Open Settings \u{2192} General to download it.")
     }
@@ -18,7 +23,8 @@ static func updateVerdict(_ verdict: UpdateVerdict) -> (message: String, detail:
             return ("Hats \(release.version) is out",
                     release.asset == nil
                         ? "The release page has the details."
-                        : "Download the disk image, then drag Hats to Applications over the old one.")
+                        : "Download the disk image, then drag Hats to Applications over the old one. "
+                            + gatekeeperStep)
         case .unreadable:
             return ("Cannot tell whether there is an update",
                     "GitHub answered with something this build cannot read. While the repository is "
