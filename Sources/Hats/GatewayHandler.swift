@@ -108,6 +108,12 @@ final class GatewayHandler: ChannelInboundHandler, @unchecked Sendable {
                 credential: facts.credential,
                 session: facts.session
             )
+            Journal.log("gateway.refusedTarget", GatewayRefusedTarget.note(
+                uri: head.uri,
+                path: facts.path,
+                session: facts.session,
+                credential: facts.credential
+            ))
             let reason = GatewayErrorBody.describing("the request URI could not be resolved")
             respond(context: context, status: .badGateway, body: reason)
             return
