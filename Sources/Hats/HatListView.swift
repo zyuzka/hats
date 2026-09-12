@@ -82,7 +82,6 @@ struct HatListView: View {
                 HStack {
                     Text(HatsCopy.sessions(
                         snapshot.sessions,
-                        wearing: snapshot.wearing?.title,
                         gatewayBaseURLs: snapshot.gatewayAddresses.all,
                         serving: snapshot.gateway.isServing
                     ))

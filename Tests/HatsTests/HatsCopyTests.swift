@@ -78,12 +78,16 @@ final class HatsCopyTests: XCTestCase {
     }
 
     func testTheSessionsLineIsHonestAboutWhatItKnows() {
-        XCTAssertEqual(HatsCopy.sessions(count: nil, wearing: "Work"),
+        XCTAssertEqual(HatsCopy.sessions(count: nil),
                        "Live sessions unknown — the process table could not be read")
-        XCTAssertEqual(HatsCopy.sessions(count: 0, wearing: "Work"), "No live sessions")
-        XCTAssertEqual(HatsCopy.sessions(count: 1, wearing: "Work"), "1 live session — it keeps Work for now")
-        XCTAssertEqual(HatsCopy.sessions(count: 3, wearing: nil),
-                       "3 live sessions — they keep the current account for now")
+        XCTAssertEqual(HatsCopy.sessions(count: 0), "No live sessions")
+        XCTAssertEqual(HatsCopy.sessions(count: 1), "1 live session — which hat it keeps is not known")
+        XCTAssertEqual(HatsCopy.sessions(count: 3),
+                       "3 live sessions — which hats they keep is not known",
+                       "a session that does not go through the gateway keeps whatever it started "
+                           + "on, and the window says so in as many words: nobody here knows which "
+                           + "hat that is. Naming the hat worn right now was the app contradicting "
+                           + "itself, and it is what a tester compared against his profile")
     }
 
     func testTheSessionsLineCountsWhoGoesThroughTheGateway() {
@@ -91,18 +95,19 @@ final class HatsCopyTests: XCTestCase {
         let through = Session(pid: 1, elapsed: "1m", isInteractive: true, route: .pointedAt(url))
         let direct = Session(pid: 2, elapsed: "1m", isInteractive: true, route: .direct)
         let unknown = Session(pid: 3, elapsed: "1m", isInteractive: true)
-        func line(_ live: [Session], wearing: String? = "Work", serving: Bool = true) -> String {
-            HatsCopy.sessions(.counted(live), wearing: wearing, gatewayBaseURLs: [url], serving: serving)
+        func line(_ live: [Session], serving: Bool = true) -> String {
+            HatsCopy.sessions(.counted(live), gatewayBaseURLs: [url], serving: serving)
         }
         XCTAssertEqual(line([through], serving: false), "1 live session — pointed at the gateway, which is off",
                        "the header and the table row must agree that this session is stuck, not moved")
         XCTAssertEqual(line([through, direct], serving: false),
                        "2 live sessions — 1 pointed at the gateway, which is off, 1 not")
         XCTAssertEqual(line([through]), "1 live session — through the gateway")
-        XCTAssertEqual(line([direct]), "1 live session — not through the gateway, it keeps Work for now")
+        XCTAssertEqual(line([direct]),
+                       "1 live session — not through the gateway, which hat it keeps is not known")
         XCTAssertEqual(line([through, through]), "2 live sessions — all through the gateway")
-        XCTAssertEqual(line([direct, unknown], wearing: nil),
-                       "2 live sessions — none through the gateway, they keep the current account for now")
+        XCTAssertEqual(line([direct, unknown]),
+                       "2 live sessions — none through the gateway, which hats they keep is not known")
         XCTAssertEqual(line([through, direct, unknown]), "3 live sessions — 1 through the gateway, 2 not")
         XCTAssertEqual(line([]), "No live sessions")
         let onBoth = [
@@ -110,18 +115,18 @@ final class HatsCopyTests: XCTestCase {
             Session(pid: 2, elapsed: "1m", isInteractive: true, route: .pointedAt(url)),
         ]
         XCTAssertEqual(
-            HatsCopy.sessions(.counted(onBoth), wearing: "Work",
+            HatsCopy.sessions(.counted(onBoth),
                               gatewayBaseURLs: [url, "http://127.0.0.1:8788"], serving: true),
             "2 live sessions — all through the gateway",
             "while a listener is retiring both ports are ours, and counting one of them as somebody "
                 + "else's understates who follows a switch"
         )
         XCTAssertEqual(
-            HatsCopy.sessions(.counted(onBoth), wearing: "Work", gatewayBaseURLs: [url], serving: true),
+            HatsCopy.sessions(.counted(onBoth), gatewayBaseURLs: [url], serving: true),
             "2 live sessions — 1 through the gateway, 1 not"
         )
 
-        XCTAssertEqual(HatsCopy.sessions(.unknown, wearing: "Work", gatewayBaseURLs: [url], serving: true),
+        XCTAssertEqual(HatsCopy.sessions(.unknown, gatewayBaseURLs: [url], serving: true),
                        "Live sessions unknown — the process table could not be read")
     }
 

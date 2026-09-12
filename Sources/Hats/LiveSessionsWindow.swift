@@ -75,7 +75,6 @@ struct LiveSessionsView: View {
             HStack {
                 Text(HatsCopy.sessions(
                     snapshot.sessions,
-                    wearing: snapshot.wearing?.title,
                     gatewayBaseURLs: addresses.all,
                     serving: snapshot.gateway.isServing
                 ))

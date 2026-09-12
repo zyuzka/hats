@@ -73,20 +73,19 @@ enum HatsCopy {
 
     static func handover(to title: String) -> String { "at the limit → \(title)" }
 
-    static func sessions(count: Int?, wearing: String?) -> String {
+    static func sessions(count: Int?) -> String {
         guard let count else { return "Live sessions unknown — the process table could not be read" }
         guard count > 0 else { return "No live sessions" }
-        return "\(count) live session\(count == 1 ? "" : "s") — \(keep(wearing, plural: count != 1))"
+        return "\(count) live session\(count == 1 ? "" : "s") — \(unknownHat(plural: count != 1))"
     }
 
     static func sessions(
         _ state: SessionsState,
-        wearing: String?,
         gatewayBaseURLs: [String],
         serving: Bool
     ) -> String {
         guard case .counted(let live) = state, !live.isEmpty else {
-            return sessions(count: state.count, wearing: wearing)
+            return sessions(count: state.count)
         }
         let through = live.filter { $0.route.isThrough(anyOf: gatewayBaseURLs) }.count
         let noun = "\(live.count) live session\(live.count == 1 ? "" : "s")"
@@ -94,10 +93,10 @@ enum HatsCopy {
         if live.count == 1 {
             return through == 1
                 ? "\(noun) — \(via)"
-                : "\(noun) — not through the gateway, \(keep(wearing, plural: false))"
+                : "\(noun) — not through the gateway, \(unknownHat(plural: false))"
         }
         if through == live.count { return "\(noun) — all \(via)" }
-        if through == 0 { return "\(noun) — none through the gateway, \(keep(wearing, plural: true))" }
+        if through == 0 { return "\(noun) — none through the gateway, \(unknownHat(plural: true))" }
         return "\(noun) — \(through) \(via), \(live.count - through) not"
     }
 
@@ -146,9 +145,8 @@ enum HatsCopy {
         }
     }
 
-    private static func keep(_ wearing: String?, plural: Bool) -> String {
-        let who = plural ? "they keep" : "it keeps"
-        return wearing.map { "\(who) \($0) for now" } ?? "\(who) the current account for now"
+    private static func unknownHat(plural: Bool) -> String {
+        plural ? "which hats they keep is not known" : "which hat it keeps is not known"
     }
 
     static func banner(_ record: AutoSwitchRecord, fromTitle: String, timeZone: TimeZone = .current) -> String {
