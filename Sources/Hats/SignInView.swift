@@ -18,15 +18,22 @@ struct SignInView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(model.title).font(.system(size: 15, weight: .semibold))
+            Text(model.title)
+                .font(.system(size: 15, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
             Text(HatsCopy.signInStage(model.transcript.stage))
-                .font(.system(size: 12)).foregroundStyle(.secondary)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             if let url = model.transcript.signInURL {
                 Link("Open the sign-in page", destination: url).font(.system(size: 12))
             }
             if model.transcript.stage == .waitingForTheCode { codeEntry }
             if let trouble = model.trouble {
-                Text(trouble).font(.system(size: 12)).foregroundStyle(.orange)
+                Text(trouble)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             output
             HStack {
@@ -35,7 +42,7 @@ struct SignInView: View {
             }
         }
         .padding(18)
-        .frame(width: 420, alignment: .leading)
+        .frame(width: 420)
     }
 
     private var codeEntry: some View {
