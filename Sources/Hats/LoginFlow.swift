@@ -6,13 +6,13 @@ final class SignInInFlight {
 
 final class LoginFlow {
     private let store: AccountStore
-    private let world: LoginWatchWorld
-    private let reader: LoginWatchReader
+    let world: LoginWatchWorld
+    let reader: LoginWatchReader
     private let inFlight: SignInInFlight
     private let window = SignInWindow()
     private var model: SignInModel?
     private var afterTheSignInStops: (() -> Void)?
-    private var generations = WatchGeneration()
+    var generations = WatchGeneration()
 
     var liveLoginMoved: (LiveIdentity) -> Void = { _ in Journal.log("login.moveIgnored") }
     var syncWithWorld: (Bool, CredentialClaim?) -> String? = { _, _ in nil }
@@ -90,7 +90,7 @@ final class LoginFlow {
         try run.start(command)
     }
 
-    private func cancelTheSignIn() {
+    func cancelTheSignIn() {
         guard let run = inFlight.run, run.isInFlight else { return window.close() }
         run.cancel()
     }
@@ -109,43 +109,5 @@ final class LoginFlow {
         case .failed(let status):
             model?.trouble = HatsCopy.signInFailed(status)
         }
-    }
-
-    private func awaitCompletion(
-        expecting: String?,
-        identityBefore: LiveIdentity,
-        credentialBefore: LiveSlotNow,
-        inSlot liveSlot: String,
-        pinned: Bool
-    ) {
-        let run = LoginWatchRun(
-            reader: reader,
-            world: world,
-            duty: WatchDutyControl(
-                isOnDuty: { [weak self] in self?.generations.isOnDuty($0) ?? false },
-                isTheCurrent: { [weak self] in self?.generations.isTheCurrent($0) ?? false },
-                standDown: { [weak self] in self?.generations.standDown($0) },
-                stopPolling: { [weak self] in self?.generations.stopPolling($0) }
-            ),
-            generation: generations.take(),
-            watch: LoginWatch(expecting: expecting, identityBefore: identityBefore),
-            deadline: Date().addingTimeInterval(15 * 60),
-            expecting: expecting,
-            inSlot: liveSlot,
-            credentialBefore: credentialBefore,
-            pinned: pinned
-        )
-        run.liveLoginMoved = { [weak self] identity in self?.liveLoginMoved(identity) }
-        run.syncWithWorld = { [weak self] reporting, claim in
-            guard let self else { return nil }
-            return syncWithWorld(reporting, claim)
-        }
-        run.lastTrouble = { [weak self] in
-            guard let self else { return nil }
-            return lastTrouble()
-        }
-        run.closeTheLoginWindow = { [weak self] in self?.cancelTheSignIn() }
-        run.signInSettled = { [weak self] in self?.signInSettled() }
-        run.start()
     }
 }
