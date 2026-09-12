@@ -40,7 +40,7 @@ final class LoginFlow {
         return duty
     }
 
-    func canStartALogin() -> Bool { !duty().isOnDuty }
+    func canStartALogin() -> Bool { !world.loginInFlight() }
 
     func begin(_ id: String, expecting: String?) throws {
         let identityBefore = store.liveIdentity()

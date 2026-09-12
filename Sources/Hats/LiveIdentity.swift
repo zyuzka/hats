@@ -189,12 +189,8 @@ enum LoginWatchDuty: Equatable {
         signInRunning == false
     }
 
-    static func hasTheSignInDiedWithoutFinishing(
-        seenRunning: Bool,
-        loginInFlight: Bool,
-        signInRunning: Bool?
-    ) -> Bool {
-        seenRunning && loginInFlight && isTheSignInConfirmedGone(signInRunning)
+    static func hasTheSignInDiedWithoutFinishing(seenRunning: Bool, loginInFlight: Bool) -> Bool {
+        seenRunning && !loginInFlight
     }
 
     static func of(onDuty: Int,

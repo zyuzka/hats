@@ -126,8 +126,7 @@ final class LoginWatchRun {
         if reading.signInRunning == true { sawTheSignInRunning = true }
         guard LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
             seenRunning: sawTheSignInRunning,
-            loginInFlight: reading.loginInFlight,
-            signInRunning: reading.signInRunning
+            loginInFlight: reading.loginInFlight
         ) else { return false }
         Journal.log("login.signInGone", ["completed": String(completed)])
         return true

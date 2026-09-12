@@ -224,39 +224,39 @@ final class OrphanLoginScriptTests: XCTestCase {
         XCTAssertEqual(CredentialClaim.forSync(duty: duty), .noWatch)
     }
 
-    func testASignInSeenRunningAndThenGoneWithoutSucceedingHasDied() {
-        XCTAssertTrue(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
-            seenRunning: true, loginInFlight: true, signInRunning: false))
-    }
-
-    func testASignInNeverSeenRunningHasNotDiedButNotStartedYet() {
-        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
-            seenRunning: false, loginInFlight: true, signInRunning: false))
-    }
-
-    func testAScriptThatWroteItsMarkerHasFinishedNotDied() {
-        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
-            seenRunning: true, loginInFlight: false, signInRunning: false))
-    }
-
-    func testOnlyAReadableTableWithoutTheScriptDeclaresItDead() {
-        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
-            seenRunning: true, loginInFlight: true, signInRunning: nil))
-        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
-            seenRunning: true, loginInFlight: true, signInRunning: true))
-    }
-
-    func testReleasingTheCountersDoesNotOpenASecondLoginWhileAScriptIsAlive() {
+    func testReleasingTheCountersDoesNotOpenASecondLoginWhileASignInIsAlive() {
         let alive = LoginWatchDuty.of(onDuty: 0, pollAlive: 0, loginInFlight: true,
                                       signInRunning: true)
         XCTAssertEqual(alive, .orphanSignIn)
         XCTAssertTrue(alive.isOnDuty,
                       "the timeout now releases the counters without waiting for the window close, "
-                          + "which is only safe because a genuinely live login script still answers "
-                          + "on duty through its own liveness check rather than through the counter")
+                          + "which is only safe because a sign-in still in flight answers on duty "
+                          + "through the run itself rather than through the counter")
 
         let gone = LoginWatchDuty.of(onDuty: 0, pollAlive: 0, loginInFlight: true,
                                      signInRunning: false)
-        XCTAssertFalse(gone.isOnDuty, "and a script confirmed gone must not hold the guard")
+        XCTAssertFalse(gone.isOnDuty, "and a sign-in confirmed gone must not hold the guard")
+    }
+}
+
+final class SignInEndingTests: XCTestCase {
+    func testASignInSeenRunningAndNoLongerInFlightHasEnded() {
+        XCTAssertTrue(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: false),
+            "the app owns the process now, so 'no longer in flight' is a fact rather than an "
+                + "inference. The previous shape also demanded loginInFlight, which the script left "
+                + "true because its file stayed on disk — with a process it goes false the same "
+                + "instant, so the watch would have waited out its whole fifteen-minute deadline")
+    }
+
+    func testASignInStillInFlightHasNotEnded() {
+        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
+            seenRunning: true, loginInFlight: true))
+    }
+
+    func testASignInNeverSeenRunningHasNotEndedEither() {
+        XCTAssertFalse(LoginWatchDuty.hasTheSignInDiedWithoutFinishing(
+            seenRunning: false, loginInFlight: false),
+            "a watch that ticks before the process is up would otherwise call it dead on arrival")
     }
 }
