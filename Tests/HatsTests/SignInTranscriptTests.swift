@@ -82,7 +82,11 @@ final class SignInStageTests: XCTestCase {
 
         XCTAssertEqual(transcript.stage, .waitingForTheCode)
         XCTAssertEqual(HatsCopy.signInStage(.waitingForTheCode),
-                       "Paste the code the browser page shows, then choose Sign in.")
+                       "Finish the sign-in in the browser. If the page shows a code, paste it here.",
+                       "the CLI prints its prompt the moment it opens the browser, before anyone "
+                           + "has done anything, and a live sign-in usually completes through the "
+                           + "callback with no code to paste at all — measured 2026-09-12, where "
+                           + "the probe saw the prompt only because its browser was stubbed out")
     }
 
     func testACodeAlreadySentLeavesTheWindowWithNothingToAskFor() {

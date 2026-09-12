@@ -11,7 +11,7 @@ extension HatsCopy {
         case .starting:
             return "Starting the sign-in\u{2026}"
         case .waitingForTheCode:
-            return "Paste the code the browser page shows, then choose Sign in."
+            return "Finish the sign-in in the browser. If the page shows a code, paste it here."
         case .working:
             return "Working\u{2026}"
         }
