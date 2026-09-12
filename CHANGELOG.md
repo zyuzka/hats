@@ -8,6 +8,14 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.2.1 — 2026-09-12
+
+- **A hat keeps what it knows about when its login runs out.** Signing in used to erase that date,
+  because the credential a fresh login writes does not carry one and the date was overwritten with
+  nothing. A hat with no date cannot say its login has expired or is about to — both checks read
+  that field and answer no when it is missing — so a login could quietly reach its end with nothing
+  said. Renewing already kept the date; now signing in does too.
+
 ## 0.2.0 — 2026-09-12
 
 Everything here came from two colleagues using 0.1.0 for a day and writing down what went wrong.
