@@ -59,7 +59,10 @@ struct ManageHatsPanel: View {
     private func actions(_ row: HatRowState) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if let trouble = row.identityTrouble {
-                Text(trouble).font(.system(size: 11)).foregroundStyle(Color.orange)
+                Text(trouble)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             buttons(row)
         }

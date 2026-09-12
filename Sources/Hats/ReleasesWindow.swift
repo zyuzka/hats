@@ -20,7 +20,9 @@ struct ReleasesView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("No release notes in this build").font(.system(size: 13, weight: .semibold))
             Text(HatsCopy.releaseNotesMissing(running: running))
-                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -38,7 +40,10 @@ struct ReleasesView: View {
                 Text(note.dateline).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(Array(note.lines.enumerated()), id: \.offset) { _, line in
-                Text(line).font(.system(size: 12)).textSelection(.enabled)
+                Text(line)
+                    .font(.system(size: 12))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
