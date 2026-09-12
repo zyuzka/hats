@@ -8,12 +8,12 @@ struct SettingsTabs: View {
         TabView {
             GeneralPanel(model: model)
                 .tabItem { Text("General") }
-            GatewayPanel(model: model)
-                .tabItem { Text("Gateway") }
-            AutoSwitchPanel(model: model)
-                .tabItem { Text("Auto-switch") }
             ManageHatsPanel(model: model, open: nil)
                 .tabItem { Text("Hats") }
+            AutoSwitchPanel(model: model)
+                .tabItem { Text("Auto-switch") }
+            GatewayPanel(model: model)
+                .tabItem { Text("Gateway") }
         }
         .padding(14)
         .frame(width: 460, height: 420)
