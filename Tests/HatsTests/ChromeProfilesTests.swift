@@ -36,7 +36,7 @@ final class ChromeProfilesTests: XCTestCase {
     }
 
     func testTheLabelFallsBackToTheDirectoryWhenChromeHasNoName() {
-        let names = ["Profile 6": "example.com (filip@example.com)"]
+        let names = [ChromeProfiles.key(.stable, "Profile 6"): "example.com (filip@example.com)"]
         XCTAssertEqual(BrowserChoice.chromeProfile("Profile 6").label(chromeNames: names),
                        "Chrome — example.com (filip@example.com)")
         XCTAssertEqual(BrowserChoice.chromeProfile("Profile 7").label(chromeNames: names), "Chrome — Profile 7")

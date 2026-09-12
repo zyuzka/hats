@@ -62,6 +62,7 @@ enum CLI {
 
 enum BrowserChoice: Codable, Equatable {
     case chromeProfile(String)
+    case chrome(ChromeChannel, String)
     case firefox
     case safari
     case systemDefault
@@ -70,11 +71,19 @@ enum BrowserChoice: Codable, Equatable {
 
     func label(chromeNames: [String: String]) -> String {
         switch self {
-        case .chromeProfile(let profile): return "Chrome — \(chromeNames[profile] ?? profile)"
+        case .chromeProfile(let profile):
+            return label(channel: .stable, profile: profile, chromeNames: chromeNames)
+        case .chrome(let channel, let profile):
+            return label(channel: channel, profile: profile, chromeNames: chromeNames)
         case .firefox: return "Firefox"
         case .safari: return "Safari"
         case .systemDefault: return "System default"
         }
+    }
+
+    private func label(channel: ChromeChannel, profile: String, chromeNames: [String: String]) -> String {
+        let named = chromeNames[ChromeProfiles.key(channel, profile)] ?? profile
+        return "\(channel.label) — \(named)"
     }
 
     var overridesBrowser: Bool { openCommand != nil }
@@ -84,11 +93,12 @@ enum BrowserChoice: Codable, Equatable {
         return "BROWSER=\(CLI.shellQuote(script.path))"
     }
 
-    private var openCommand: String? {
+    var openCommand: String? {
         switch self {
         case .chromeProfile(let profile):
-            let quoted = CLI.shellQuote(profile)
-            return "open -na 'Google Chrome' --args --profile-directory=" + quoted + " \"$@\""
+            return BrowserChoice.chromeCommand(channel: .stable, profile: profile)
+        case .chrome(let channel, let profile):
+            return BrowserChoice.chromeCommand(channel: channel, profile: profile)
         case .firefox:
             return "open -a Firefox \"$@\""
         case .safari:
@@ -120,10 +130,18 @@ enum BrowserChoice: Codable, Equatable {
         return url
     }
 
-    private var slug: String {
+    static func chromeCommand(channel: ChromeChannel, profile: String) -> String {
+        "open -na " + CLI.shellQuote(channel.application)
+            + " --args --profile-directory=" + CLI.shellQuote(profile) + " \"$@\""
+    }
+
+    var slug: String {
         switch self {
         case .chromeProfile(let profile):
             return "chrome-" + BrowserChoice.safeComponent(profile, fallback: "profile")
+        case .chrome(let channel, let profile):
+            return BrowserChoice.safeComponent(channel.rawValue, fallback: "chrome")
+                + "-" + BrowserChoice.safeComponent(profile, fallback: "profile")
         case .firefox: return "firefox"
         case .safari: return "safari"
         case .systemDefault: return "default"
@@ -146,19 +164,10 @@ enum BrowserChoice: Codable, Equatable {
         return String(reduced.prefix(64))
     }
 
-    static func availableChromeProfiles() -> [String] {
-        let root = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/Google/Chrome")
-        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: root.path) else {
-            return []
-        }
-        return entries
-            .filter { $0 == "Default" || $0.hasPrefix("Profile ") }
-            .sorted()
-    }
-
     static func available() -> [BrowserChoice] {
-        var choices: [BrowserChoice] = availableChromeProfiles().map { .chromeProfile($0) }
+        var choices: [BrowserChoice] = ChromeChannel.allCases.flatMap { channel in
+            channel.profiles.map { BrowserChoice.chrome(channel, $0) }
+        }
         if FileManager.default.fileExists(atPath: "/Applications/Firefox.app") {
             choices.append(.firefox)
         }

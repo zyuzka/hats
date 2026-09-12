@@ -1,14 +1,23 @@
 import Foundation
 
 enum ChromeProfiles {
-    static var localStateURL: URL {
-        URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/Google/Chrome/Local State")
+    static func key(_ channel: ChromeChannel, _ profile: String) -> String {
+        "\(channel.rawValue)/\(profile)"
+    }
+
+    static func localStateURL(_ channel: ChromeChannel = .stable) -> URL {
+        channel.supportDirectory.appendingPathComponent("Local State")
     }
 
     static func names() -> [String: String] {
-        guard let data = try? Data(contentsOf: localStateURL) else { return [:] }
-        return names(localState: data)
+        var named: [String: String] = [:]
+        for channel in ChromeChannel.allCases {
+            guard let data = try? Data(contentsOf: localStateURL(channel)) else { continue }
+            for (profile, name) in names(localState: data) {
+                named[key(channel, profile)] = name
+            }
+        }
+        return named
     }
 
     static func names(localState data: Data) -> [String: String] {
