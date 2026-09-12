@@ -7,6 +7,14 @@ struct NewHat {
 }
 
 enum HatDialogs {
+    static let noLogo = NSImage(size: NSSize(width: 1, height: 1))
+
+    static func plain() -> NSAlert {
+        let alert = NSAlert()
+        alert.icon = noLogo
+        return alert
+    }
+
     static func run(_ alert: NSAlert, focus: NSView? = nil) -> NSApplication.ModalResponse {
         NSApp.activate(ignoringOtherApps: true)
         if let focus { alert.window.initialFirstResponder = focus }
@@ -15,7 +23,7 @@ enum HatDialogs {
     }
 
     static func addHat() -> NewHat? {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Add a hat"
         alert.informativeText = "The sign-in page opens in the browser you pick. A browser signs you back into "
             + "whichever account it remembers, so two hats need two browser identities."
@@ -59,7 +67,7 @@ enum HatDialogs {
     }
 
     static func rename(_ hat: Account) -> String?? {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Rename \(hat.title)"
         alert.informativeText = "The role is what you read in the list; the address stays underneath."
         let name = field(y: 0, placeholder: hat.email)
@@ -72,7 +80,7 @@ enum HatDialogs {
     }
 
     static func browser(for hat: Account) -> BrowserChoice? {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Browser for \(hat.title)"
         alert.informativeText = "Where this hat's logins open. A browser signs you back into whichever "
             + "account it remembers, so each hat needs its own."
@@ -85,7 +93,7 @@ enum HatDialogs {
     }
 
     static func hasConfirmedRemoval(of hat: Account) -> Bool {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Remove \(hat.title)?"
         alert.informativeText = "Its stored login is deleted from this Mac. You can add the hat again later."
         alert.addButton(withTitle: "Remove")
@@ -94,7 +102,7 @@ enum HatDialogs {
     }
 
     static func hasConfirmedLoginAnyway(for hat: Account) -> Bool {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "\(hat.title) does not need a login"
         var text = "Putting it on works without logging in. A new login replaces the token that already works."
         if let validity = HatsCopy.loginValidity(for: hat) { text = "Its stored login is \(validity). " + text }
@@ -105,7 +113,7 @@ enum HatDialogs {
     }
 
     static func hasConfirmedQuit(cost: String) -> Bool {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Quit Hats?"
         alert.informativeText = cost
         alert.addButton(withTitle: "Quit")
@@ -114,7 +122,7 @@ enum HatDialogs {
     }
 
     static func hasConfirmedStoppingTheGateway(cost: String) -> Bool {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Turn the gateway off?"
         alert.informativeText = cost
         alert.addButton(withTitle: "Turn it off")
@@ -123,7 +131,7 @@ enum HatDialogs {
     }
 
     static func hasConfirmedRestartingTheGateway(cost: String) -> Bool {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "Restart the gateway?"
         alert.informativeText = cost
         alert.addButton(withTitle: "Restart it")
@@ -132,7 +140,7 @@ enum HatDialogs {
     }
 
     static func askAboutTheSignInInFlight(_ text: String) -> SignInInFlightChoice {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = "A sign-in is already running"
         alert.informativeText = text
         alert.addButton(withTitle: "Show it")
@@ -142,7 +150,7 @@ enum HatDialogs {
     }
 
     static func inform(_ title: String, _ text: String) {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.messageText = title
         alert.informativeText = text
         alert.addButton(withTitle: "OK")
@@ -150,7 +158,7 @@ enum HatDialogs {
     }
 
     static func present(_ error: Error, title: String = "Could not put that hat on") {
-        let alert = NSAlert()
+        let alert = Self.plain()
         alert.alertStyle = .warning
         alert.messageText = title
         alert.informativeText = error.localizedDescription

@@ -45,7 +45,7 @@ extension AppDelegate {
 
     private func announce(_ verdict: UpdateVerdict) {
         let copy = HatsCopy.updateVerdict(verdict)
-        let alert = NSAlert()
+        let alert = HatDialogs.plain()
         alert.messageText = copy.message
         alert.informativeText = copy.detail
         guard case .available(let release) = verdict else {
