@@ -9,6 +9,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Both jobs only read this checkout: they build, test and lint, and write nothing back.
+# Without this block the token arrives with whatever the repository default grants,
+# which is how a workflow ends up able to push or comment by accident.
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: macos-15
