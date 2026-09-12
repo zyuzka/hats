@@ -78,7 +78,8 @@ final class AccountStore {
         let stateFile = configuration.stateFile()
         _ = try stateFile.require()
         let read = stateFile.url.flatMap { CLIState.readIdentity(at: $0) }
-        let identity = read.flatMap { $0.matches(liveEmail) ? $0 : nil }
+        let reading = IdentityReading.of(cliSays: liveEmail, stateFile: read)
+        let identity = reading.identity
         Journal.log("capture", [
             "account": account.email,
             "payload": Journal.fingerprint(live),
@@ -88,7 +89,12 @@ final class AccountStore {
             "stateFile": stateFile.journalName,
         ])
         _ = try writeVerified(live, to: Slot.parked(id), label: account.display)
-        noteStored(id, payload: CredentialPayload(raw: live), identity: identity)
+        noteStored(
+            id,
+            payload: CredentialPayload(raw: live),
+            identity: identity,
+            disagreement: reading.disagreement
+        )
         noteTheLiveLoginWasClaimed(id)
         activeID = id
         try recordCompletedChange("storing \(account.display)'s login")
@@ -107,11 +113,17 @@ final class AccountStore {
         try recordCompletedChange("the switch to \(target.display)")
     }
 
-    func noteStored(_ id: String, payload: CredentialPayload, identity: CLIIdentity?) {
+    func noteStored(
+        _ id: String,
+        payload: CredentialPayload,
+        identity: CLIIdentity?,
+        disagreement: IdentityDisagreement? = nil
+    ) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts[index].hasStoredCredentials = true
         accounts[index].refreshExpiresAt = payload.oauth?.refreshExpires
         accounts[index].accessExpiresAt = payload.accessExpires
+        accounts[index].identityDisagreement = disagreement
         if let identity { accounts[index].identity = identity }
         hasUnsavedChanges = true
     }

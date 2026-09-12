@@ -57,6 +57,16 @@ struct ManageHatsPanel: View {
     }
 
     private func actions(_ row: HatRowState) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let trouble = row.identityTrouble {
+                Text(trouble).font(.system(size: 11)).foregroundStyle(Color.orange)
+            }
+            buttons(row)
+        }
+        .padding(.top, 2)
+    }
+
+    private func buttons(_ row: HatRowState) -> some View {
         HStack(spacing: 8) {
             Button(row.loginAction) { model.actions?.relogin(row.id) }
             Button("Rename…") { model.actions?.rename(row.id) }
@@ -66,6 +76,5 @@ struct ManageHatsPanel: View {
                 .disabled(row.isWearing || model.snapshot.rows.count < 2)
         }
         .controlSize(.small)
-        .padding(.top, 2)
     }
 }

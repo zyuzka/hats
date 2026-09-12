@@ -3,6 +3,7 @@ import Foundation
 enum LoginBlocker: Equatable {
     case needsLogin
     case needsOneMoreLogin
+    case identityDisagrees
     case loginExpired
     case loginRefused
 }
@@ -15,6 +16,7 @@ struct Account: Codable, Identifiable, Equatable {
     var tool: Tool?
 
     var hasStoredCredentials: Bool = false
+    var identityDisagreement: IdentityDisagreement?
     var identity: CLIIdentity?
     var refreshExpiresAt: Date?
     var accessExpiresAt: Date?
@@ -32,7 +34,7 @@ struct Account: Codable, Identifiable, Equatable {
 
     func blocker(at now: Date = Date()) -> LoginBlocker? {
         if !hasStoredCredentials { return .needsLogin }
-        if identity == nil { return .needsOneMoreLogin }
+        if identity == nil { return identityDisagreement == nil ? .needsOneMoreLogin : .identityDisagrees }
         if wasRefusedSinceTheLastLogin { return .loginRefused }
         if isExpired(at: now) { return .loginExpired }
         return nil

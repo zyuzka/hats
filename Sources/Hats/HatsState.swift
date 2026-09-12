@@ -7,6 +7,7 @@ struct HatRowState: Identifiable, Equatable {
     let isWearing: Bool
     let isSwitchable: Bool
     let blocker: String?
+    let identityTrouble: String?
     let expiry: String?
     let usage: UsageReading?
     let usageTrouble: UsageTrouble?
@@ -30,6 +31,7 @@ struct HatRowState: Identifiable, Equatable {
         self.isWearing = isWearing
         isSwitchable = hat.blocker(at: now) == nil
         blocker = HatsCopy.blocker(for: hat, now: now)
+        identityTrouble = hat.identityDisagreement.map { HatsCopy.identityDisagreement($0) }
         expiry = HatsCopy.expiry(for: hat, now: now)
         self.usage = usage
         self.usageTrouble = usageTrouble

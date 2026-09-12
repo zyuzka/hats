@@ -6,9 +6,18 @@ enum HatsCopy {
         case .none: return nil
         case .needsLogin: return "needs login"
         case .needsOneMoreLogin: return "needs one more login"
+        case .identityDisagrees: return "accounts disagree"
         case .loginExpired: return "login expired"
         case .loginRefused: return "login refused — needs logging in again"
         }
+    }
+
+    static func identityDisagreement(_ disagreement: IdentityDisagreement) -> String {
+        let names = disagreement.stateFileSays.map { "names \($0)" } ?? "names no account at all"
+        let until = disagreement.stateFileSays == nil ? "Until that changes" : "Until they agree"
+
+        return "Claude Code reports \(disagreement.cliSays) while its state file \(names). "
+            + "\(until) this hat has no account to put back, so switching to it would refuse."
     }
 
     static func cannotWear(_ blocker: String) -> String { "Cannot wear this hat — \(blocker)" }
