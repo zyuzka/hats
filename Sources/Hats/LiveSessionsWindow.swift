@@ -95,7 +95,7 @@ struct LiveSessionsView: View {
                     TableColumn("running") { Text($0.running) }.width(80)
                     TableColumn("moves") { Text($0.moves) }
                 }
-                .frame(minHeight: 120)
+                .frame(height: TableHeight.forRows(rows(live).count, upTo: 12))
             }
             Text("A direct session — started in a shell opened before the app was up — keeps the hat it started "
                 + "on until its next token renewal, and which hat that is, nobody here knows.")
@@ -118,7 +118,7 @@ struct LiveSessionsView: View {
                     TableColumn("last") { Text(String($0.lastStatus)) }.width(50)
                     TableColumn("credential") { Text($0.credential) }
                 }
-                .frame(minHeight: 90)
+                .frame(height: TableHeight.forRows(snapshot.gatewaySessions.count, upTo: 8))
             }
             Text(HatsCopy.theTwoSessionListsDiffer)
                 .font(.system(size: 11)).foregroundStyle(.secondary)
