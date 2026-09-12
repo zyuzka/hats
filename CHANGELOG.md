@@ -8,6 +8,20 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.2.2 — 2026-09-12
+
+- **A hat whose token the server refuses is asked less often.** When an account's parked login is
+  revoked — which is what happens to the first account when you sign a second one in — reading its
+  usage answers 401, and the app used to ask again every five minutes regardless. After a few hours
+  of that the server starts answering 429 instead, which reads on screen as a rate limit the account
+  never earned. Refusals now push the next attempt further out, doubling up to an hour, and a
+  successful reading puts it straight back to the ordinary cadence. Only failed renewals used to
+  count for this; a refused reading did not.
+- **The journal repeats itself less.** While the CLI's own token differs from the one stored for the
+  hat — hours at a time, and harmless — the app wrote a line about it on every poll: 72 identical
+  lines in a day, in the file people are asked to send when something needs explaining. It is
+  written once now, and again only when it changes.
+
 ## 0.2.1 — 2026-09-12
 
 - **A hat keeps what it knows about when its login runs out.** Signing in used to erase that date,
