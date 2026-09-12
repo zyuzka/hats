@@ -1,6 +1,10 @@
 import Foundation
 
 extension HatsCopy {
+    static let signInInFlight =
+        "Hats runs one sign-in at a time. Its window may be behind other windows, or on "
+            + "another desktop."
+
     static func signingInAs(_ email: String?) -> String {
         guard let email, !email.isEmpty else { return "Signing in" }
         return "Signing in as \(email)"

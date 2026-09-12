@@ -11,6 +11,7 @@ final class LoginFlow {
     private let inFlight: SignInInFlight
     private let window = SignInWindow()
     private var model: SignInModel?
+    private var afterTheSignInStops: (() -> Void)?
     private var generations = WatchGeneration()
 
     var liveLoginMoved: (LiveIdentity) -> Void = { _ in Journal.log("login.moveIgnored") }
@@ -41,6 +42,18 @@ final class LoginFlow {
     }
 
     func canStartALogin() -> Bool { !world.loginInFlight() }
+
+    func showTheSignInWindow() {
+        guard let model else { return }
+        window.show(model)
+    }
+
+    func abandonTheSignIn(then resume: @escaping () -> Void) {
+        guard let run = inFlight.run, run.isInFlight else { return resume() }
+        afterTheSignInStops = resume
+        Journal.log("signIn.abandonAsked")
+        run.cancel()
+    }
 
     func begin(_ id: String, expecting: String?) throws {
         let identityBefore = store.liveIdentity()
@@ -82,6 +95,12 @@ final class LoginFlow {
     }
 
     private func theSignInEnded(_ ending: SignInRun.Ending) {
+        if let resume = afterTheSignInStops {
+            afterTheSignInStops = nil
+            window.close()
+            model = nil
+            return resume()
+        }
         switch ending {
         case .signedIn, .cancelled:
             window.close()

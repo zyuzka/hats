@@ -131,10 +131,14 @@ enum HatDialogs {
         return run(alert) == .alertFirstButtonReturn
     }
 
-    static func refuseASecondLogin() {
-        let text = "Hats runs one sign-in at a time, and one is open right now. Finish it or "
-            + "cancel it in its own window, then start this one."
-        inform("A sign-in is already running", text)
+    static func askAboutTheSignInInFlight(_ text: String) -> SignInInFlightChoice {
+        let alert = NSAlert()
+        alert.messageText = "A sign-in is already running"
+        alert.informativeText = text
+        alert.addButton(withTitle: "Show it")
+        alert.addButton(withTitle: "Cancel that sign-in")
+        alert.addButton(withTitle: "Cancel")
+        return SignInInFlightChoice.of(run(alert))
     }
 
     static func inform(_ title: String, _ text: String) {
