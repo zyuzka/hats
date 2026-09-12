@@ -1,7 +1,9 @@
 import AppKit
 import SwiftUI
 
-enum PromptWindow {
+final class PromptWindow: NSObject, NSWindowDelegate {
+    private static let keeper = PromptWindow()
+
     static func ask(_ prompt: HatPrompt) -> Int {
         show(buttons: prompt.buttons.count) { choose in
             PromptView(prompt: prompt, choose: choose)
@@ -15,7 +17,7 @@ enum PromptWindow {
         var chosen = PromptButtons.dismissed(of: buttons)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 380, height: 120),
-            styleMask: [.titled, .fullSizeContentView],
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -26,11 +28,17 @@ enum PromptWindow {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
+        window.delegate = keeper
         window.center()
         NSApp.activate(ignoringOtherApps: true)
         NSApp.runModal(for: window)
         window.orderOut(nil)
 
         return chosen
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard NSApp.modalWindow === notification.object as? NSWindow else { return }
+        NSApp.stopModal()
     }
 }
