@@ -1,7 +1,7 @@
 import Foundation
 
 struct AccountsFile {
-    let osAccount: String
+    let keychain: KeychainWorld
 
     var url: URL { StateDirectory.url.appendingPathComponent("accounts.json") }
 
@@ -22,7 +22,7 @@ struct AccountsFile {
         if !exists {
             let parked: [String]
             do {
-                parked = try Keychain.parkedAccountIDs(account: osAccount)
+                parked = try keychain.parkedAccountIDs()
             } catch {
                 return .unusable(.keychainUnlistable(path, cause: error.localizedDescription))
             }

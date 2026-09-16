@@ -36,7 +36,9 @@ final class AbandoningASignInTests: XCTestCase {
             loginInFlight: { inFlight }
         )
 
-        return LoginFlow(store: AccountStore(osAccount: "abandon-test"), world: world)
+        let store = AccountStore(osAccount: "abandon-test", keychain: FakeKeychain().world())
+
+        return LoginFlow(store: store, world: world)
     }
 
     func testWithNothingToAbandonTheWaitingActionRunsAtOnce() {

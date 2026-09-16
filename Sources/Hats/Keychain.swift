@@ -69,29 +69,6 @@ enum Keychain {
         return Array(ids)
     }
 
-    static func adoptLegacyParked(ids: [String], account: String) {
-        for id in ids { adoptLegacyParked(id: id, account: account) }
-    }
-
-    static func adoptLegacyParked(id: String, account: String) {
-        guard let payload = try? read(service: Slot.legacyParked(id), account: account) else {
-            return
-        }
-        if (try? read(service: Slot.parked(id), account: account)) != nil {
-            try? delete(service: Slot.legacyParked(id), account: account)
-            return
-        }
-        guard (try? write(service: Slot.parked(id), account: account, data: payload)) != nil else {
-            return
-        }
-        try? delete(service: Slot.legacyParked(id), account: account)
-    }
-
-    static func deleteParked(id: String, account: String) throws {
-        try delete(service: Slot.parked(id), account: account)
-        try? delete(service: Slot.legacyParked(id), account: account)
-    }
-
     private static func quotedAttribute(_ name: String, in item: String) -> String? {
         let key = "\"\(name)\"<blob>=\""
         for line in item.split(separator: "\n") {

@@ -15,7 +15,8 @@ final class StoredExpiryTests: XCTestCase {
     }
 
     private func store() throws -> (AccountStore, String) {
-        let store = AccountStore(osAccount: "expiry-test-\(UUID().uuidString.prefix(8))")
+        let store = AccountStore(osAccount: "expiry-test-\(UUID().uuidString.prefix(8))",
+                                 keychain: FakeKeychain().world())
         let address = "\(UUID().uuidString.prefix(8))@b.com"
         let hat = try store.add(email: address, browser: .chrome(.stable, "Profile 1"))
 

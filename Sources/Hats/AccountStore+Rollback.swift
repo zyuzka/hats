@@ -57,7 +57,7 @@ extension AccountStore {
     }
     func liveSlotNow(inSlot liveSlot: String) -> LiveSlotNow {
         do {
-            guard let data = try Keychain.read(service: liveSlot, account: osAccount) else {
+            guard let data = try keychain.read(liveSlot) else {
                 return .empty
             }
             return .holding(data)
@@ -71,8 +71,8 @@ extension AccountStore {
         to service: String,
         label: String
     ) throws -> Data {
-        try Keychain.write(service: service, account: osAccount, data: data)
-        guard let written = try Keychain.read(service: service, account: osAccount),
+        try keychain.write(service, data)
+        guard let written = try keychain.read(service),
               written == data else {
             throw SwitchError.writeDidNotTake(label)
         }
@@ -80,8 +80,8 @@ extension AccountStore {
     }
 
     func deleteVerified(_ service: String, label: String) throws {
-        try Keychain.delete(service: service, account: osAccount)
-        guard try Keychain.read(service: service, account: osAccount) == nil else {
+        try keychain.delete(service)
+        guard try keychain.read(service) == nil else {
             throw SwitchError.deletionDidNotTake(label)
         }
     }

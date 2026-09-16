@@ -149,7 +149,7 @@ enum CLIState {
 
     static func configurations(
         of pids: [Int32],
-        trusting isTrusted: (Int32) -> Bool? = TrustedCLI.isTheRealCLI,
+        trusting isTrusted: (Int32) -> Bool?,
         reading: (Int32) -> ProcessEnvironmentRead
     ) -> [[String: String]]? {
         var distinct: [[String: String]] = []
@@ -186,27 +186,34 @@ enum CLIState {
         remembered.forget()
     }
 
-    static func swept(_ sessions: [Session]?) -> [[String: String]]? {
+    static func swept(_ sessions: [Session]?, world: SystemWorld = .real) -> [[String: String]]? {
         guard let sessions else { return nil }
-        guard let found = configurations(of: sessions.map(\.pid), reading: {
-            ProcessEnvironment.read(pid: $0, keeping: configKeys)
-        }) else { return nil }
+        guard let found = configurations(of: sessions.map(\.pid),
+                                         trusting: world.isTheRealCLI,
+                                         reading: { world.processEnvironment($0, configKeys) })
+        else { return nil }
         remembered.keep(found)
         return found
     }
 
-    private static func sweptNow() -> [[String: String]]? {
-        swept(SessionDiscovery.everySessionThatHoldsAPort())
+    private static func sweptNow(world: SystemWorld = .real) -> [[String: String]]? {
+        swept(
+            SessionDiscovery.everySessionThatHoldsAPort(
+                readingTheProcessTable: { world.processTable($0, ProcessTable.budget) },
+                readingTheEnvironment: world.processEnvironment
+            ),
+            world: world
+        )
     }
 
     private static func sweptRecently() -> [[String: String]]? {
         swept(SessionDiscovery.everySessionSeenRecently())
     }
 
-    static func configurationNow() throws -> CLIConfiguration {
-        try configuration(liveConfigurations: sweptNow(),
-                          own: ProcessInfo.processInfo.environment,
-                          home: NSHomeDirectory())
+    static func configurationNow(world: SystemWorld = .real) throws -> CLIConfiguration {
+        try configuration(liveConfigurations: sweptNow(world: world),
+                          own: world.ownEnvironment(),
+                          home: world.home())
     }
 
     static func configurationRemembered() throws -> CLIConfiguration {

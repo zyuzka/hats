@@ -580,12 +580,22 @@ final class CLIStateLocationTests: XCTestCase {
             .appendingPathComponent("Sources/Hats/CLIState.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
 
-        XCTAssertTrue(text.contains("configurationNow() throws -> CLIConfiguration {\n        try configuration(liveConfigurations: sweptNow(),"),
-                      "configurationNow exists so that no operation is served a configuration older "
-                          + "than itself - activate, capture and the login resolve which keychain "
-                          + "slot to WRITE from it. Pointing it at the one-second memory was done "
-                          + "once already, and writeVerified then confirms a write into whichever "
-                          + "slot the stale answer named")
+        let writerTakesAFreshSweep = try NSRegularExpression(
+            pattern: #"configurationNow\([^)]*\)[^{]*\{\s*try configuration\("#
+                + #"\s*liveConfigurations: sweptNow\("#
+        )
+        XCTAssertEqual(
+            writerTakesAFreshSweep.numberOfMatches(
+                in: text, range: NSRange(text.startIndex..., in: text)
+            ),
+            1,
+            "configurationNow exists so that no operation is served a configuration older than "
+                + "itself - activate, capture and the login resolve which keychain slot to WRITE "
+                + "from it. Pointing it at the one-second memory was done once already, and "
+                + "writeVerified then confirms a write into whichever slot the stale answer named. "
+                + "Matched by pattern rather than by the exact signature, because the substring "
+                + "form pinned the parameter's default value alongside the invariant"
+        )
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/Hats")
@@ -598,7 +608,8 @@ final class CLIStateLocationTests: XCTestCase {
             .map { try String(contentsOf: sources.appendingPathComponent($0), encoding: .utf8) }
             .joined(separator: "\n")
         let writersSweepingForThemselves = try NSRegularExpression(
-            pattern: #"(activate|capture|reconcileWithLiveLogin)[\s\S]{0,400}?CLIState\.configurationNow\(\)"#
+            pattern: #"(activate|capture|reconcileWithLiveLogin)[\s\S]{0,400}?"#
+                + #"CLIState\.configurationNow\(world: system\)"#
         )
         XCTAssertEqual(
             writersSweepingForThemselves.numberOfMatches(
@@ -613,7 +624,9 @@ final class CLIStateLocationTests: XCTestCase {
         )
 
         let freshSweep = try NSRegularExpression(
-            pattern: #"sweptNow\(\)[^{]*\{\s*swept\(SessionDiscovery\.everySessionThatHoldsAPort\(\)\)"#
+            pattern: #"sweptNow\([^)]*\)[^{]*\{\s*swept\(\s*"#
+                + #"SessionDiscovery\.everySessionThatHoldsAPort\("#
+                + #"[\s\S]{0,200}?ProcessTable\.budget[\s\S]{0,200}?\),\s*world: world\s*\)"#
         )
         XCTAssertEqual(freshSweep.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text)), 1,
                        "and the fresh sweep must not be routed through the memory either. Matched by "

@@ -3,15 +3,15 @@ import Foundation
 extension AccountStore {
     func activate(_ id: String, meters: MeterReading, targetMeters: MeterReading) throws {
         try requireReadableIndex()
-        let configuration = try CLIState.configurationNow()
+        let configuration = try CLIState.configurationNow(world: system)
         guard let target = accounts.first(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
-        guard let incoming = try Keychain.read(service: Slot.parked(id), account: osAccount) else {
+        guard let incoming = try keychain.read(Slot.parked(id)) else {
             throw SwitchError.notCaptured(target.display)
         }
         let liveSlot = configuration.credentialService
-        let liveBefore = try Keychain.read(service: liveSlot, account: osAccount)
+        let liveBefore = try keychain.read(liveSlot)
         Journal.log("activate.begin", beginningOfTheSwitch(
             target: target,
             incoming: incoming,

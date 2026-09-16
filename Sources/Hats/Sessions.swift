@@ -86,7 +86,9 @@ enum SessionDiscovery {
     }
 
     static func everySessionThatHoldsAPort(
-        readingTheProcessTable read: ([String]) -> String? = { ProcessTable.read($0) }
+        readingTheProcessTable read: ([String]) -> String? = { ProcessTable.read($0) },
+        readingTheEnvironment reading: (Int32, Set<String>?) -> ProcessEnvironmentRead
+            = { ProcessEnvironment.read(pid: $0, keeping: $1) }
     ) -> [Session]? {
         guard let executables = read(["-eo", "pid=,comm="]),
               let commands = read(["-eo", "pid=,etime=,command="]) else { return nil }
@@ -99,13 +101,15 @@ enum SessionDiscovery {
                     executables: byPID
                 )
             }
-            .map(routed)
+            .map { routed($0, readingTheEnvironment: reading) }
     }
 
-    private static func routed(_ session: Session) -> Session {
+    private static func routed(
+        _ session: Session,
+        readingTheEnvironment reading: (Int32, Set<String>?) -> ProcessEnvironmentRead
+    ) -> Session {
         var routed = session
-        let environment = ProcessEnvironment.read(pid: session.pid,
-                                                  keeping: [ShellEnvironment.baseURLName])
+        let environment = reading(session.pid, [ShellEnvironment.baseURLName])
         routed.route = SessionRoute.of(environment: environment.values)
         return routed
     }

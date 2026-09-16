@@ -1,14 +1,21 @@
 import Foundation
 
 final class AccountStore {
-    let osAccount: String
-
     private(set) var accounts: [Account] = []
     private(set) var activeID: String?
 
-    init(osAccount: String = NSUserName()) {
-        self.osAccount = osAccount
-        file = AccountsFile(osAccount: osAccount)
+    let keychain: KeychainWorld
+
+    let system: SystemWorld
+
+    init(
+        osAccount: String = NSUserName(),
+        keychain: KeychainWorld? = nil,
+        system: SystemWorld = .real
+    ) {
+        self.keychain = keychain ?? .real(osAccount: osAccount)
+        self.system = system
+        file = AccountsFile(keychain: self.keychain)
         load()
     }
 
@@ -50,12 +57,11 @@ final class AccountStore {
 
     func capture(into id: String) throws {
         try requireReadableIndex()
-        let configuration = try CLIState.configurationNow()
+        let configuration = try CLIState.configurationNow(world: system)
         guard accounts.contains(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
-        guard let live = try Keychain.read(service: configuration.credentialService,
-                                           account: osAccount) else {
+        guard let live = try keychain.read(configuration.credentialService) else {
             throw SwitchError.nothingToCapture
         }
         guard let liveEmail = liveEmail() else {
@@ -184,7 +190,7 @@ final class AccountStore {
         claiming claim: CredentialClaim
     ) throws -> ReconcileOutcome {
         try requireReadableIndex()
-        let configuration = try CLIState.configurationNow()
+        let configuration = try CLIState.configurationNow(world: system)
         let email: String
         switch identity {
         case .unreadable:
@@ -219,7 +225,7 @@ final class AccountStore {
         }
 
         if match.hasStoredCredentials && match.identity != nil {
-            let stored = try Keychain.read(service: Slot.parked(match.id), account: osAccount)
+            let stored = try keychain.read(Slot.parked(match.id))
             if stored != live, claim.allows(account: match.email, credential: live) {
                 try capture(into: match.id, observing: email, credential: live, using: configuration)
                 return .reconciled(account: email, changed: true)
@@ -261,7 +267,7 @@ final class AccountStore {
         guard indexUnusable == nil else { return 0 }
         let parked: [String]
         do {
-            parked = try Keychain.parkedAccountIDs(account: osAccount)
+            parked = try keychain.parkedAccountIDs()
         } catch {
             Journal.log("prune.skipped", ["reason": error.localizedDescription])
             return 0
@@ -269,8 +275,8 @@ final class AccountStore {
         let known = Set(accounts.map(\.id))
         var removed = 0
         for id in parked where !known.contains(id) {
-            let payload = try? Keychain.read(service: Slot.parked(id), account: osAccount)
-            if (try? Keychain.deleteParked(id: id, account: osAccount)) != nil {
+            let payload = try? keychain.read(Slot.parked(id))
+            if (try? keychain.deleteParked(id: id)) != nil {
                 Journal.log("prune.orphan", [
                     "id": String(id.prefix(8)),
                     "payload": Journal.fingerprint(payload ?? nil),
@@ -320,13 +326,13 @@ final class AccountStore {
         let before = snapshot
         guard id != activeID else { throw SwitchError.cannotRemoveActive }
         guard accounts.count > 1 else { throw SwitchError.cannotRemoveLast }
-        let payload = try? Keychain.read(service: Slot.parked(id), account: osAccount)
+        let payload = try? keychain.read(Slot.parked(id))
         let display = accounts.first(where: { $0.id == id })?.display ?? id
         accounts.removeAll { $0.id == id }
         try persist(orRestore: before)
         var deletionError: Error?
         do {
-            try Keychain.deleteParked(id: id, account: osAccount)
+            try keychain.deleteParked(id: id)
         } catch {
             deletionError = error
         }
@@ -357,7 +363,7 @@ final class AccountStore {
         case .contents(let contents):
             accounts = contents.accounts
             activeID = contents.activeID
-            Keychain.adoptLegacyParked(ids: accounts.map(\.id), account: osAccount)
+            keychain.adoptLegacyParked(ids: accounts.map(\.id))
         case .nothingYet:
             break
         case .unusable(let reason):

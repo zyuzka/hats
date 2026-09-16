@@ -216,7 +216,7 @@ enum LoginWatchDuty: Equatable {
 }
 
 extension AccountStore {
-    func liveIdentity() -> LiveIdentity { LiveIdentity(status: CLI.status()) }
+    func liveIdentity() -> LiveIdentity { LiveIdentity(status: system.cliStatus()) }
 
     func liveEmail() -> String? { liveIdentity().email }
 }

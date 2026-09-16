@@ -12,7 +12,9 @@ final class SignInGateTests: XCTestCase {
             loginInFlight: { inFlight }
         )
 
-        return LoginFlow(store: AccountStore(osAccount: "gate-test"), world: world)
+        let store = AccountStore(osAccount: "gate-test", keychain: FakeKeychain().world())
+
+        return LoginFlow(store: store, world: world)
     }
 
     func testALiveSignInHoldsTheNextOneBack() {
