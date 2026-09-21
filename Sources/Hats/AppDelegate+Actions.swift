@@ -3,6 +3,8 @@ import AppKit
 extension AppDelegate: HatsActions {
     func wear(_ id: String) {
         changing = id
+        theWornUsageCannotBeRead = false
+        lastBlindWarning = nil
         redraw()
         afterThePopoverSettles { [weak self] in
             guard let self else { return }

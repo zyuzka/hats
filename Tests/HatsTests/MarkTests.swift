@@ -5,16 +5,33 @@ import XCTest
 final class MarkTests: XCTestCase {
     func testTheAttentionDotFollowsABlockedHatWhateverTheGatewayToggleSays() {
         XCTAssertEqual(MarkState.decide(anyHatBlocked: true, gatewayEnabled: false, gatewayServing: false,
-                                        wearing: true, percent: 40), .attention,
+                                        wearing: true, percent: 40, cannotReadTheWornUsage: false), .attention,
                        "a hat that needs a login is surfaced even with the gateway turned off")
         XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: false, gatewayServing: false,
-                                        wearing: true, percent: 40), .wearing(percent: 40),
+                                        wearing: true, percent: 40, cannotReadTheWornUsage: false),
+                       .wearing(percent: 40),
                        "a gateway the user turned off is not something to draw attention to")
         XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: false,
-                                        wearing: true, percent: nil), .attention,
+                                        wearing: true, percent: nil, cannotReadTheWornUsage: false), .attention,
                        "a gateway that should serve and does not is")
         XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: true,
-                                        wearing: false, percent: nil), .idle)
+                                        wearing: false, percent: nil, cannotReadTheWornUsage: false), .idle)
+    }
+
+    func testAUsageThatCannotBeReadKeepsTheMeterAndAddsTheDot() {
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: true,
+                                        wearing: true, percent: 89, cannotReadTheWornUsage: true),
+                       .wearingWithAttention(percent: 89),
+                       "the number is what the person needs most while it is going stale, so it stays "
+                           + "and the dot is drawn beside it rather than instead of it")
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: true, gatewayEnabled: true, gatewayServing: false,
+                                        wearing: true, percent: 89, cannotReadTheWornUsage: true),
+                       .wearingWithAttention(percent: 89),
+                       "both older reasons for attention are true here too, and the early return used "
+                           + "to eat the meter before the worn hat was ever looked at")
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: true,
+                                        wearing: false, percent: nil, cannotReadTheWornUsage: true), .idle,
+                       "with no hat on there is no worn usage to have failed to read")
     }
 
     private func pixels(_ state: MarkState) throws -> Data {
@@ -37,10 +54,33 @@ final class MarkTests: XCTestCase {
     }
 
     func testTheMeterAppearsOnlyFromSeventyPercent() {
-        XCTAssertFalse(MarkState.wearing(percent: 69).hasMeter)
-        XCTAssertTrue(MarkState.wearing(percent: 70).hasMeter)
-        XCTAssertFalse(MarkState.wearing(percent: nil).hasMeter, "no reading, no meter")
-        XCTAssertFalse(MarkState.idle.hasMeter)
-        XCTAssertFalse(MarkState.attention.hasMeter, "attention wins over the meter")
+        XCTAssertNil(MarkState.wearing(percent: 69).meter)
+        XCTAssertEqual(MarkState.wearing(percent: 70).meter, 70)
+        XCTAssertNil(MarkState.wearing(percent: nil).meter, "no reading, no meter")
+        XCTAssertNil(MarkState.idle.meter)
+        XCTAssertNil(MarkState.attention.meter,
+                     "the two older reasons for attention — a blocked hat and a gateway that "
+                         + "should serve and does not — carry no percentage of their own, so "
+                         + "there is nothing to meter. A usage that cannot be read is a third "
+                         + "reason and keeps its number")
+        XCTAssertEqual(MarkState.wearingWithAttention(percent: 85).meter, 85)
+        XCTAssertNil(MarkState.wearingWithAttention(percent: 69).meter)
+        XCTAssertNil(MarkState.wearingWithAttention(percent: nil).meter)
+    }
+
+    func testTheMeterAndTheDotAreDrawnTogether() throws {
+        let both = try pixels(.wearingWithAttention(percent: 85))
+        XCTAssertNotEqual(both, try pixels(.wearing(percent: 85)),
+                          "the dot has to be visible over a hat that is on")
+        XCTAssertNotEqual(both, try pixels(.attention),
+                          "and the mark still says a hat is on, which plain attention does not")
+        XCTAssertNotEqual(both, try pixels(.wearingWithAttention(percent: nil)),
+                          "the meter is still drawn while the reading cannot be refreshed - this is "
+                              + "the whole point of the third attention reason, and the two places "
+                              + "that pick the meter used to answer by matching .wearing alone, "
+                              + "which would have dropped it in silence")
+        XCTAssertEqual(try pixels(.wearingWithAttention(percent: 40)),
+                       try pixels(.wearingWithAttention(percent: nil)),
+                       "under the threshold there is no meter, exactly as for plain wearing")
     }
 }

@@ -72,6 +72,7 @@ struct HatsSnapshot: Equatable {
     var portRefusal: String?
     var everySession: [Session]?
     var reducesMotion = false
+    var usageOfTheWornHatCannotBeRead = false
 
     var wearing: HatRowState? { rows.first(where: \.isWearing) }
 
@@ -84,9 +85,14 @@ struct HatsSnapshot: Equatable {
         .of(currentPort: settings.gatewayPort, retiredPort: retiredPort)
     }
 
+    var showsTheUsageCannotBeRead: Bool {
+        settings.autoSwitch.isOn && usageOfTheWornHatCannotBeRead
+    }
+
     var menuBarAccessibilityLabel: String {
         guard let worn = wearing else { return "Hats — no hat on" }
-        return "Hats — wearing \(worn.title)"
+        guard showsTheUsageCannotBeRead else { return "Hats — wearing \(worn.title)" }
+        return "Hats — wearing \(worn.title), usage can't be read"
     }
 
     func sessionsThrough(port: Int) -> Int? {

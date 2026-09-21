@@ -8,7 +8,7 @@ final class AutoSwitchWatch {
     private let queue = DispatchQueue(label: "hats.usage", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var inFlight = false
-    private var pending: Hats?
+    private var pending: (hats: Hats, source: PollSource)?
     private var provider: (() -> Hats)?
 
     private(set) var readings: [String: UsageReading] = [:]
@@ -16,6 +16,8 @@ final class AutoSwitchWatch {
     private(set) var readAt: [String: Date] = [:]
     private(set) var troubles: [String: UsageTrouble] = [:]
     private(set) var backoff = RenewalBackoff()
+    private(set) var missed = MissedPolls()
+    private(set) var freshInTheLastPoll: Set<String> = []
 
     var interval: TimeInterval = 300
     var onReadings: ([String: UsageReading]) -> Void = { _ in Journal.log("usage.readingsIgnored") }
@@ -29,7 +31,7 @@ final class AutoSwitchWatch {
         provider = hats
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 2, repeating: interval)
-        timer.setEventHandler { [weak self] in self?.poll(hats()) }
+        timer.setEventHandler { [weak self] in self?.poll(hats(), from: .timer) }
         timer.resume()
         self.timer = timer
     }
@@ -39,9 +41,9 @@ final class AutoSwitchWatch {
         timer = nil
     }
 
-    func poll(_ hats: Hats) {
+    func poll(_ hats: Hats, from source: PollSource = .outOfBand) {
         guard !inFlight else {
-            pending = hats
+            pending = (hats, source)
             return
         }
         inFlight = true
@@ -51,9 +53,11 @@ final class AutoSwitchWatch {
             var world = UsageWorld.real(osAccount: osAccount)
             world.mayRenew = { allowed.contains($0) }
             let batch = Self.fetched(hats, world: world)
-            DispatchQueue.main.async { self?.landed(batch, polled: hats) }
+            DispatchQueue.main.async { self?.landed(batch, polled: hats, from: source) }
         }
     }
+
+    func forgetTheMissedPolls() { missed.forget() }
 
     static func readingsAfterAPoll(
         _ existing: [String: UsageReading],
@@ -65,7 +69,7 @@ final class AutoSwitchWatch {
             .merging(batch.readings) { _, new in new }
     }
 
-    private func landed(_ batch: Batch, polled: Hats) {
+    func landed(_ batch: Batch, polled: Hats, from source: PollSource) {
         inFlight = false
         if !batch.renewals.isEmpty { onRenewals(batch.renewals) }
         Self.noteOutcomes(into: &backoff, batch: batch, every: interval, at: Date())
@@ -76,7 +80,7 @@ final class AutoSwitchWatch {
         if let now = provider?(), Self.shape(now) != Self.shape(polled) {
             Journal.log("usage.pollDiscarded", ["reason": "the hats moved while it ran"])
             pending = nil
-            poll(now)
+            poll(now, from: source)
             return
         }
         let ids = Set(polled.map(\.id))
@@ -93,6 +97,7 @@ final class AutoSwitchWatch {
             at: stamp
         )
         readAt = readAt.kept(for: ids).merging(Self.stamps(for: fresh, at: stamp)) { _, new in new }
+        noteTheWornHat(polled, fresh: fresh, from: source, at: stamp)
         backoff.keep(ids)
         let troublesBefore = troubles
         troubles = troubles.kept(for: ids.subtracting(fresh)).merging(batch.troubles) { _, new in new }
@@ -103,8 +108,19 @@ final class AutoSwitchWatch {
         onReadings(readings)
         if let pending {
             self.pending = nil
-            poll(pending)
+            poll(pending.hats, from: pending.source)
         }
+    }
+
+    private func noteTheWornHat(_ polled: Hats, fresh: Set<String>, from source: PollSource, at stamp: Date) {
+        freshInTheLastPoll = fresh
+        missed = missed.settled(
+            wearing: polled.first(where: \.isWearing)?.id,
+            fresh: fresh,
+            from: source,
+            every: interval,
+            at: stamp
+        )
     }
 
     static func noteOutcomes(into backoff: inout RenewalBackoff,

@@ -146,6 +146,66 @@ final class HatsCopyTests: XCTestCase {
                        "a reset days away must carry its day, or 18:52 reads as tonight")
     }
 
+    func testTheBannerOfABlindSwitchPromisesNoReturn() throws {
+        let fired = try XCTUnwrap(UsageReading.date(from: "2026-08-30T13:52:00Z"))
+        let blind = AutoSwitchRecord(firedAt: fired, from: "w", to: "p", limit: .session,
+                                     resetsAt: nil, cause: .usageCouldNotBeRead)
+        XCTAssertEqual(HatsCopy.banner(blind, fromTitle: "Work", timeZone: utc),
+                       "Switched automatically at 13:52 — Work's usage could not be read",
+                       "the record carries a limit so an older build can still read the file, and "
+                           + "the banner must not read it as a limit that was crossed - the cause "
+                           + "is what decides the sentence. No window was crossed, so there is no "
+                           + "window to come back and no hour to name one at")
+        let older = AutoSwitchRecord(firedAt: fired, from: "w", to: "p", limit: .session,
+                                     resetsAt: nil, cause: nil)
+        XCTAssertEqual(HatsCopy.banner(older, fromTitle: "Work", timeZone: utc),
+                       "Switched automatically at 13:52 — Work reached its 5-hour limit",
+                       "a record written before this change carries no cause at all, and an absent "
+                           + "cause is indistinguishable from a default, so the limit it does carry "
+                           + "is what decides — the banner is built from the file after a restart")
+    }
+
+    func testTheWarningsAboutAUsageThatCannotBeReadAreWrittenForTheHuman() {
+        let willSwitch = HatsCopy.cannotReadTheUsage(of: "Work")
+        XCTAssertEqual(willSwitch.0, "Can't read usage")
+        XCTAssertEqual(willSwitch.1,
+                       "Hats can't read Work's usage. It will switch to a hat with room as soon as it can.",
+                       "no count of failures in the line: the warning is raised once an episode, "
+                           + "so a number would go stale the moment it was shown")
+        let stuck = HatsCopy.cannotReadTheUsageAndHasNowhereToGo(of: "Work")
+        XCTAssertEqual(stuck.0, "Can't read usage")
+        XCTAssertEqual(stuck.1,
+                       "Hats can't read Work's usage, and no other hat has a fresh reading to switch to.")
+        let spent = HatsCopy.cannotReadTheUsageAndTheOthersAreSpent(of: "Work")
+        XCTAssertEqual(spent.0, "Can't read usage")
+        XCTAssertEqual(spent.1, "Hats can't read Work's usage, and the other hats are spent.")
+
+        let bodies = [
+            AutoSwitchWarning.willSwitchWhenItCan.text(hat: "Work").1,
+            AutoSwitchWarning.nowhereFreshToGo.text(hat: "Work").1,
+            AutoSwitchWarning.everyOtherHatIsSpent.text(hat: "Work").1,
+        ]
+        XCTAssertEqual(Set(bodies).count, 3,
+                       "three dead ends, three sentences: the hats being spent is not the hats "
+                           + "being unread, and telling a person the others have no fresh reading "
+                           + "when they do is the kind of small lie this whole branch exists to "
+                           + "stop the app telling")
+        XCTAssertEqual(HatsCopy.switched(to: "Personal"), "Switched to Personal")
+        XCTAssertEqual(
+            HatsCopy.switchedBecauseTheUsageWasUnreadable(
+                from: "Work", lastSeen: LastLiveWindow(limit: .weekly, percent: 88), age: 7380
+            ),
+            "Hats couldn't read Work's usage. Its weekly limit was at 88% when last seen 2h 3m ago."
+        )
+        XCTAssertEqual(
+            HatsCopy.switchedBecauseTheUsageWasUnreadable(
+                from: "Work", lastSeen: LastLiveWindow(limit: .weekly, percent: 88)
+            ),
+            "Hats couldn't read Work's usage. Its weekly limit was at 88% when last seen.",
+            "an age nobody could measure is left out rather than guessed at"
+        )
+    }
+
     func testTheGatewayLineIsShortWhenServingAndPlainWhenNot() {
         XCTAssertEqual(HatsCopy.gateway(.running), "Gateway on \(GatewayProcess.port)")
         XCTAssertEqual(HatsCopy.gateway(.notRunning), "Gateway is off — hats change at the next renewal")

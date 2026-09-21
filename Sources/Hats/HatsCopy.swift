@@ -149,9 +149,40 @@ enum HatsCopy {
         plural ? "which hats they keep is not known" : "which hat it keeps is not known"
     }
 
+    static func cannotReadTheUsage(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage. It will switch to a hat with room as soon as it can.")
+    }
+
+    static func cannotReadTheUsageAndHasNowhereToGo(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage, and no other hat has a fresh reading to switch to.")
+    }
+
+    static func cannotReadTheUsageAndTheOthersAreSpent(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage, and the other hats are spent.")
+    }
+
+    static func switched(to title: String) -> String { "Switched to \(title)" }
+
+    static func switchedBecauseTheUsageWasUnreadable(
+        from: String,
+        lastSeen: LastLiveWindow,
+        age: TimeInterval? = nil
+    ) -> String {
+        let ago = (age.map { $0 > 0 } ?? false) ? " \(humanise(age ?? 0)) ago" : ""
+
+        return "Hats couldn't read \(from)'s usage. "
+            + "Its \(lastSeen.limit.displayName) was at \(lastSeen.percent)% when last seen\(ago)."
+    }
+
     static func banner(_ record: AutoSwitchRecord, fromTitle: String, timeZone: TimeZone = .current) -> String {
         let at = UsageReading.clock(record.firedAt, timeZone: timeZone)
-        var line = "Switched automatically at \(at) — \(fromTitle) reached its \(record.limit.displayName)"
+        guard record.cause != .usageCouldNotBeRead, let limit = record.limit else {
+            return "Switched automatically at \(at) — \(fromTitle)'s usage could not be read"
+        }
+        var line = "Switched automatically at \(at) — \(fromTitle) reached its \(limit.displayName)"
         if let resets = record.resetsAt {
             line += " · it comes back " + UsageReading.when(resets, sameDayAs: record.firedAt, timeZone: timeZone)
         }

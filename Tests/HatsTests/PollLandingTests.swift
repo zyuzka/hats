@@ -30,7 +30,7 @@ final class PollLandingTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/Hats/AutoSwitchWatch.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
-        let landed = String(text[try XCTUnwrap(text.range(of: "private func landed")).lowerBound...])
+        let landed = String(text[try XCTUnwrap(text.range(of: "func landed")).lowerBound...])
         let reported = try XCTUnwrap(landed.range(of: "onRenewals(batch.renewals)")).lowerBound
         let firstDiscard = try XCTUnwrap(landed.range(of: "return")).lowerBound
 

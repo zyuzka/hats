@@ -21,6 +21,137 @@ final class AutoSwitchWatchTests: XCTestCase {
         XCTAssertEqual(stamped["personal"], then, "a reading carried over keeps its date, so usageAge stays true")
     }
 
+    private func landing(_ readings: [String: UsageReading]) -> UsagePollBatch {
+        var batch = UsagePollBatch()
+        batch.readings = readings
+        return batch
+    }
+
+    private func watching(_ hats: AutoSwitchWatch.Hats) -> AutoSwitchWatch {
+        let watch = AutoSwitchWatch()
+        watch.start(hats: { hats })
+        return watch
+    }
+
+    func testOnlyTheHatsReadInThisPollAreStampedAndOnlyTheirMissesAreForgotten() {
+        let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let watch = watching(hats)
+        defer { watch.stop() }
+
+        watch.landed(landing(["work": reading, "personal": reading]), polled: hats, from: .timer)
+        let read = watch.readAt["work"]
+        XCTAssertNotNil(read)
+        XCTAssertEqual(watch.missed.count, 0)
+        XCTAssertTrue(watch.missed.hasReadTheWornHatSinceItWentOn)
+
+        watch.landed(landing(["personal": reading]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.readAt["work"], read,
+                       "work was polled and not read, so its stamp is the old one - stamping every "
+                           + "hat that was polled rather than every hat that answered is what made "
+                           + "usageAge lie, and it is the same mistake the count below would make")
+        XCTAssertEqual(watch.missed.count, 1,
+                       "and the miss is counted, which is the second place the same mutation can "
+                           + "hide: a stamp taken from the polled ids would look fresh while the "
+                           + "count still grew, and a count taken from the polled ids would sit at "
+                           + "zero while the stamp aged")
+        XCTAssertEqual(watch.freshInTheLastPoll, ["personal"])
+
+        watch.landed(landing(["work": reading]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.missed.count, 0, "reading it again ends the episode")
+        XCTAssertNotEqual(watch.readAt["work"], read)
+    }
+
+    func testOnlyTimerPollsOfTheHatBeingWornAreCountedAsMissed() {
+        let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let watch = watching(hats)
+        defer { watch.stop() }
+
+        watch.landed(landing(["work": reading]), polled: hats, from: .timer)
+        watch.landed(landing([:]), polled: hats, from: .outOfBand)
+        XCTAssertEqual(watch.missed.count, 0,
+                       "a poll fired by a sign-in, a wear or a switch arrives seconds after the "
+                           + "last one, so counting it would spend both steps in a couple of seconds")
+        watch.landed(landing(["personal": reading]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.missed.count, 1,
+                       "another hat answering says nothing about the one being worn")
+        watch.landed(landing([:]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.missed.count, 2)
+    }
+
+    func testAHatJustPutOnIsNotBlindUntilItHasBeenReadOnce() {
+        let before: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let after: AutoSwitchWatch.Hats = [("work", false), ("personal", true)]
+        let watch = watching(before)
+        defer { watch.stop() }
+
+        watch.landed(landing(["work": reading]), polled: before, from: .timer)
+        watch.landed(landing([:]), polled: before, from: .timer)
+        XCTAssertEqual(watch.missed.count, 1)
+
+        watch.stop()
+        watch.start(hats: { after })
+        watch.landed(landing([:]), polled: after, from: .outOfBand)
+        XCTAssertEqual(watch.missed.count, 0,
+                       "putting a hat on by hand ends in a poll of its own, and with the network "
+                           + "down that poll fails - counting it would start the clock on a hat "
+                           + "the person chose a second ago")
+        watch.landed(landing([:]), polled: after, from: .timer)
+        watch.landed(landing([:]), polled: after, from: .timer)
+        XCTAssertEqual(watch.missed.count, 2,
+                       "two scheduled checks did miss it, which is the step at which a switch "
+                           + "would otherwise happen")
+        XCTAssertFalse(watch.missed.hasReadTheWornHatSinceItWentOn,
+                       "and still nothing has been read off this hat since it went on, so a stale "
+                           + "number belonging to it cannot be a reason to take it off again - "
+                           + "one missed poll could not prove this, because the step is two and "
+                           + "the criterion would be green with the protection switched off")
+    }
+
+    func testAGapMuchLongerThanThePeriodMeansTheAppWasNotRunningRatherThanAMissedCheck() {
+        var missed = MissedPolls()
+        missed = missed.settled(wearing: "work", fresh: ["work"], from: .timer, every: 300, at: then)
+        missed = missed.settled(wearing: "work", fresh: [], from: .timer, every: 300,
+                                at: then.addingTimeInterval(300))
+        XCTAssertEqual(missed.count, 1)
+
+        let awake = missed.settled(wearing: "work", fresh: [], from: .timer, every: 300,
+                                   at: then.addingTimeInterval(300 + 7200))
+        XCTAssertEqual(awake.count, 0,
+                       "after a sleep the timer fires once and never catches up, so one miss before "
+                           + "the sleep and one after would read as two checks missed in ten minutes "
+                           + "when the app simply was not running")
+
+        let ordinary = missed.settled(wearing: "work", fresh: [], from: .timer, every: 300,
+                                      at: then.addingTimeInterval(300 + 590))
+        XCTAssertEqual(ordinary.count, 2,
+                       "a late poll inside the slack is still a poll that landed and found nothing")
+    }
+
+    func testTurningAutoSwitchOnForgetsWhatWasMissedWhileItWasOff() {
+        var missed = MissedPolls()
+        missed = missed.settled(wearing: "work", fresh: ["work"], from: .timer, every: 300, at: then)
+        missed = missed.settled(wearing: "work", fresh: [], from: .timer, every: 300,
+                                at: then.addingTimeInterval(300))
+        missed = missed.settled(wearing: "work", fresh: [], from: .timer, every: 300,
+                                at: then.addingTimeInterval(600))
+        XCTAssertEqual(missed.count, 2)
+        missed.forget()
+        XCTAssertEqual(missed.count, 0,
+                       "polling runs whether the switch is on or not, so a person turning it on "
+                           + "would otherwise be moved in the same second by blindness collected "
+                           + "while it was off")
+        XCTAssertTrue(missed.hasReadTheWornHatSinceItWentOn,
+                      "the hat has still been read at some point, and the toggle does not unread it")
+    }
+
+    func testWithNoHatOnThereIsNoMissToCount() {
+        var missed = MissedPolls()
+        missed = missed.settled(wearing: nil, fresh: [], from: .timer, every: 300, at: then)
+        missed = missed.settled(wearing: nil, fresh: [], from: .timer, every: 300,
+                                at: then.addingTimeInterval(300))
+        XCTAssertEqual(missed.count, 0, "a poll that read nothing off nobody is not a miss")
+    }
+
     func testTheShapeOfAPollIsWhichHatsAndWhoWearsWhat() {
         let before: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
         XCTAssertEqual(AutoSwitchWatch.shape(before), AutoSwitchWatch.shape([("work", true), ("personal", false)]))
