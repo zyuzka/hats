@@ -2,7 +2,7 @@ import AppKit
 
 extension AppDelegate {
     func redraw() {
-        var snapshot = HatsSnapshot(usageOfTheWornHatCannotBeRead: theWornUsageCannotBeRead)
+        var snapshot = HatsSnapshot(autoSwitchWarning: lastAutoSwitchWarning)
         snapshot.header = liveIdentity.display
         let somebodyLooks = popover.isShown || sessions.isVisible
         let chromeNames = somebodyLooks ? ChromeProfiles.names() : [:]
@@ -62,7 +62,7 @@ extension AppDelegate {
             gatewayServing: snapshot.gateway.isServing,
             wearing: snapshot.wearing != nil,
             percent: snapshot.wearing?.usage?.session?.percent,
-            cannotReadTheWornUsage: snapshot.showsTheUsageCannotBeRead
+            autoSwitchWarnsAboutTheWornHat: snapshot.showsAWarningAboutTheWornHat
         )
     }
 

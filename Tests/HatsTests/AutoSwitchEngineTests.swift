@@ -81,7 +81,7 @@ final class AutoSwitchEngineTests: XCTestCase {
     func testEveryHatBeingSpentIsItsOwnAnswerRatherThanSilence() {
         let stuck = outcome(armed, readings: ["work": reading(95), "personal": reading(97),
                                              "team": reading(99)])
-        XCTAssertEqual(stuck.decision, .nowhereToGo(.session))
+        XCTAssertEqual(stuck.decision, .nowhereToGo(.atALimit(.session, .othersAreSpent(freesUpAt: resetsAt))))
         XCTAssertNil(stuck.wearsHat, "there is nowhere to go, so nothing is worn")
         XCTAssertNil(stuck.record, "no switch happened, so there is no switch to describe")
         XCTAssertFalse(stuck.notifies,
@@ -101,6 +101,10 @@ final class AutoSwitchEngineTests: XCTestCase {
         ]
         XCTAssertEqual(AutoSwitchEngine.eligible(in: rows), ["work", "personal"],
                        "a hat that cannot be worn is not a destination")
+        XCTAssertEqual(AutoSwitchEngine.blocked(in: rows).map(\.id), ["team"],
+                       "and it is not invisible either: the dead end has to tell \"there is no "
+                           + "other hat\" apart from \"the other one only needs signing in\", and "
+                           + "the second is the case the person can fix in ten seconds")
     }
 
     func testTheNoticeNamesBothHatsAndIsSilentWhenTheUserAskedForSilence() throws {
@@ -196,14 +200,21 @@ final class AutoSwitchEngineTests: XCTestCase {
                          + "meaning anything")
         XCTAssertNil(AutoSwitchWarning.of(decision: near.decision, holding: .underTheThresholds,
                                           blindness: blind(0)))
-        XCTAssertEqual(AutoSwitchWarning.of(decision: .nowhereToGo(nil), holding: nil,
-                                            blindness: blind(2)),
+        XCTAssertEqual(AutoSwitchWarning.of(decision: .nowhereToGo(.noFreshReading),
+                                            holding: nil, blindness: blind(2)),
                        .nowhereFreshToGo,
                        "without this line the warning above is a promise the app then quietly "
                            + "fails to keep")
-        XCTAssertNil(AutoSwitchWarning.of(decision: .nowhereToGo(.session), holding: nil,
-                                          blindness: blind(2)),
-                     "being stuck at a measured limit is the old, quiet answer")
+        XCTAssertEqual(AutoSwitchWarning.of(
+            decision: .nowhereToGo(.atALimit(.session, .othersAreSpent(freesUpAt: resetsAt))),
+            holding: nil,
+            blindness: blind(2)
+        ),
+                       .nowhereToGoAtALimit(.session, .othersAreSpent(freesUpAt: resetsAt)),
+                       "this used to be the quiet answer, and quiet is what it cost: measured on "
+                           + "2026-09-25, an hour of autoSwitch.nowhereToGo every five minutes in "
+                           + "the journal, no dot, no notification, and the person found out by "
+                           + "hitting the limit")
         XCTAssertNil(AutoSwitchWarning.of(decision: near.decision, holding: .blindAndNear,
                                           blindness: blind(1, landed: false)),
                      "the warning is an event of a poll landing, not a state a redraw can raise")
@@ -246,6 +257,8 @@ final class AutoSwitchEngineTests: XCTestCase {
         snapshot.rows = [
             HatRowState(hat: hat("work", "Work"), isWearing: true, usage: nil, usageTrouble: nil),
             HatRowState(hat: hat("personal", "Personal"), isWearing: false, usage: nil, usageTrouble: nil),
+            HatRowState(hat: hat("team", "Team", switchable: false), isWearing: false,
+                        usage: nil, usageTrouble: nil),
         ]
         var missed = MissedPolls()
         missed = missed.settled(wearing: "work", fresh: ["work"], from: .timer, every: 300, at: now)
@@ -276,10 +289,24 @@ final class AutoSwitchEngineTests: XCTestCase {
             "personal",
             "and the assembled world, not a hand-made one, moves the hat"
         )
-        XCTAssertEqual(polled.wearing, "work")
-        XCTAssertEqual(polled.eligible, ["work", "personal"])
-        XCTAssertEqual(polled.blindness.missedPolls, 2)
-        XCTAssertTrue(polled.blindness.landedAPoll)
+        XCTAssertEqual(polled, AutoSwitchWorld(
+            readings: readings,
+            wearing: "work",
+            eligible: ["work", "personal"],
+            blocked: [ShutOutHat(id: "team", title: "Team", blocker: "needs login",
+                                 loginAction: "Log in…")],
+            blindness: UsageBlindness(missedPolls: 2, hasReadTheWornHatSinceItWentOn: true,
+                                      fresh: ["personal"], landedAPoll: true)
+        ),
+                       "the WHOLE world is compared, field by field, because this adapter is the "
+                           + "only door everything takes into the decision and it has now dropped "
+                           + "a field four times: fresh, the isOn guard, the held warning, and "
+                           + "blocked - each time one line switched a working feature off with the "
+                           + "suite green. A field-by-field list would age; an equality over the "
+                           + "value cannot, because a field added tomorrow joins it by itself. "
+                           + "That only works while EVERY field here is set to something other "
+                           + "than its default, so a dropped field shows up as a difference - "
+                           + "which is why this fixture carries a hat that cannot be worn")
 
         for quiet in [AutoSwitchCall.thePopoverOpened, .theToggleChanged] {
             let world = AutoSwitchWorld.of(snapshot: snapshot, readings: ["work": reading(89)],

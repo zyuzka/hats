@@ -45,6 +45,7 @@ extension AutoSwitchWorld {
             readings: readings,
             wearing: snapshot.wearing?.id,
             eligible: AutoSwitchEngine.eligible(in: snapshot.rows),
+            blocked: AutoSwitchEngine.blocked(in: snapshot.rows),
             blindness: UsageBlindness.of(missed, fresh: fresh, from: call)
         )
     }

@@ -2,6 +2,10 @@ import XCTest
 @testable import Hats
 
 final class MenuBarTitleTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let resetsAt = Date(timeIntervalSince1970: 1_800_003_600)
+    private let utc = TimeZone(identifier: "UTC")!
+
     private func snapshot(showingName: Bool, wearing: Bool) -> HatsSnapshot {
         var snapshot = HatsSnapshot()
         var settings = AppSettings()
@@ -43,7 +47,7 @@ final class MenuBarTitleTests: XCTestCase {
     private func blindSnapshot(isOn: Bool, wearing: Bool = true) -> HatsSnapshot {
         var snapshot = self.snapshot(showingName: true, wearing: wearing)
         snapshot.settings.autoSwitch.isOn = isOn
-        snapshot.usageOfTheWornHatCannotBeRead = true
+        snapshot.autoSwitchWarning = .willSwitchWhenItCan
         return snapshot
     }
 
@@ -62,14 +66,35 @@ final class MenuBarTitleTests: XCTestCase {
     }
 
     func testTheDotAndTheSpokenLabelReadTheSameValue() {
-        XCTAssertTrue(blindSnapshot(isOn: true).showsTheUsageCannotBeRead)
-        XCTAssertFalse(blindSnapshot(isOn: false).showsTheUsageCannotBeRead,
+        XCTAssertTrue(blindSnapshot(isOn: true).showsAWarningAboutTheWornHat)
+        XCTAssertFalse(blindSnapshot(isOn: false).showsAWarningAboutTheWornHat,
                        "the guard on the switch being on lives here, where a test can ask it - in "
                            + "markState it was an expression inside a private method of a class no "
                            + "test in this project builds, so removing it would have lit the dot "
                            + "for somebody who never turned auto-switching on and nothing would "
                            + "have noticed")
-        XCTAssertFalse(snapshot(showingName: true, wearing: true).showsTheUsageCannotBeRead)
+        XCTAssertFalse(snapshot(showingName: true, wearing: true).showsAWarningAboutTheWornHat)
+    }
+
+    func testTheDeadEndAtALimitIsAnnouncedAsItselfAndNotAsAnUnreadableUsage() {
+        var stranded = snapshot(showingName: true, wearing: true)
+        stranded.settings.autoSwitch.isOn = true
+        stranded.autoSwitchWarning = .nowhereToGoAtALimit(.session, .othersAreSpent(freesUpAt: resetsAt))
+        XCTAssertEqual(stranded.menuBarAccessibilityLabel,
+                       "Hats — wearing Client work, 5-hour limit reached, nowhere to go",
+                       "the usage was read, and read correctly; announcing \"usage can't be read\" "
+                           + "would tell a VoiceOver user the one thing that is not true here. The "
+                           + "limit and the hour are already in the value, and somebody who reads "
+                           + "the screen aloud and missed the notification would otherwise be the "
+                           + "one person told least")
+        stranded.autoSwitchWarning = .nowhereToGoAtALimit(.weekly, .noOtherHat)
+        XCTAssertEqual(stranded.menuBarAccessibilityLabel,
+                       "Hats — wearing Client work, weekly limit reached, nowhere to go",
+                       "the label names the limit and stops: it is read aloud on every glance at "
+                           + "the menu bar, so which dead end it is and when anything frees up "
+                           + "belong in the banner, which is read on purpose")
+        XCTAssertTrue(stranded.showsAWarningAboutTheWornHat,
+                      "and the dot a sighted person sees is raised off the same value")
     }
 
     func testASettingsFileWrittenBeforeThisFeatureKeepsShowingTheName() throws {

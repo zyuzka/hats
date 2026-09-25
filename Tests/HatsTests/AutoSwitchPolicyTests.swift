@@ -94,11 +94,12 @@ final class AutoSwitchPolicyTests: XCTestCase {
         wearing: String? = "work",
         eligible: [String] = ["work", "personal", "team"],
         readings: [String: UsageReading] = [:],
+        blocked: [ShutOutHat] = [],
         blindness: UsageBlindness = UsageBlindness(),
         at when: Date? = nil
     ) -> AutoSwitchDecision {
         policy.decide(reading: reading, wearing: wearing, eligible: eligible,
-                      readings: readings, blindness: blindness, at: when ?? now)
+                      readings: readings, blocked: blocked, blindness: blindness, at: when ?? now)
     }
 
     private func blind(
@@ -150,7 +151,7 @@ final class AutoSwitchPolicyTests: XCTestCase {
 
     func testNoOtherHatBeingWearableIsNowhereToGoRatherThanASilentHold() {
         XCTAssertEqual(decide(reading(session: 95, weekly: 0), policy: armed,
-                              eligible: ["work"]), .nowhereToGo(.session),
+                              eligible: ["work"]), .nowhereToGo(.atALimit(.session, .noOtherHat)),
                        "the hat is over its limit and there is no second hat; that is a different "
                            + "state from being below every threshold and it used to share its answer")
         var empty = armed
@@ -182,12 +183,12 @@ final class AutoSwitchPolicyTests: XCTestCase {
                               readings: ["work": reading(session: 95, weekly: 5),
                                          "personal": reading(session: 91, weekly: 5),
                                          "team": reading(session: 99, weekly: 5)]),
-                       .nowhereToGo(.session))
+                       .nowhereToGo(.atALimit(.session, .othersAreSpent(freesUpAt: resetsAt))))
         XCTAssertEqual(decide(reading(session: 5, weekly: 96), policy: armed,
                               readings: ["work": reading(session: 5, weekly: 96),
                                          "personal": reading(session: 5, weekly: 96),
                                          "team": reading(session: 5, weekly: 96)]),
-                       .nowhereToGo(.weekly),
+                       .nowhereToGo(.atALimit(.weekly, .othersAreSpent(freesUpAt: resetsAt))),
                        "which limit stranded us is the thing worth knowing, and it used to be a "
                            + "silent hold indistinguishable from being below every threshold")
     }
@@ -243,13 +244,13 @@ final class AutoSwitchPolicyTests: XCTestCase {
         XCTAssertEqual(decide(reading(session: 89, weekly: 0), policy: armed,
                               readings: ["personal": reading(session: 0, weekly: 0)],
                               blindness: blind(2)),
-                       .nowhereToGo(nil),
+                       .nowhereToGo(.noFreshReading),
                        "with the network down nothing is read, the target is as blind as the hat "
                            + "being worn, and swapping a known bad number for an unknown one is not "
                            + "an improvement")
         XCTAssertEqual(decide(reading(session: 89, weekly: 0), policy: armed,
                               eligible: ["work"], blindness: blind(2, fresh: ["personal"])),
-                       .nowhereToGo(nil),
+                       .nowhereToGo(.noFreshReading),
                        "no limit was crossed, so there is no limit to name in the answer")
     }
 
@@ -264,7 +265,7 @@ final class AutoSwitchPolicyTests: XCTestCase {
                            + "was actually measured")
         XCTAssertEqual(decide(reading(session: 89, weekly: 0), policy: armed,
                               blindness: blind(2, fresh: ["personal", "team"])),
-                       .nowhereToGo(nil),
+                       .nowhereToGo(.noFreshReading),
                        "and with every candidate unmeasured there is nowhere measured to go")
     }
 

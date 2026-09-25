@@ -20,6 +20,7 @@ struct AutoSwitchWorld: Equatable {
     var readings: [String: UsageReading] = [:]
     var wearing: String?
     var eligible: [String] = []
+    var blocked: [ShutOutHat] = []
     var blindness = UsageBlindness()
 }
 
@@ -35,6 +36,7 @@ enum AutoSwitchEngine {
             wearing: wearing,
             eligible: world.eligible,
             readings: world.readings,
+            blocked: world.blocked,
             blindness: world.blindness,
             at: now
         )
@@ -76,7 +78,7 @@ enum AutoSwitchEngine {
         guard policy.isOn else { return .off }
         guard let wearing = world.wearing else { return .noHatOn }
         guard let reading = world.readings[wearing] else { return .noReading }
-        guard policy.crossedLimit(in: reading) == nil else { return nil }
+        guard policy.crossedLimits(in: reading).isEmpty else { return nil }
         guard world.blindness.isBlind else { return .underTheThresholds }
         guard policy.isNearAThreshold(reading, at: now) else { return .blindAndFar }
         guard world.blindness.isBlindEnoughToSwitch else { return .blindAndNear }
@@ -93,6 +95,14 @@ enum AutoSwitchEngine {
 
     static func eligible(in rows: [HatRowState]) -> [String] {
         rows.filter(\.isSwitchable).map(\.id)
+    }
+
+    static func blocked(in rows: [HatRowState]) -> [ShutOutHat] {
+        rows.compactMap { row in
+            row.blocker.map {
+                ShutOutHat(id: row.id, title: row.title, blocker: $0, loginAction: row.loginAction)
+            }
+        }
     }
 
     static func notice(

@@ -164,6 +164,47 @@ enum HatsCopy {
          "Hats can't read \(hat)'s usage, and the other hats are spent.")
     }
 
+    static let theWornUsageCannotBeReadAloud = "usage can't be read"
+
+    static func signingIn(_ only: ShutOutHat, alsoShutOut others: [ShutOutHat]) -> String {
+        guard others.isEmpty else { return "the other hats have room but none of them can be worn" }
+
+        return "\(only.title) has room but \(only.blocker)"
+    }
+
+    private static func freesUp(_ freesUpAt: Date?, now: Date, timeZone: TimeZone) -> String? {
+        guard let freesUpAt, freesUpAt > now else { return nil }
+
+        return "Something frees up \(UsageReading.when(freesUpAt, sameDayAs: now, timeZone: timeZone))"
+    }
+
+    static func nowhereToGoAloud(limit: UsageLimit) -> String {
+        "\(limit.displayName) reached, nowhere to go"
+    }
+
+    static func nowhereToGo(
+        of hat: String,
+        limit: UsageLimit,
+        strandedBy: AutoSwitchDeadEnd.StrandedBy,
+        now: Date,
+        timeZone: TimeZone = .current
+    ) -> (String, String) {
+        let reached = "\(hat) reached its \(limit.displayName)"
+        switch strandedBy {
+        case .noOtherHat:
+            return ("Nowhere to switch", "\(reached). There is no other hat to switch to.")
+        case .othersNeedSigningIn(let only, let also):
+            return ("Nowhere to switch", "\(reached), and \(signingIn(only, alsoShutOut: also)).")
+        case .othersAreSpent(let freesUpAt):
+            guard let frees = freesUp(freesUpAt, now: now, timeZone: timeZone) else {
+                return ("Nowhere to switch", "\(reached), and no other hat has room.")
+            }
+
+            return ("Nowhere to switch",
+                    "\(reached), and no other hat has room. \(frees), or sooner if you reset a limit.")
+        }
+    }
+
     static func switched(to title: String) -> String { "Switched to \(title)" }
 
     static func switchedBecauseTheUsageWasUnreadable(

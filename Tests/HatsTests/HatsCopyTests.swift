@@ -165,6 +165,76 @@ final class HatsCopyTests: XCTestCase {
                            + "is what decides — the banner is built from the file after a restart")
     }
 
+    private func shutOut(_ id: String, _ title: String, _ blocker: String = "needs login") -> ShutOutHat {
+        ShutOutHat(id: id, title: title, blocker: blocker, loginAction: "Log in again…")
+    }
+
+    private func strandedBody(
+        _ by: AutoSwitchDeadEnd.StrandedBy,
+        limit: UsageLimit = .session,
+        at when: Date
+    ) -> String {
+        HatsCopy.nowhereToGo(of: "Work", limit: limit, strandedBy: by,
+                             now: when, timeZone: utc).1
+    }
+
+    func testTheDeadEndNamesTheOneThingThePersonCanDoAboutIt() throws {
+        let when = try XCTUnwrap(UsageReading.date(from: "2026-09-25T10:45:00Z"))
+        let thisAfternoon = try XCTUnwrap(UsageReading.date(from: "2026-09-25T13:00:00Z"))
+        let nextThursday = try XCTUnwrap(UsageReading.date(from: "2026-10-01T13:00:00Z"))
+
+        XCTAssertEqual(strandedBody(.noOtherHat, at: when),
+                       "Work reached its 5-hour limit. There is no other hat to switch to.",
+                       "one hat and no hour: there is nothing to wait for, so naming a time would "
+                           + "answer a question nobody is in a position to ask")
+        XCTAssertEqual(strandedBody(.othersNeedSigningIn(shutOut("personal", "Personal"), alsoShutOut: []), at: when),
+                       "Work reached its 5-hour limit, and Personal has room but needs login.",
+                       "the hat is named because the person is being asked to do something to it, "
+                           + "and no hour because the answer is an action, not a wait")
+        XCTAssertEqual(strandedBody(.othersNeedSigningIn(shutOut("personal", "Personal"),
+                                                         alsoShutOut: [shutOut("team", "Team", "login expired")]),
+                                    at: when),
+                       "Work reached its 5-hour limit, and the other hats have room but none "
+                           + "of them can be worn.",
+                       "with more than one there is neither a single name to give nor a single "
+                           + "reason: one needs a first login and the other one expired, and "
+                           + "\"need signing in again\" would be wrong about the first")
+        XCTAssertEqual(strandedBody(.othersAreSpent(freesUpAt: thisAfternoon), at: when),
+                       "Work reached its 5-hour limit, and no other hat has room. Something frees "
+                           + "up at 13:00, or sooner if you reset a limit.",
+                       "here waiting IS the answer, so the hour is named - and the reset is named "
+                           + "with it, because a full reset on the web turns any hour into a "
+                           + "prediction the person can cancel with a button")
+        XCTAssertEqual(strandedBody(.othersAreSpent(freesUpAt: nextThursday), limit: .weekly, at: when),
+                       "Work reached its weekly limit, and no other hat has room. Something frees "
+                           + "up on Thu 1 Oct at 13:00, or sooner if you reset a limit.",
+                       "a week away carries its day, or 13:00 reads as this afternoon")
+        XCTAssertEqual(strandedBody(.othersAreSpent(freesUpAt: nil), at: when),
+                       "Work reached its 5-hour limit, and no other hat has room.",
+                       "no known reset anywhere, so the sentence says less rather than guessing - "
+                           + "and the reset hint goes with it, since it hangs off the hour")
+        XCTAssertEqual(strandedBody(.othersAreSpent(freesUpAt: when.addingTimeInterval(-3600)), at: when),
+                       strandedBody(.othersAreSpent(freesUpAt: nil), at: when),
+                       "the reading reaching this sentence need not be fresh - crossedLimit asks "
+                           + "nothing about its age - so a window that has already run out names "
+                           + "an hour in the past, which is the app lying about the one thing this "
+                           + "branch exists to tell the truth about")
+    }
+
+    func testTheSpokenLabelIsShortBecauseItIsReadOnEveryGlance() {
+        XCTAssertEqual(HatsCopy.nowhereToGoAloud(limit: .session), "5-hour limit reached, nowhere to go")
+        XCTAssertEqual(HatsCopy.nowhereToGoAloud(limit: .weekly), "weekly limit reached, nowhere to go")
+        XCTAssertEqual(AutoSwitchWarning.nowhereToGoAtALimit(.session, .noOtherHat).menuBarLabel,
+                       AutoSwitchWarning.nowhereToGoAtALimit(
+                           .session, .othersAreSpent(freesUpAt: now)
+                       ).menuBarLabel,
+                       "the label names the limit and says there is nowhere to go, and stops - the "
+                           + "argument that a reset hint repeated on every focus stops being advice "
+                           + "applies to fifteen words of narration as much as to five of advice. "
+                           + "Which dead end it is, and the hour, live in the banner, which is read "
+                           + "on purpose rather than on every glance")
+    }
+
     func testTheWarningsAboutAUsageThatCannotBeReadAreWrittenForTheHuman() {
         let willSwitch = HatsCopy.cannotReadTheUsage(of: "Work")
         XCTAssertEqual(willSwitch.0, "Can't read usage")
@@ -180,16 +250,29 @@ final class HatsCopyTests: XCTestCase {
         XCTAssertEqual(spent.0, "Can't read usage")
         XCTAssertEqual(spent.1, "Hats can't read Work's usage, and the other hats are spent.")
 
-        let bodies = [
-            AutoSwitchWarning.willSwitchWhenItCan.text(hat: "Work").1,
-            AutoSwitchWarning.nowhereFreshToGo.text(hat: "Work").1,
-            AutoSwitchWarning.everyOtherHatIsSpent.text(hat: "Work").1,
+        let everyWarning: [AutoSwitchWarning] = [
+            .willSwitchWhenItCan,
+            .nowhereFreshToGo,
+            .everyOtherHatIsSpent,
+            .nowhereToGoAtALimit(.session, .othersAreSpent(freesUpAt: nil)),
         ]
-        XCTAssertEqual(Set(bodies).count, 3,
-                       "three dead ends, three sentences: the hats being spent is not the hats "
-                           + "being unread, and telling a person the others have no fresh reading "
-                           + "when they do is the kind of small lie this whole branch exists to "
-                           + "stop the app telling")
+        let written = everyWarning.map { $0.text(hat: "Work", now: now, timeZone: utc) }
+        XCTAssertEqual(Set(written.map(\.1)).count, everyWarning.count,
+                       "one sentence per dead end: the hats being spent is not the hats being "
+                           + "unread, telling a person the others have no fresh reading when they "
+                           + "do is the kind of small lie this whole branch exists to stop, and "
+                           + "reaching a limit that was measured is not failing to measure one. "
+                           + "This list is the check - a fifth warning added beside it rather "
+                           + "than into it would be covered by nothing")
+        XCTAssertEqual(Set(written.dropLast().map(\.0)).count, 1,
+                       "the three that cannot read the usage share a title on purpose; it names "
+                           + "the one thing all three have in common")
+        XCTAssertEqual(written.last?.0, "Nowhere to switch",
+                       "and the fourth does not share it, because the usage was read perfectly "
+                           + "and \"Can't read usage\" over it would be false")
+        XCTAssertEqual(Set(everyWarning.map(\.menuBarLabel)).count, 2,
+                       "read aloud there are two facts, not four: the usage cannot be read, or "
+                           + "the limit was reached and nothing has room")
         XCTAssertEqual(HatsCopy.switched(to: "Personal"), "Switched to Personal")
         XCTAssertEqual(
             HatsCopy.switchedBecauseTheUsageWasUnreadable(

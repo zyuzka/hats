@@ -22,12 +22,12 @@ enum MarkState: Equatable {
         gatewayServing: Bool,
         wearing: Bool,
         percent: Int?,
-        cannotReadTheWornUsage: Bool
+        autoSwitchWarnsAboutTheWornHat: Bool
     ) -> MarkState {
         let asksForAttention = anyHatBlocked || (gatewayEnabled && !gatewayServing)
         guard wearing else { return asksForAttention ? .attention : .idle }
-        guard asksForAttention || cannotReadTheWornUsage else { return .wearing(percent: percent) }
-        guard cannotReadTheWornUsage else { return .attention }
+        guard asksForAttention || autoSwitchWarnsAboutTheWornHat else { return .wearing(percent: percent) }
+        guard autoSwitchWarnsAboutTheWornHat else { return .attention }
 
         return .wearingWithAttention(percent: percent)
     }

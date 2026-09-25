@@ -10,6 +10,7 @@ struct HatListView: View {
             header
             Divider().padding(.vertical, 4)
             if let banner = snapshot.banner { bannerView(banner) }
+            if let stranded = snapshot.deadEndBanner(now: Date()) { strandedView(stranded) }
             if snapshot.rows.isEmpty { empty } else { list }
             Divider().padding(.vertical, 4)
             footer
@@ -104,6 +105,19 @@ struct HatListView: View {
             }
         }
         .padding(.horizontal, 14)
+    }
+
+    private func strandedView(_ banner: DeadEndBanner) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(banner.line).font(.system(size: 11))
+            if let hat = banner.signInTo {
+                Button(hat.loginAction) { model.actions?.relogin(hat.id) }
+                    .controlSize(.small)
+            }
+        }
+        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
+        .padding(.horizontal, 10).padding(.bottom, 6)
     }
 
     private func bannerView(_ record: AutoSwitchRecord) -> some View {

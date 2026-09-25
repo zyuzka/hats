@@ -23,21 +23,22 @@ struct AutoSwitchPolicy: Codable, Equatable {
 
     func hasJustBeenTurnedOn(from previous: AutoSwitchPolicy) -> Bool { isOn && !previous.isOn }
 
-    func crossedLimit(in reading: UsageReading) -> (UsageLimit, UsageWindow)? {
+    func crossedLimits(in reading: UsageReading) -> [(UsageLimit, UsageWindow)] {
+        var crossed: [(UsageLimit, UsageWindow)] = []
         if let threshold = sessionThresholdPercent, let window = reading.session,
            window.percent >= threshold {
-            return (.session, window)
+            crossed.append((.session, window))
         }
         if let threshold = weeklyThresholdPercent, let window = reading.weekly,
            window.percent >= threshold {
-            return (.weekly, window)
+            crossed.append((.weekly, window))
         }
-        return nil
+        return crossed
     }
 
     func room(for id: String, readings: [String: UsageReading]) -> HatRoom {
         guard let reading = readings[id] else { return .unknown }
-        return crossedLimit(in: reading) == nil ? .free : .spent
+        return crossedLimits(in: reading).isEmpty ? .free : .spent
     }
 
     func nextHat(after wearing: String?,
@@ -96,7 +97,7 @@ enum AutoSwitchHold: String, Equatable {
 
 enum AutoSwitchDecision: Equatable {
     case hold
-    case nowhereToGo(UsageLimit?)
+    case nowhereToGo(AutoSwitchDeadEnd)
     case fire(to: String, limit: UsageLimit, resetsAt: Date?)
     case fireBlind(to: String, lastSeen: LastLiveWindow)
 }
@@ -107,13 +108,20 @@ extension AutoSwitchPolicy {
         wearing: String?,
         eligible: [String],
         readings: [String: UsageReading],
+        blocked: [ShutOutHat],
         blindness: UsageBlindness = UsageBlindness(),
         at now: Date = Date()
     ) -> AutoSwitchDecision {
         guard isOn, let reading else { return .hold }
-        if let (limit, window) = crossedLimit(in: reading) {
+        if let (limit, window) = crossedLimits(in: reading).first {
             guard let next = nextHat(after: wearing, among: eligible, readings: readings) else {
-                return .nowhereToGo(limit)
+                let by = strandedBy(
+                    after: wearing,
+                    among: eligible,
+                    blocked: blocked,
+                    readings: readings
+                )
+                return .nowhereToGo(.atALimit(limit, by))
             }
             return .fire(to: next, limit: limit, resetsAt: window.resetsAt)
         }
@@ -126,7 +134,7 @@ extension AutoSwitchPolicy {
             readings: readings,
             fresh: blindness.fresh
         )
-        guard !seen.isEmpty else { return .nowhereToGo(nil) }
+        guard !seen.isEmpty else { return .nowhereToGo(.noFreshReading) }
         guard let next = blindTarget(
             after: wearing,
             among: eligible,

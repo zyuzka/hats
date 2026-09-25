@@ -16,8 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
-    var lastBlindWarning: AutoSwitchWarning?
-    var theWornUsageCannotBeRead = false
+    var lastAutoSwitchWarning: AutoSwitchWarning?
+    var lastAnnouncedWarning: AutoSwitchWarning?
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??

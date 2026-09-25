@@ -19,7 +19,7 @@ extension AppDelegate {
                 holding: holding,
                 blindness: world.blindness
             )
-            noteTheUsageCannotBeRead(warning, on: snapshot)
+            noteTheWarning(warning, on: snapshot, at: now)
         }
         if case .hold = outcome.decision {
             lastAutoSwitchNowhere.clear()
@@ -27,8 +27,8 @@ extension AppDelegate {
             return
         }
         lastAutoSwitchHold = nil
-        if case .nowhereToGo(let limit) = outcome.decision {
-            noteNowhereToGo(limit, wearing: snapshot.wearing?.id)
+        if case .nowhereToGo(let deadEnd) = outcome.decision {
+            noteNowhereToGo(deadEnd, wearing: snapshot.wearing?.id)
             return
         }
         lastAutoSwitchNowhere.clear()
@@ -36,15 +36,18 @@ extension AppDelegate {
         performAutoSwitch(to: id, outcome: outcome, at: now, titles: { snapshot.title(of: $0) })
     }
 
-    private func noteTheUsageCannotBeRead(_ warning: AutoSwitchWarning?, on snapshot: HatsSnapshot) {
-        if theWornUsageCannotBeRead != (warning != nil) {
-            theWornUsageCannotBeRead = warning != nil
-            redraw()
-        }
-        guard lastBlindWarning != warning else { return }
-        lastBlindWarning = warning
-        guard let warning, settings.autoSwitch.wantsNotifications else { return }
-        let text = warning.text(hat: snapshot.wearing?.title ?? "this hat")
+    private func noteTheWarning(_ warning: AutoSwitchWarning?, on snapshot: HatsSnapshot, at now: Date) {
+        let change = AutoSwitchWarningChange.of(
+            warning,
+            held: lastAutoSwitchWarning,
+            announced: lastAnnouncedWarning,
+            notifies: settings.autoSwitch.wantsNotifications
+        )
+        lastAutoSwitchWarning = change.keeps
+        lastAnnouncedWarning = change.remembers
+        if change.redraws { redraw() }
+        guard change.announces, let warning else { return }
+        let text = warning.text(hat: snapshot.wearing?.title ?? "this hat", now: now)
         Notifier.post(title: text.0, body: text.1)
     }
 
@@ -81,10 +84,14 @@ extension AppDelegate {
         }
     }
 
-    func noteNowhereToGo(_ limit: UsageLimit?, wearing: String?) {
-        let reason = limit?.rawValue ?? AutoSwitchCause.usageCouldNotBeRead.rawValue
-        guard lastAutoSwitchNowhere.shouldWrite(reason) else { return }
-        Journal.log("autoSwitch.nowhereToGo", ["limit": reason, "wearing": wearing ?? "-"])
+    func noteNowhereToGo(_ deadEnd: AutoSwitchDeadEnd, wearing: String?) {
+        let line = NowhereToGoLine.of(deadEnd)
+        guard lastAutoSwitchNowhere.shouldWrite(line.key) else { return }
+        Journal.log("autoSwitch.nowhereToGo", [
+            "limit": line.limit,
+            "reason": line.reason,
+            "wearing": wearing ?? "-",
+        ])
     }
 
     func noteHolding(_ reason: AutoSwitchHold?, missedPolls: Int = 0) {
@@ -105,15 +112,16 @@ extension AppDelegate {
         settings.autoSwitch = policy
         saveSettings()
         if policy.wantsNotifications { Notifier.askOnce() }
-        if switchedOn { forgetTheBlindness() }
+        if switchedOn { forgetWhatTheSwitchHasSeen() }
         decideAutoSwitch(from: .theToggleChanged)
         redraw()
+        if switchedOn { usage.poll(hatsForUsage()) }
     }
 
-    func forgetTheBlindness() {
+    func forgetWhatTheSwitchHasSeen() {
         usage.forgetTheMissedPolls()
-        theWornUsageCannotBeRead = false
-        lastBlindWarning = nil
+        lastAutoSwitchWarning = nil
+        lastAnnouncedWarning = nil
     }
 
     func switchBack() {
