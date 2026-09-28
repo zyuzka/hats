@@ -75,18 +75,23 @@ extension AutoSwitchPolicy {
     func whenSomethingFreesUp(
         wearing: String?,
         among hats: [String],
-        readings: [String: UsageReading]
+        readings: [String: UsageReading],
+        at now: Date
     ) -> Date? {
         let everyHat = [wearing].compactMap { $0 } + hats
 
-        return everyHat.compactMap { readings[$0] }.compactMap { freesUpAt($0) }.min()
+        return everyHat.compactMap { readings[$0] }
+            .compactMap { freesUpAt($0) }
+            .filter { $0 > now }
+            .min()
     }
 
     func strandedBy(
         after wearing: String?,
         among eligible: [String],
         blocked: [ShutOutHat],
-        readings: [String: UsageReading]
+        readings: [String: UsageReading],
+        at now: Date
     ) -> AutoSwitchDeadEnd.StrandedBy {
         let shutOut = blocked.filter { $0.id != wearing }
         let withRoom = shutOut.filter { room(for: $0.id, readings: readings) != .spent }
@@ -98,8 +103,13 @@ extension AutoSwitchPolicy {
         let wornIsShutOutToo = blocked.contains { $0.id == wearing }
         let comesBack = wornIsShutOutToo ? nil : wearing
 
-        return .othersAreSpent(
-            freesUpAt: whenSomethingFreesUp(wearing: comesBack, among: others, readings: readings)
+        let freesUpAt = whenSomethingFreesUp(
+            wearing: comesBack,
+            among: others,
+            readings: readings,
+            at: now
         )
+
+        return .othersAreSpent(freesUpAt: freesUpAt)
     }
 }

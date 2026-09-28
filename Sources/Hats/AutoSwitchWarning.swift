@@ -65,6 +65,19 @@ enum AutoSwitchWarning: Equatable {
     }
 }
 
+struct WhatTheWearTookAway: Equatable {
+    let warning: AutoSwitchWarning?
+    let announced: AutoSwitchWarning?
+    let pollsLanded: Int
+    let wearing: String?
+
+    func isStillTheWorldToPutBack(pollsLanded: Int, wearing: String?) -> Bool {
+        guard self.pollsLanded == pollsLanded else { return false }
+
+        return self.wearing == wearing
+    }
+}
+
 struct AutoSwitchWarningChange: Equatable {
     let keeps: AutoSwitchWarning?
     let remembers: AutoSwitchWarning?

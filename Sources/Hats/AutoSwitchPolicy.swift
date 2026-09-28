@@ -119,7 +119,8 @@ extension AutoSwitchPolicy {
                     after: wearing,
                     among: eligible,
                     blocked: blocked,
-                    readings: readings
+                    readings: readings,
+                    at: now
                 )
                 return .nowhereToGo(.atALimit(limit, by))
             }

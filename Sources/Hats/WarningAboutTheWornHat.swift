@@ -42,3 +42,25 @@ extension HatsSnapshot {
         return only
     }
 }
+
+extension AppDelegate {
+    func whatTheWearTakesAway() -> WhatTheWearTookAway {
+        let taken = WhatTheWearTookAway(
+            warning: lastAutoSwitchWarning,
+            announced: lastAnnouncedWarning,
+            pollsLanded: pollsLanded,
+            wearing: liveIdentity.email
+        )
+        lastAutoSwitchWarning = nil
+        lastAnnouncedWarning = nil
+
+        return taken
+    }
+
+    func putBackWhatTheWearTookAway(_ taken: WhatTheWearTookAway) {
+        guard taken.isStillTheWorldToPutBack(pollsLanded: pollsLanded, wearing: liveIdentity.email)
+        else { return }
+        lastAutoSwitchWarning = taken.warning
+        lastAnnouncedWarning = taken.announced
+    }
+}

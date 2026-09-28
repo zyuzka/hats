@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastAutoSwitchNowhere = NoteOnChange()
     var lastAutoSwitchWarning: AutoSwitchWarning?
     var lastAnnouncedWarning: AutoSwitchWarning?
+    var pollsLanded = 0
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??

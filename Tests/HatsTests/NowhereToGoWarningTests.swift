@@ -609,6 +609,49 @@ final class NowhereToGoWarningTests: XCTestCase {
                            + "it rather than writing one label for every blocked hat")
     }
 
+    func testAResetThatHasAlreadyPassedIsDroppedBeforeTheEarliestIsPicked() {
+        let alreadyBack = now.addingTimeInterval(-1800)
+        let stale = world(["work": spent(resets: alreadyBack), "personal": spent(resets: resetsAt)],
+                          eligible: ["work", "personal"])
+        XCTAssertEqual(decision(in: stale), spentAt(resetsAt),
+                       "a window that ran out at 07:30 is not the moment anything frees up at "
+                           + "08:00, and taking the earliest before dropping the past ones hands "
+                           + "the copy a date it then throws away - so the person is told no hour "
+                           + "at all while 09:00 was known all along. The path is reachable: a "
+                           + "failed poll keeps the previous reading, and crossing a threshold "
+                           + "never asks how old it is")
+        let onTheDot = world(["work": spent(resets: now), "personal": spent(resets: resetsAt)],
+                             eligible: ["work", "personal"])
+        XCTAssertEqual(decision(in: onTheDot), spentAt(resetsAt),
+                       "a window ending at this very second is not a moment anything frees up at - "
+                           + "usageLine, parkedUsage and the banner's own tail all compare with a "
+                           + "strict >, and \"it comes back at 08:00\" said at 08:00 tells nobody "
+                           + "anything")
+        let allPast = world(["work": spent(resets: alreadyBack),
+                             "personal": spent(resets: alreadyBack)],
+                            eligible: ["work", "personal"])
+        XCTAssertEqual(decision(in: allPast), spentAt(nil),
+                       "and with every known reset behind us there is genuinely no hour to give")
+    }
+
+    func testAFailedWearPutsBackOnlyWhatNoPollHasContradicted() {
+        let took = WhatTheWearTookAway(warning: stuck, announced: stuck,
+                                       pollsLanded: 7, wearing: "work@x.co")
+        XCTAssertTrue(took.isStillTheWorldToPutBack(pollsLanded: 7, wearing: "work@x.co"),
+                      "nothing landed and nothing moved while activate was failing, so the warning "
+                          + "it took away is still the true one and putting it back is right")
+        XCTAssertFalse(took.isStillTheWorldToPutBack(pollsLanded: 8, wearing: "work@x.co"),
+                       "a poll landed during those milliseconds. An empty field is not evidence of "
+                           + "\"nothing arrived\" - it is equally what a poll saying the dead "
+                           + "end ENDED leaves behind, and restoring over that raises the dot "
+                           + "against the matrix row that says an ended dead end rearms it")
+        XCTAssertFalse(took.isStillTheWorldToPutBack(pollsLanded: 7, wearing: "personal@x.co"),
+                       "activate can throw from noteActivated after the credential has already "
+                           + "moved, and then the warning describes a hat nobody is wearing any "
+                           + "more")
+        XCTAssertFalse(took.isStillTheWorldToPutBack(pollsLanded: 8, wearing: "personal@x.co"))
+    }
+
     private func sourceOf(_ name: String) -> String {
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -658,10 +701,18 @@ final class NowhereToGoWarningTests: XCTestCase {
                           + "gives is built from exactly that list. relogin needs no such line: a "
                           + "settled sign-in already polls from main.swift, which is the moment "
                           + "the credential actually lands")
-        XCTAssertTrue(actions.contains("if self.lastAutoSwitchWarning == nil {"),
-                      "and a failed wear puts back what it took only if nothing arrived meanwhile, "
-                          + "so a poll that landed during those milliseconds is not overwritten by "
-                          + "a value from before the attempt")
+        XCTAssertTrue(actions.contains("let takenAway = whatTheWearTakesAway()")
+            && actions.contains("self.putBackWhatTheWearTookAway(takenAway)"),
+                      "and a failed wear puts back what it took only while no poll has landed and "
+                          + "the same hat is still on - an empty field cannot say which of those "
+                          + "two happened")
+        XCTAssertTrue(sourceOf("WarningAboutTheWornHat.swift")
+            .contains("taken.isStillTheWorldToPutBack(pollsLanded:"),
+                      "and putting it back is what asks that question, rather than reading an "
+                          + "empty field as an answer")
+        XCTAssertTrue(text.contains("pollsLanded += 1"),
+                      "the count that answers it is raised where a poll lands, which is the same "
+                          + "gate the warning itself is raised behind")
 
         XCTAssertTrue(sourceOf("AppDelegate+Redraw.swift")
             .contains("HatsSnapshot(autoSwitchWarning: lastAutoSwitchWarning)"),

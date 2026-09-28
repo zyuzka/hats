@@ -14,6 +14,7 @@ extension AppDelegate {
         let outcome = AutoSwitchEngine.outcome(policy: settings.autoSwitch, world: world, now: now)
         let holding = AutoSwitchEngine.reasonForHolding(policy: settings.autoSwitch, world: world, at: now)
         if world.blindness.landedAPoll {
+            pollsLanded += 1
             let warning = AutoSwitchWarning.of(
                 decision: outcome.decision,
                 holding: holding,
