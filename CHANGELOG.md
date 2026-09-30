@@ -8,6 +8,35 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.3.0 — 2026-09-30
+
+- **The switch no longer waits on a number nobody asked the age of.** When usage stopped being
+  readable the app kept deciding from the last figure it had, however old. On 21 September that
+  figure was 89% against a threshold of 90, and it stood for twenty-one minutes while the checks
+  failed; the switch never came and the account had to be changed by hand. Missed checks of the hat
+  you are wearing are now counted: one missed check raises a warning, two move you on. It only moves
+  you to a hat read in that same check with room to spare, so a network outage — where nothing can be
+  read — warns and holds rather than trading a known problem for an unknown one.
+
+- **When there is nowhere to switch, the app says so.** It used to write a line to the journal every
+  five minutes and tell you nothing: on 25 September that went on for an hour, and on 18 September
+  for four. Now it tells you, and it tells the three cases apart, because two of them you can act on:
+  there is no other hat; another hat has room but needs signing in, with a button to do it; or every
+  hat is spent, with the first hour any of them frees up — the earliest among all of them, not the
+  window of the hat you happen to be wearing. A reset you trigger yourself comes sooner than the hour
+  named, and the message says so.
+
+- **The menu bar keeps the meter when it needs your attention.** A dot used to replace the usage bar,
+  so the number disappeared exactly when it mattered. The dot is now drawn beside it, and the label
+  read aloud by VoiceOver names the limit rather than staying silent about it. The message also lives
+  in the popover for as long as the situation does, so a notification you missed is not the only
+  place it was said.
+
+- **The journal carries numbers where it used to carry only a verdict.** A hold wrote its reason and
+  nothing else, so the case above could only be diagnosed because the account was switched by hand,
+  which happened to record the figures. Holds now carry the reading, its age and the count of missed
+  checks, and a dead end names which of the three it is — written once, and again when it changes.
+
 ## 0.2.2 — 2026-09-12
 
 - **A hat whose token the server refuses is asked less often.** When an account's parked login is
