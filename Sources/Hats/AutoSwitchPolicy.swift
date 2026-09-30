@@ -21,40 +21,60 @@ struct AutoSwitchPolicy: Codable, Equatable {
 
     var wantsNotifications: Bool { isOn && notifies }
 
-    func crossedLimit(in reading: UsageReading) -> (UsageLimit, UsageWindow)? {
+    func hasJustBeenTurnedOn(from previous: AutoSwitchPolicy) -> Bool { isOn && !previous.isOn }
+
+    func crossedLimits(in reading: UsageReading) -> [(UsageLimit, UsageWindow)] {
+        var crossed: [(UsageLimit, UsageWindow)] = []
         if let threshold = sessionThresholdPercent, let window = reading.session,
            window.percent >= threshold {
-            return (.session, window)
+            crossed.append((.session, window))
         }
         if let threshold = weeklyThresholdPercent, let window = reading.weekly,
            window.percent >= threshold {
-            return (.weekly, window)
+            crossed.append((.weekly, window))
         }
-        return nil
+        return crossed
     }
 
     func room(for id: String, readings: [String: UsageReading]) -> HatRoom {
         guard let reading = readings[id] else { return .unknown }
-        return crossedLimit(in: reading) == nil ? .free : .spent
+        return crossedLimits(in: reading).isEmpty ? .free : .spent
     }
 
     func nextHat(after wearing: String?,
                  among eligible: [String],
                  readings: [String: UsageReading]) -> String? {
-        let shown = order + eligible.filter { !order.contains($0) }
-        let candidates = shown.filter { $0 != wearing && eligible.contains($0) }
-        return candidates.first { room(for: $0, readings: readings) == .free }
-            ?? candidates.first { room(for: $0, readings: readings) == .unknown }
+        let shown = candidates(after: wearing, among: eligible)
+        return shown.first { room(for: $0, readings: readings) == .free }
+            ?? shown.first { room(for: $0, readings: readings) == .unknown }
     }
+}
+
+enum AutoSwitchCause: String, Codable, Equatable {
+    case reachedALimit
+    case usageCouldNotBeRead
+}
+
+struct LastLiveWindow: Equatable {
+    let limit: UsageLimit
+    let percent: Int
 }
 
 struct AutoSwitchRecord: Codable, Equatable {
     let firedAt: Date
     let from: String
     let to: String
-    let limit: UsageLimit
+    let limit: UsageLimit?
     let resetsAt: Date?
+    var cause: AutoSwitchCause?
     var seenInPopover = false
+
+    var journalReason: String {
+        switch cause {
+        case .usageCouldNotBeRead: return AutoSwitchCause.usageCouldNotBeRead.rawValue
+        case .reachedALimit, .none: return limit?.rawValue ?? "-"
+        }
+    }
 }
 
 enum HatRoom: Equatable {
@@ -68,12 +88,18 @@ enum AutoSwitchHold: String, Equatable {
     case noHatOn
     case noReading
     case underTheThresholds
+    case blindAndNear
+    case blindAndFar
+    case blindTargetSpent
+
+    var isWorthAJournalLine: Bool { self != .off }
 }
 
 enum AutoSwitchDecision: Equatable {
     case hold
-    case nowhereToGo(UsageLimit)
+    case nowhereToGo(AutoSwitchDeadEnd)
     case fire(to: String, limit: UsageLimit, resetsAt: Date?)
+    case fireBlind(to: String, lastSeen: LastLiveWindow)
 }
 
 extension AutoSwitchPolicy {
@@ -81,13 +107,43 @@ extension AutoSwitchPolicy {
         reading: UsageReading?,
         wearing: String?,
         eligible: [String],
-        readings: [String: UsageReading]
+        readings: [String: UsageReading],
+        blocked: [ShutOutHat],
+        blindness: UsageBlindness = UsageBlindness(),
+        at now: Date = Date()
     ) -> AutoSwitchDecision {
-        guard isOn else { return .hold }
-        guard let reading, let (limit, window) = crossedLimit(in: reading) else { return .hold }
-        guard let next = nextHat(after: wearing, among: eligible, readings: readings) else {
-            return .nowhereToGo(limit)
+        guard isOn, let reading else { return .hold }
+        if let (limit, window) = crossedLimits(in: reading).first {
+            guard let next = nextHat(after: wearing, among: eligible, readings: readings) else {
+                let by = strandedBy(
+                    after: wearing,
+                    among: eligible,
+                    blocked: blocked,
+                    readings: readings,
+                    at: now
+                )
+                return .nowhereToGo(.atALimit(limit, by))
+            }
+            return .fire(to: next, limit: limit, resetsAt: window.resetsAt)
         }
-        return .fire(to: next, limit: limit, resetsAt: window.resetsAt)
+        guard blindness.isBlindEnoughToSwitch,
+              let near = nearestWindow(in: reading, at: now)
+        else { return .hold }
+        let seen = candidatesReadInThisPoll(
+            after: wearing,
+            among: eligible,
+            readings: readings,
+            fresh: blindness.fresh
+        )
+        guard !seen.isEmpty else { return .nowhereToGo(.noFreshReading) }
+        guard let next = blindTarget(
+            after: wearing,
+            among: eligible,
+            readings: readings,
+            fresh: blindness.fresh,
+            at: now
+        ) else { return .hold }
+
+        return .fireBlind(to: next, lastSeen: near)
     }
 }

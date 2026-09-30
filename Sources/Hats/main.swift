@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var settings = AppSettings.loaded()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
+    var lastAutoSwitchNowhere = NoteOnChange()
+    var lastAutoSwitchWarning: AutoSwitchWarning?
+    var lastAnnouncedWarning: AutoSwitchWarning?
+    var pollsLanded = 0
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??
@@ -52,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.withOneLookAtTheProcessTable {
                 self?.releaseTheRetiredListenerIfNothingNeedsIt()
                 self?.syncWithWorld(reportingErrors: false)
-                self?.decideAutoSwitch()
+                self?.decideAutoSwitch(from: .thePopoverOpened)
             }
         }
         login.liveLoginMoved = { [weak self] identity in self?.redraw(ifTheLiveLoginMoved: identity) }

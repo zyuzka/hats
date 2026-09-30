@@ -3,6 +3,7 @@ import AppKit
 extension AppDelegate: HatsActions {
     func wear(_ id: String) {
         changing = id
+        let takenAway = whatTheWearTakesAway()
         redraw()
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
@@ -16,6 +17,7 @@ extension AppDelegate: HatsActions {
                 self.syncWithWorld()
                 self.usage.poll(self.hatsForUsage())
             } catch {
+                self.putBackWhatTheWearTookAway(takenAway)
                 self.changing = nil
                 self.redrawAfterTheLiveSlotMayHaveMoved()
                 HatDialogs.present(error)
@@ -116,6 +118,7 @@ extension AppDelegate: HatsActions {
                 self.settings.autoSwitch.order.removeAll { $0 == id }
                 self.saveSettings()
                 self.redraw()
+                self.usage.poll(self.hatsForUsage())
             } catch {
                 self.redraw()
                 HatDialogs.present(error, title: "Could not remove that hat")

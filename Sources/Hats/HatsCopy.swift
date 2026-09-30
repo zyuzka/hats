@@ -149,9 +149,81 @@ enum HatsCopy {
         plural ? "which hats they keep is not known" : "which hat it keeps is not known"
     }
 
+    static func cannotReadTheUsage(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage. It will switch to a hat with room as soon as it can.")
+    }
+
+    static func cannotReadTheUsageAndHasNowhereToGo(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage, and no other hat has a fresh reading to switch to.")
+    }
+
+    static func cannotReadTheUsageAndTheOthersAreSpent(of hat: String) -> (String, String) {
+        ("Can't read usage",
+         "Hats can't read \(hat)'s usage, and the other hats are spent.")
+    }
+
+    static let theWornUsageCannotBeReadAloud = "usage can't be read"
+
+    static func signingIn(_ only: ShutOutHat, alsoShutOut others: [ShutOutHat]) -> String {
+        guard others.isEmpty else { return "the other hats have room but none of them can be worn" }
+
+        return "\(only.title) has room but \(only.blocker)"
+    }
+
+    private static func freesUp(_ freesUpAt: Date?, now: Date, timeZone: TimeZone) -> String? {
+        guard let freesUpAt, freesUpAt > now else { return nil }
+
+        return "Something frees up \(UsageReading.when(freesUpAt, sameDayAs: now, timeZone: timeZone))"
+    }
+
+    static func nowhereToGoAloud(limit: UsageLimit) -> String {
+        "\(limit.displayName) reached, nowhere to go"
+    }
+
+    static func nowhereToGo(
+        of hat: String,
+        limit: UsageLimit,
+        strandedBy: AutoSwitchDeadEnd.StrandedBy,
+        now: Date,
+        timeZone: TimeZone = .current
+    ) -> (String, String) {
+        let reached = "\(hat) reached its \(limit.displayName)"
+        switch strandedBy {
+        case .noOtherHat:
+            return ("Nowhere to switch", "\(reached). There is no other hat to switch to.")
+        case .othersNeedSigningIn(let only, let also):
+            return ("Nowhere to switch", "\(reached), and \(signingIn(only, alsoShutOut: also)).")
+        case .othersAreSpent(let freesUpAt):
+            guard let frees = freesUp(freesUpAt, now: now, timeZone: timeZone) else {
+                return ("Nowhere to switch", "\(reached), and no other hat has room.")
+            }
+
+            return ("Nowhere to switch",
+                    "\(reached), and no other hat has room. \(frees), or sooner if you reset a limit.")
+        }
+    }
+
+    static func switched(to title: String) -> String { "Switched to \(title)" }
+
+    static func switchedBecauseTheUsageWasUnreadable(
+        from: String,
+        lastSeen: LastLiveWindow,
+        age: TimeInterval? = nil
+    ) -> String {
+        let ago = (age.map { $0 > 0 } ?? false) ? " \(humanise(age ?? 0)) ago" : ""
+
+        return "Hats couldn't read \(from)'s usage. "
+            + "Its \(lastSeen.limit.displayName) was at \(lastSeen.percent)% when last seen\(ago)."
+    }
+
     static func banner(_ record: AutoSwitchRecord, fromTitle: String, timeZone: TimeZone = .current) -> String {
         let at = UsageReading.clock(record.firedAt, timeZone: timeZone)
-        var line = "Switched automatically at \(at) — \(fromTitle) reached its \(record.limit.displayName)"
+        guard record.cause != .usageCouldNotBeRead, let limit = record.limit else {
+            return "Switched automatically at \(at) — \(fromTitle)'s usage could not be read"
+        }
+        var line = "Switched automatically at \(at) — \(fromTitle) reached its \(limit.displayName)"
         if let resets = record.resetsAt {
             line += " · it comes back " + UsageReading.when(resets, sameDayAs: record.firedAt, timeZone: timeZone)
         }

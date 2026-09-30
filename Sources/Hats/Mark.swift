@@ -4,10 +4,16 @@ enum MarkState: Equatable {
     case idle
     case wearing(percent: Int?)
     case attention
+    case wearingWithAttention(percent: Int?)
 
-    var hasMeter: Bool {
-        guard case .wearing(let percent?) = self else { return false }
-        return percent >= Mark.meterFrom
+    var meter: Int? {
+        switch self {
+        case .idle, .attention:
+            return nil
+        case .wearing(let percent), .wearingWithAttention(let percent):
+            guard let percent, percent >= Mark.meterFrom else { return nil }
+            return percent
+        }
     }
 
     static func decide(
@@ -15,11 +21,15 @@ enum MarkState: Equatable {
         gatewayEnabled: Bool,
         gatewayServing: Bool,
         wearing: Bool,
-        percent: Int?
+        percent: Int?,
+        autoSwitchWarnsAboutTheWornHat: Bool
     ) -> MarkState {
-        if anyHatBlocked || (gatewayEnabled && !gatewayServing) { return .attention }
-        guard wearing else { return .idle }
-        return .wearing(percent: percent)
+        let asksForAttention = anyHatBlocked || (gatewayEnabled && !gatewayServing)
+        guard wearing else { return asksForAttention ? .attention : .idle }
+        guard asksForAttention || autoSwitchWarnsAboutTheWornHat else { return .wearing(percent: percent) }
+        guard autoSwitchWarnsAboutTheWornHat else { return .attention }
+
+        return .wearingWithAttention(percent: percent)
     }
 }
 
@@ -48,7 +58,7 @@ enum Mark {
                 height: capHeight
             )
             drawCursor(state, in: cursor, visible: cursorVisible)
-            if state.hasMeter, case .wearing(let percent?) = state {
+            if let percent = state.meter {
                 drawMeter(percent: percent, under: NSRect(x: 0.5, y: baseline - 1, width: textSize.width, height: 0))
             }
             return true
@@ -62,18 +72,28 @@ enum Mark {
         NSColor.black.set()
         switch state {
         case .idle:
-            let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
-            path.lineWidth = 1
-            path.stroke()
+            outline(rect)
         case .wearing:
             rect.fill()
         case .attention:
-            let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
-            path.lineWidth = 1
-            path.stroke()
-            let dot = rect.insetBy(dx: rect.width * 0.28, dy: rect.height * 0.36)
-            NSBezierPath(ovalIn: dot).fill()
+            outline(rect)
+            NSBezierPath(ovalIn: dot(in: rect)).fill()
+        case .wearingWithAttention:
+            let path = NSBezierPath(rect: rect)
+            path.append(NSBezierPath(ovalIn: dot(in: rect)))
+            path.windingRule = .evenOdd
+            path.fill()
         }
+    }
+
+    private static func outline(_ rect: NSRect) {
+        let path = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    private static func dot(in rect: NSRect) -> NSRect {
+        rect.insetBy(dx: rect.width * 0.28, dy: rect.height * 0.36)
     }
 
     private static func drawMeter(percent: Int, under line: NSRect) {
