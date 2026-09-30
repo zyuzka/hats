@@ -8,6 +8,13 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.3.1 — 2026-09-30
+
+- **The thresholds move one point at a time.** They stepped by five, so from the weekly limit's 95 the
+  only places to go were 90 and 100 — and 100 is not a threshold at all, since it means the hat counts
+  as spent only once it already is, which is what the setting exists to get ahead of. The value a
+  person wanted sat between two clicks and could not be reached from the panel. The range is unchanged.
+
 ## 0.3.0 — 2026-09-30
 
 - **The switch no longer waits on a number nobody asked the age of.** When usage stopped being

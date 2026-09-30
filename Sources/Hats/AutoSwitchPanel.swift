@@ -77,7 +77,7 @@ struct AutoSwitchPanel: View {
                         }
                     ),
                     in: 50...100,
-                    step: 5
+                    step: 1
                 )
                 .font(.system(size: 12))
             }
