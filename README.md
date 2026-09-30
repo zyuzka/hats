@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-13%2B-0969da" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/version-0.1.0-1a7f37" alt="version 0.1.0">
+  <img src="https://img.shields.io/badge/version-0.3.1-1a7f37" alt="version 0.3.1">
   <img src="https://img.shields.io/badge/license-MIT-59636e" alt="MIT">
 </p>
 
@@ -17,8 +17,8 @@ A macOS menu-bar app for developers holding more than one Claude subscription. I
 logged-in Claude Code account without a relogin, so work continues when one account runs out of
 limits. Each account is a hat; you put one on.
 
-The app was called `acc-switch` until 0.3.0. The code carried that name for a while longer; it no
-longer does — the Swift module is `Hats` and the bundle identifier `dev.tmk.hats`.
+The app was called `acc-switch` before it was published anywhere. The code carried that name for a
+while longer; it no longer does — the Swift module is `Hats` and the bundle identifier `dev.tmk.hats`.
 
 Not affiliated with Anthropic.
 
