@@ -3,7 +3,16 @@ import Foundation
 extension AccountStore {
     func parkTheLiveLoginBeforeSigningIn(_ target: Account) throws {
         let configuration = try CLIState.configurationNow(world: system)
-        guard let live = try keychain.read(configuration.credentialService) else { return }
+        let live: Data
+        switch liveSlotNow(inSlot: configuration.credentialService) {
+        case .empty:
+            return
+        case .unreadable:
+            Journal.log("signIn.liveNotParked", ["reason": "live slot unreadable"])
+            return
+        case .holding(let data):
+            live = data
+        }
         let email: String
         switch liveIdentity() {
         case .loggedOut:
@@ -13,7 +22,7 @@ extension AccountStore {
                 "reason": "owner unknown",
                 "live": Journal.fingerprint(live),
             ])
-            throw SwitchError.identityUnknown
+            return
         case .account(let owner):
             email = owner
         }

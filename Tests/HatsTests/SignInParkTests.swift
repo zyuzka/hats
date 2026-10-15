@@ -81,21 +81,29 @@ final class SignInParkTests: XCTestCase {
         XCTAssertTrue(keychain.writes.isEmpty)
     }
 
-    func testALiveLoginWhoseOwnerCannotBeReadRefusesTheSignIn() throws {
+    func testALiveLoginWhoseOwnerCannotBeReadLetsTheSignInGoAndKeepsNothing() throws {
         let (store, keychain, liveSlot) = world(status: nil, live: liveLogin)
         let worn = try store.add(email: wornEmail, browser: nil)
         let target = try store.add(email: targetEmail, browser: nil)
         keychain.contents[Slot.parked(worn.id)] = staleCopy
 
-        XCTAssertThrowsError(try store.parkTheLiveLoginBeforeSigningIn(target),
-                             "the live login may be a hat's newest copy, and a sign-in would overwrite "
-                                 + "it with nothing kept — a switch refuses on the same reading") { error in
-            guard case .identityUnknown = error as? SwitchError else {
-                return XCTFail("refused for the wrong reason: \(error)")
-            }
-        }
-        XCTAssertTrue(keychain.writes.isEmpty)
+        XCTAssertNoThrow(try store.parkTheLiveLoginBeforeSigningIn(target),
+                         "refusing would leave no way to sign in from the app while the CLI cannot "
+                             + "answer; losing the live copy costs one more sign-in. Decided 2026-10-15")
+        XCTAssertTrue(keychain.writes.isEmpty, "with no owner there is no slot it could safely go to")
         XCTAssertEqual(keychain.contents[liveSlot], liveLogin)
+    }
+
+    func testALiveSlotThatCannotBeReadLetsTheSignInGo() throws {
+        let (store, keychain, liveSlot) = world(status: loggedIn(as: wornEmail), live: liveLogin)
+        _ = try store.add(email: wornEmail, browser: nil)
+        let target = try store.add(email: targetEmail, browser: nil)
+        keychain.readFailures = [liveSlot]
+
+        XCTAssertNoThrow(try store.parkTheLiveLoginBeforeSigningIn(target),
+                         "LoginFlow.begin reads the same slot through liveSlotNow and goes on, and the "
+                             + "park step answers the same way")
+        XCTAssertTrue(keychain.writes.isEmpty)
     }
 
     func testALiveSlotTheCLICallsLoggedOutParksNothingAndLetsTheSignInGo() throws {
