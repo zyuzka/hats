@@ -36,6 +36,12 @@ enum HatsCopy {
         return remaining > 0 ? "valid \(humanise(remaining))" : "expired"
     }
 
+    static func getLoginLine(for hat: Account, now: Date = Date()) -> String? {
+        if let validity = loginValidity(for: hat, now: now) { return validity }
+
+        return hat.hasStoredCredentials ? "expiry unknown" : nil
+    }
+
     static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String {
         var parts: [String] = []
         if let session = reading.session {

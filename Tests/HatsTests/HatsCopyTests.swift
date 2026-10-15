@@ -31,6 +31,18 @@ final class HatsCopyTests: XCTestCase {
         XCTAssertEqual(HatsCopy.loginValidity(for: hat(refreshIn: -1), now: now), "expired")
     }
 
+    func testAHatWhoseLoginCameWithoutAnExpirySaysItIsUnknown() {
+        XCTAssertEqual(HatsCopy.getLoginLine(for: hat(refreshIn: nil), now: now), "expiry unknown",
+                       "the server sends no expiry with a browser login, and an empty row read as "
+                           + "if the date had been lost")
+        XCTAssertEqual(HatsCopy.getLoginLine(for: hat(refreshIn: 6 * 86400 + 3 * 3600), now: now), "valid 6d 3h")
+        XCTAssertEqual(HatsCopy.getLoginLine(for: hat(refreshIn: -1), now: now), "expired")
+        XCTAssertNil(HatsCopy.getLoginLine(for: hat(credentials: false, refreshIn: nil), now: now),
+                     "a hat with no stored login has no expiry to be unsure about")
+        XCTAssertNil(HatsCopy.loginValidity(for: hat(refreshIn: nil), now: now),
+                     "the log-in-anyway dialog builds \"Its stored login is …\" from this, so it stays silent")
+    }
+
     func testTheParkedLineCarriesTheResetTimeAndAnObservedRise() throws {
         let now = try XCTUnwrap(UsageReading.date(from: "2026-08-31T20:00:00Z"))
         let ahead = try XCTUnwrap(UsageReading.date(from: "2026-08-31T23:20:00Z"))
