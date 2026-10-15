@@ -40,9 +40,10 @@ final class StoredExpiryTests: XCTestCase {
 
         let hat = try XCTUnwrap(store.accounts.first { $0.id == id })
         XCTAssertNil(hat.refreshExpiresAt,
-                     "the date belongs to the credential it came with. Claude Code 2.1.300 writes "
-                         + "no refreshTokenExpiresAt, and keeping the old date marked a login made "
-                         + "two hours earlier as expired — measured live on 2026-10-15")
+                     "the date belongs to the credential it came with. Claude Code writes "
+                         + "refreshTokenExpiresAt only when the server sends one, the login of "
+                         + "2026-10-15 came without it, and keeping the old date marked a login "
+                         + "made two hours earlier as expired")
         XCTAssertFalse(hat.isExpired)
     }
 
