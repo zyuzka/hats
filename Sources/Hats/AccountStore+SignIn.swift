@@ -3,6 +3,11 @@ import Foundation
 extension AccountStore {
     func parkTheLiveLoginBeforeSigningIn(_ target: Account) throws {
         let configuration = try CLIState.configurationNow(world: system)
+        let askedSlot = CLIState.credentialService(environment: CLIState.configuration(from: system.ownEnvironment()))
+        guard configuration.credentialService == askedSlot else {
+            Journal.log("signIn.liveNotParked", ["reason": "sessions use another configuration"])
+            return
+        }
         let live: Data
         switch liveSlotNow(inSlot: configuration.credentialService) {
         case .empty:
