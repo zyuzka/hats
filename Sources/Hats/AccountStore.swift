@@ -129,9 +129,7 @@ final class AccountStore {
     ) {
         guard let index = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts[index].hasStoredCredentials = true
-        if let refreshExpires = payload.oauth?.refreshExpires {
-            accounts[index].refreshExpiresAt = refreshExpires
-        }
+        accounts[index].refreshExpiresAt = payload.oauth?.refreshExpires
         accounts[index].accessExpiresAt = payload.accessExpires
         accounts[index].identityDisagreement = disagreement
         if let identity { accounts[index].identity = identity }
@@ -305,7 +303,6 @@ final class AccountStore {
 
     func beginLogin(_ id: String) throws -> SignInCommand {
         try requireReadableIndex()
-        let before = snapshot
         guard let account = accounts.first(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
@@ -313,6 +310,8 @@ final class AccountStore {
             throw SwitchError.noBrowser(account.display)
         }
         let command = try SignInCommand.of(email: account.email, browser: account.browser)
+        try parkTheLiveLoginBeforeSigningIn(account)
+        let before = snapshot
         if let index = accounts.firstIndex(of: account) {
             accounts[index].lastLoginAt = Date()
             try persist(orRestore: before)
