@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-13%2B-0969da" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/version-0.3.1-1a7f37" alt="version 0.3.1">
+  <img src="https://img.shields.io/badge/version-0.3.2-1a7f37" alt="version 0.3.2">
   <img src="https://img.shields.io/badge/license-MIT-59636e" alt="MIT">
 </p>
 

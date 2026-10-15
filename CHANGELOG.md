@@ -8,6 +8,21 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.3.2 — 2026-10-15
+
+- **Signing in to one hat no longer costs another hat its login.** Claude Code replaces its login a few
+  seconds after writing it, and a sign-in wrote over that newest copy without keeping it, so the hat
+  you were wearing was left holding an older one that the server no longer accepts. On 14 October that
+  happened twice in two minutes: each sign-in was followed, one second later, by the other hat being
+  refused. A sign-in now puts the current login away in its own hat first, the way switching always
+  has. When the app cannot tell whose login is in use, it lets the sign-in go ahead rather than leave
+  you with no way to sign in, and writes down that it kept nothing.
+
+- **A fresh login no longer shows the previous one's expiry.** A login made in the browser does not say
+  when it runs out, and the app went on showing the date of the login before it: a hat signed in to two
+  hours earlier read "login expired" and could not be switched to, while a dead one read "valid 20d".
+  Such a hat now reads "expiry unknown" until the app renews its login and learns the date.
+
 ## 0.3.1 — 2026-09-30
 
 - **The thresholds move one point at a time.** They stepped by five, so from the weekly limit's 95 the
