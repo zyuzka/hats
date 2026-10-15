@@ -116,6 +116,33 @@ final class SignInParkTests: XCTestCase {
         XCTAssertTrue(keychain.writes.isEmpty)
     }
 
+    func testALiveSlotOfAnotherConfigurationIsNotParkedUnderTheOwnerOurStatusNames() throws {
+        let otherDir = home.appendingPathComponent("other-config").path
+        let sessionsSlot = CLIState.credentialService(environment: [CLIState.configDirVariable: otherDir])
+        let keychain = FakeKeychain([sessionsSlot: liveLogin])
+        let system = FakeSystem(home: home.path)
+        system.status = loggedIn(as: wornEmail)
+        system.table = { arguments in
+            arguments.contains("pid=,comm=")
+                ? "111 /usr/local/bin/claude\n"
+                : "111 01:00 claude\n"
+        }
+        system.trusts = { _ in true }
+        system.environmentOf = { _ in .read([CLIState.configDirVariable: otherDir]) }
+        let store = AccountStore(osAccount: "signin-park-test", keychain: keychain.world(), system: system.world())
+        store.fetchingTokenIdentity = { _ in .unreachable }
+        let worn = try store.add(email: wornEmail, browser: nil)
+        let target = try store.add(email: targetEmail, browser: nil)
+        keychain.contents[Slot.parked(worn.id)] = staleCopy
+
+        XCTAssertNoThrow(try store.parkTheLiveLoginBeforeSigningIn(target))
+
+        XCTAssertEqual(keychain.contents[Slot.parked(worn.id)], staleCopy,
+                       "claude auth status answers for this app's own configuration while the slot "
+                           + "was chosen by the running sessions' one, so the owner it names may not own "
+                           + "the token — found by the codex review on 2026-10-15")
+    }
+
     func testAParkThatCannotBeWrittenStopsTheSignInAndLeavesTheOldCopy() throws {
         let (store, keychain, _) = world(status: loggedIn(as: wornEmail), live: liveLogin)
         let worn = try store.add(email: wornEmail, browser: nil)
