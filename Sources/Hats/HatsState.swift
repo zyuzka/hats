@@ -37,7 +37,7 @@ struct HatRowState: Identifiable, Equatable {
         self.usageTrouble = usageTrouble
         self.roseWhileParked = roseWhileParked
         browser = hat.browser?.label(chromeNames: chromeNames)
-        loginValidity = HatsCopy.loginValidity(for: hat, now: now)
+        loginValidity = HatsCopy.getLoginLine(for: hat, now: now)
         loginAction = hat.hasStoredCredentials ? "Log in again…" : "Log in…"
     }
 }
