@@ -16,12 +16,9 @@ enum HatDialogs {
     }
 
     static func hasConfirmedLoginAnyway(for hat: Account) -> Bool {
-        var text = "Putting it on works without logging in. A new login replaces the token that already works."
-        if let validity = HatsCopy.loginValidity(for: hat) { text = "Its stored login is \(validity). " + text }
-
-        return PromptWindow.ask(HatPrompt(
+        PromptWindow.ask(HatPrompt(
             title: "\(hat.title) does not need a login",
-            text: text,
+            text: HatsCopy.getLoginAnywayText(for: hat),
             buttons: ["Log in anyway", "Cancel"]
         )) == 0
     }

@@ -43,6 +43,17 @@ final class HatsCopyTests: XCTestCase {
                      "the log-in-anyway dialog builds \"Its stored login is …\" from this, so it stays silent")
     }
 
+    func testTheLogInAnywayDialogSaysWhatTheRowSaysAboutTheExpiry() {
+        let rest = "Putting it on works without logging in. A new login replaces the token that already works."
+
+        XCTAssertEqual(HatsCopy.getLoginAnywayText(for: hat(refreshIn: 6 * 86400 + 3 * 3600), now: now),
+                       "Its stored login is valid 6d 3h. " + rest)
+        XCTAssertEqual(HatsCopy.getLoginAnywayText(for: hat(refreshIn: nil), now: now),
+                       "Its stored login came without an expiry date. " + rest,
+                       "the row says expiry unknown, and the dialog used to say nothing at all")
+        XCTAssertEqual(HatsCopy.getLoginAnywayText(for: hat(credentials: false, refreshIn: nil), now: now), rest)
+    }
+
     func testTheParkedLineCarriesTheResetTimeAndAnObservedRise() throws {
         let now = try XCTUnwrap(UsageReading.date(from: "2026-08-31T20:00:00Z"))
         let ahead = try XCTUnwrap(UsageReading.date(from: "2026-08-31T23:20:00Z"))

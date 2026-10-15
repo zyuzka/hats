@@ -30,13 +30,13 @@ final class SignInParkTests: XCTestCase {
         try? FileManager.default.removeItem(at: home)
     }
 
-    private func world(liveOwner: String?, live: Data?) -> (AccountStore, FakeKeychain, String) {
+    private func world(status: CLI.Status?, live: Data?) -> (AccountStore, FakeKeychain, String) {
         let liveSlot = CLIState.credentialService(environment: [:])
         var contents: [String: Data] = [:]
         if let live { contents[liveSlot] = live }
         let keychain = FakeKeychain(contents)
         let system = FakeSystem(home: home.path)
-        if let liveOwner { system.status = loggedIn(as: liveOwner) }
+        system.status = status
         let store = AccountStore(osAccount: "signin-park-test",
                                  keychain: keychain.world(),
                                  system: system.world())
@@ -46,7 +46,7 @@ final class SignInParkTests: XCTestCase {
     }
 
     func testSigningIntoAnotherHatParksTheLoginThatIsAboutToBeOverwritten() throws {
-        let (store, keychain, liveSlot) = world(liveOwner: wornEmail, live: liveLogin)
+        let (store, keychain, liveSlot) = world(status: loggedIn(as: wornEmail), live: liveLogin)
         let worn = try store.add(email: wornEmail, browser: nil)
         let target = try store.add(email: targetEmail, browser: nil)
         keychain.contents[Slot.parked(worn.id)] = staleCopy
@@ -63,7 +63,7 @@ final class SignInParkTests: XCTestCase {
     }
 
     func testSigningIntoTheWornHatAgainParksNothing() throws {
-        let (store, keychain, _) = world(liveOwner: wornEmail, live: liveLogin)
+        let (store, keychain, _) = world(status: loggedIn(as: wornEmail), live: liveLogin)
         let worn = try store.add(email: wornEmail, browser: nil)
         keychain.contents[Slot.parked(worn.id)] = staleCopy
 
@@ -73,7 +73,7 @@ final class SignInParkTests: XCTestCase {
     }
 
     func testAnEmptyLiveSlotParksNothing() throws {
-        let (store, keychain, _) = world(liveOwner: nil, live: nil)
+        let (store, keychain, _) = world(status: nil, live: nil)
         let target = try store.add(email: targetEmail, browser: nil)
 
         try store.parkTheLiveLoginBeforeSigningIn(target)
@@ -81,8 +81,48 @@ final class SignInParkTests: XCTestCase {
         XCTAssertTrue(keychain.writes.isEmpty)
     }
 
+    func testALiveLoginWhoseOwnerCannotBeReadRefusesTheSignIn() throws {
+        let (store, keychain, liveSlot) = world(status: nil, live: liveLogin)
+        let worn = try store.add(email: wornEmail, browser: nil)
+        let target = try store.add(email: targetEmail, browser: nil)
+        keychain.contents[Slot.parked(worn.id)] = staleCopy
+
+        XCTAssertThrowsError(try store.parkTheLiveLoginBeforeSigningIn(target),
+                             "the live login may be a hat's newest copy, and a sign-in would overwrite "
+                                 + "it with nothing kept — a switch refuses on the same reading") { error in
+            guard case .identityUnknown = error as? SwitchError else {
+                return XCTFail("refused for the wrong reason: \(error)")
+            }
+        }
+        XCTAssertTrue(keychain.writes.isEmpty)
+        XCTAssertEqual(keychain.contents[liveSlot], liveLogin)
+    }
+
+    func testALiveSlotTheCLICallsLoggedOutParksNothingAndLetsTheSignInGo() throws {
+        let loggedOut = CLI.Status(loggedIn: false, email: nil, orgName: nil, subscriptionType: nil, authMethod: nil)
+        let (store, keychain, _) = world(status: loggedOut, live: liveLogin)
+        let target = try store.add(email: targetEmail, browser: nil)
+
+        XCTAssertNoThrow(try store.parkTheLiveLoginBeforeSigningIn(target),
+                         "Claude Code itself says nobody is logged in, so the slot holds no login to keep")
+        XCTAssertTrue(keychain.writes.isEmpty)
+    }
+
+    func testAParkThatCannotBeWrittenStopsTheSignInAndLeavesTheOldCopy() throws {
+        let (store, keychain, _) = world(status: loggedIn(as: wornEmail), live: liveLogin)
+        let worn = try store.add(email: wornEmail, browser: nil)
+        let target = try store.add(email: targetEmail, browser: nil)
+        keychain.contents[Slot.parked(worn.id)] = staleCopy
+        keychain.writeFailures = [Slot.parked(worn.id)]
+
+        XCTAssertThrowsError(try store.parkTheLiveLoginBeforeSigningIn(target),
+                             "going ahead would overwrite the only copy of the newest login; the person "
+                                 + "sees the keychain error and can retry")
+        XCTAssertEqual(keychain.contents[Slot.parked(worn.id)], staleCopy)
+    }
+
     func testALiveLoginThatIsNoHatIsLeftWhereItIs() throws {
-        let (store, keychain, _) = world(liveOwner: "stranger@b.com", live: liveLogin)
+        let (store, keychain, _) = world(status: loggedIn(as: "stranger@b.com"), live: liveLogin)
         let target = try store.add(email: targetEmail, browser: nil)
 
         XCTAssertNoThrow(try store.parkTheLiveLoginBeforeSigningIn(target),

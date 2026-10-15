@@ -4,12 +4,18 @@ extension AccountStore {
     func parkTheLiveLoginBeforeSigningIn(_ target: Account) throws {
         let configuration = try CLIState.configurationNow(world: system)
         guard let live = try keychain.read(configuration.credentialService) else { return }
-        guard let email = liveEmail() else {
+        let email: String
+        switch liveIdentity() {
+        case .loggedOut:
+            return
+        case .unreadable:
             Journal.log("signIn.liveNotParked", [
                 "reason": "owner unknown",
                 "live": Journal.fingerprint(live),
             ])
-            return
+            throw SwitchError.identityUnknown
+        case .account(let owner):
+            email = owner
         }
         guard !Account.sameAddress(email, target.email) else { return }
         guard accounts.contains(where: { Account.sameAddress($0.email, email) }) else {

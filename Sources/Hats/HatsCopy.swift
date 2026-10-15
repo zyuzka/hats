@@ -42,6 +42,14 @@ enum HatsCopy {
         return hat.hasStoredCredentials ? "expiry unknown" : nil
     }
 
+    static func getLoginAnywayText(for hat: Account, now: Date = Date()) -> String {
+        let text = "Putting it on works without logging in. A new login replaces the token that already works."
+        if let validity = loginValidity(for: hat, now: now) { return "Its stored login is \(validity). " + text }
+        guard hat.hasStoredCredentials else { return text }
+
+        return "Its stored login came without an expiry date. " + text
+    }
+
     static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String {
         var parts: [String] = []
         if let session = reading.session {
