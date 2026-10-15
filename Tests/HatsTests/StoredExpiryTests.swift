@@ -31,17 +31,19 @@ final class StoredExpiryTests: XCTestCase {
         XCTAssertEqual(store.accounts.first { $0.id == id }?.refreshExpiresAt, expiry)
     }
 
-    func testAFreshLoginDoesNotEraseAnExpiryItWasNotTold() throws {
+    func testACredentialWithoutAnExpiryErasesTheOneLeftByThePreviousLogin() throws {
         let (store, id) = try self.store()
-        store.noteStored(id, payload: payload(refreshExpires: expiry), identity: nil)
+        let past = Date().addingTimeInterval(-3600)
+        store.noteStored(id, payload: payload(refreshExpires: past), identity: nil)
 
         store.noteStored(id, payload: payload(refreshExpires: nil), identity: nil)
 
-        XCTAssertEqual(store.accounts.first { $0.id == id }?.refreshExpiresAt, expiry,
-                       "a credential written by `claude auth login` carries no "
-                           + "refreshTokenExpiresAt, and overwriting with nothing leaves the hat "
-                           + "unable to say the login expired or is about to — both read the field "
-                           + "and return false when it is absent. Renewal already keeps it")
+        let hat = try XCTUnwrap(store.accounts.first { $0.id == id })
+        XCTAssertNil(hat.refreshExpiresAt,
+                     "the date belongs to the credential it came with. Claude Code 2.1.300 writes "
+                         + "no refreshTokenExpiresAt, and keeping the old date marked a login made "
+                         + "two hours earlier as expired — measured live on 2026-10-15")
+        XCTAssertFalse(hat.isExpired)
     }
 
     func testWithoutAnyExpiryTheHatCannotWarnAtAll() {
