@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var blink: MarkBlink?
     var liveIdentity: LiveIdentity = .unreadable
     var settings = AppSettings.loaded()
+    var weekly = WeeklyRecord()
+    var lastWeeklyFailure = NoteOnChange()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -74,7 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.store.noteAuthObservation(refused: refused, accepted: accepted)
         }
         usage.onRenewals = { [weak self] renewals in self?.store.noteRenewed(renewals) }
-        usage.onReadings = { [weak self] _ in self?.redrawAndDecide() }
+        usage.onReadings = { [weak self] _ in
+            self?.rememberTheWeek()
+            self?.redrawAndDecide()
+        }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
         watchForUpdates()
         DockPresence.watch()
