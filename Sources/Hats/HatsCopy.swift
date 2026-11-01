@@ -50,17 +50,28 @@ enum HatsCopy {
         return "Its stored login came without an expiry date. " + text
     }
 
-    static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String {
-        var parts: [String] = []
-        if let session = reading.session {
-            var line = "\(session.percent)% of 5h"
-            if let resets = session.resetsAt, resets > now {
-                line += " · resets \(UsageReading.clock(resets, timeZone: timeZone))"
-            }
-            parts.append(line)
+    static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String? {
+        guard let session = reading.session else { return nil }
+        var line = "\(session.percent)% of 5h"
+        if let resets = session.resetsAt, resets > now {
+            line += " · resets \(UsageReading.clock(resets, timeZone: timeZone))"
         }
-        if let weekly = reading.weekly { parts.append("week \(weekly.percent)%") }
-        return parts.joined(separator: " · ")
+
+        return line
+    }
+
+    static func weekLine(
+        percent: Int,
+        resetsAt: Date?,
+        isConfirmed: Bool,
+        timeZone: TimeZone = .current,
+        now: Date = Date()
+    ) -> String {
+        guard let resetsAt else { return "week \(percent)%" + (isConfirmed ? "" : "?") }
+        let when = "(\(UsageReading.dayAndClock(resetsAt, timeZone: timeZone)))"
+        guard resetsAt > now else { return "week ? \(when)" }
+
+        return "week \(percent)% \(when)" + (isConfirmed ? "" : "?")
     }
 
     static func staleReading(_ trouble: UsageTrouble?) -> String? {

@@ -50,22 +50,34 @@ struct HatRowView: View {
 
     @ViewBuilder private var detail: some View {
         if row.isWearing, let usage = row.usage {
-            Text(HatsCopy.usageLine(usage)).font(.system(size: 11)).foregroundStyle(secondary)
+            if let line = HatsCopy.usageLine(usage) {
+                Text(line).font(.system(size: 11)).foregroundStyle(secondary)
+            }
+            weekBelow
             if let stale = HatsCopy.staleReading(row.usageTrouble) {
                 Text(stale).font(.system(size: 11)).foregroundStyle(secondary)
             }
             if let handover { Text(handover).font(.system(size: 11)).foregroundStyle(secondary) }
         } else if row.isWearing, let trouble = row.usageTrouble {
             Text(trouble.onTheRow).font(.system(size: 11)).foregroundStyle(secondary)
+            weekBelow
         } else if !row.isWearing, let usage = row.usage,
                   let parked = HatsCopy.parkedUsage(usage, rose: row.roseWhileParked) {
             Text(parked).font(.system(size: 11)).foregroundStyle(secondary)
+            weekBelow
             if let stale = HatsCopy.staleReading(row.usageTrouble) {
                 Text(stale).font(.system(size: 11)).foregroundStyle(secondary)
             }
         } else if let trouble = row.usageTrouble {
             Text(trouble.onTheRow).font(.system(size: 11)).foregroundStyle(secondary)
+            weekBelow
+        } else {
+            weekBelow
         }
+    }
+
+    @ViewBuilder private var weekBelow: some View {
+        if let week = row.week { Text(week).font(.system(size: 11)).foregroundStyle(secondary) }
     }
 
     @ViewBuilder private var trailing: some View {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct UsageWindow: Equatable {
+struct UsageWindow: Codable, Equatable {
     let used: Int
     let limit: Int
     let resetsAt: Date?
@@ -75,6 +75,14 @@ struct UsageReading: Equatable {
         formatter.timeZone = timeZone
         formatter.dateFormat = "EEE d MMM"
         return "on \(formatter.string(from: date)) at \(time)"
+    }
+
+    static func dayAndClock(_ date: Date, timeZone: TimeZone = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "EEE d MMM HH:mm"
+        return formatter.string(from: date)
     }
 
     static func clock(_ date: Date, timeZone: TimeZone = .current) -> String {

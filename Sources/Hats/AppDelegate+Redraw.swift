@@ -13,6 +13,7 @@ extension AppDelegate {
                 usage: usage.readings[hat.id],
                 usageTrouble: usage.troubles[hat.id],
                 roseWhileParked: usage.roseWhileParked[hat.id],
+                week: weekly.memory.findSighting(of: hat.id, readings: usage.readings, fresh: usage.freshInTheLastPoll),
                 chromeNames: chromeNames
             )
         }
@@ -78,6 +79,19 @@ extension AppDelegate {
             try settings.save()
         } catch {
             Journal.log("settings.notSaved", ["reason": error.localizedDescription])
+        }
+    }
+
+    func rememberTheWeek() {
+        let liveIDs = WeeklyRecord.findLiveIDs(store.accounts.map(\.id), indexIsUnusable: store.indexUnusable != nil)
+        switch weekly.noteAPoll(usage.readings, fresh: usage.freshInTheLastPoll, liveIDs: liveIDs) {
+        case .failed(let reason):
+            guard lastWeeklyFailure.shouldWrite(reason) else { return }
+            Journal.log("weekly.notSaved", ["reason": reason])
+        case .written, .unchanged:
+            lastWeeklyFailure.clear()
+        case .heldBecauseTheHatsAreUnknown:
+            break
         }
     }
 

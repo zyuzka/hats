@@ -75,7 +75,7 @@ final class HatsCopyTests: XCTestCase {
                            + "already past would be read as a future one")
     }
 
-    func testTheUsageLineReadsPercentResetAndWeek() throws {
+    func testTheUsageLineReadsPercentAndResetAndLeavesTheWeekToItsOwnLine() throws {
         let resets = try XCTUnwrap(UsageReading.date(from: "2026-08-30T18:52:00Z"))
         let reading = UsageReading(
             session: UsageWindow(used: 78, limit: 100, resetsAt: resets),
@@ -83,14 +83,15 @@ final class HatsCopyTests: XCTestCase {
         )
         let before = try XCTUnwrap(UsageReading.date(from: "2026-08-30T18:00:00Z"))
         XCTAssertEqual(HatsCopy.usageLine(reading, timeZone: utc, now: before),
-                       "78% of 5h · resets 18:52 · week 41%")
+                       "78% of 5h · resets 18:52")
         XCTAssertEqual(HatsCopy.usageLine(reading, timeZone: utc,
                                           now: try XCTUnwrap(UsageReading.date(from: "2026-08-30T19:00:00Z"))),
-                       "78% of 5h · week 41%",
+                       "78% of 5h",
                        "the worn row shares the 300 s cadence, so a reset time already past is dropped "
                            + "there for the same reason as on a parked row")
-        XCTAssertEqual(HatsCopy.usageLine(UsageReading(session: nil, weekly: reading.weekly),
-                                          timeZone: utc, now: before), "week 41%")
+        XCTAssertNil(HatsCopy.usageLine(UsageReading(session: nil, weekly: reading.weekly),
+                                        timeZone: utc, now: before),
+                     "the week has its own line under this one on every hat, worn or not")
         XCTAssertEqual(HatsCopy.parkedUsage(reading, timeZone: utc, now: before),
                        "78% · resets 18:52",
                        "without an explicit now this read the wall clock: it passed only because "
@@ -350,5 +351,24 @@ final class HatsCopyTests: XCTestCase {
                            + "produces was invisible. Both branches that render a number, worn and "
                            + "parked, have to render this line too, and a SwiftUI body cannot be "
                            + "driven from here, so the wiring is asserted by reading it")
+    }
+
+    func testEveryRowBranchShowsTheWeekBelowItsOwnLine() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/Hats/HatRowView.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let detail = try XCTUnwrap(text.components(separatedBy: "@ViewBuilder private var detail").last?
+            .components(separatedBy: "@ViewBuilder private var weekBelow").first)
+        let branches = detail.components(separatedBy: "} else").count
+        let weeks = detail.components(separatedBy: "\n").filter {
+            $0.trimmingCharacters(in: .whitespaces) == "weekBelow"
+        }.count
+
+        XCTAssertEqual(branches, 5)
+        XCTAssertEqual(weeks, branches,
+                       "the week is shown on every hat, worn or parked, with a number, with a "
+                           + "trouble line, or with nothing but a remembered week after a restart; "
+                           + "the row is an else-if chain, so each branch has to render it itself")
     }
 }
