@@ -43,7 +43,11 @@ struct WeeklyMemory: Codable, Equatable {
         var next = self
         for id in fresh {
             guard let weekly = readings[id]?.weekly else { continue }
-            next.hats[id] = weekly
+            next.hats[id] = UsageWindow(
+                used: weekly.used,
+                limit: weekly.limit,
+                resetsAt: weekly.resetsAt.map { Date(timeIntervalSinceReferenceDate: $0.timeIntervalSinceReferenceDate.rounded()) }
+            )
         }
         return next
     }
