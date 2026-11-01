@@ -197,6 +197,20 @@ final class WeeklyMemoryTests: XCTestCase {
         XCTAssertEqual(WeeklyRecord(url: url).memory, record.memory, "a restart reads back what was written")
     }
 
+    func testAResetDateThatOnlyJittersBelowASecondDoesNotRewriteTheFile() throws {
+        let first = try date("2026-11-02T14:00:00.369Z")
+        let second = try date("2026-11-02T13:59:59.804Z")
+        var record = WeeklyRecord(url: url)
+
+        XCTAssertEqual(record.noteAPoll(["a": reading(weekly: week(1, resets: first))], fresh: ["a"], liveIDs: ["a"]),
+                       .written)
+        XCTAssertEqual(record.noteAPoll(["a": reading(weekly: week(1, resets: second))], fresh: ["a"], liveIDs: ["a"]),
+                       .unchanged,
+                       "the server sends the same reset with a different fraction of a second on every poll, "
+                           + "and storing it as sent rewrote weekly.json every 300 s")
+        XCTAssertEqual(WeeklyMemory.loaded(from: url).hats["a"]?.resetsAt, try date("2026-11-02T14:00:00Z"))
+    }
+
     func testAnUnreadableIndexLeavesTheFileAlone() throws {
         let resets = try date("2026-11-02T14:00:00Z")
         var record = WeeklyRecord(url: url)
