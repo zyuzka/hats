@@ -36,8 +36,9 @@ Not affiliated with Anthropic.
 
 - **Its network traffic is to Anthropic, and to GitHub for updates.** The relay forwards your own
   Claude Code requests, and each hat's usage is read from Anthropic's usage endpoint with that hat's
-  own token. About every six hours Hats reads the release feed of this repository on GitHub, and it
-  downloads a release only after you press Install. Nothing goes anywhere else.
+  own token. About every six hours Hats reads the release feed of this repository on GitHub (with
+  the automatic look turned off, only when you press Check for Updates…; see [Updating](#updating)),
+  and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
 
@@ -72,6 +73,10 @@ General has **Check for Updates…**. When there is one, a window shows what cha
 says so if Hats found it on its own. **Install Update** downloads the release and checks that it is
 signed with the same key as the copy you run. A second window then says it is ready to install, and
 **Install and Relaunch** there installs it and opens the new version.
+
+From 0.4.1, Settings → General also has **Check for updates automatically**. Turned off, Hats looks
+for a new release only when you press **Check for Updates…**, so no notification about one comes
+either.
 
 Installing restarts Hats, and the restart stops the gateway for a moment. If a Claude Code session is
 running through the gateway, or Hats cannot read a session's settings to tell, it asks after Install
@@ -168,7 +173,7 @@ markers in whichever profile your login shell reads: `~/.zshrc` (or `$ZDOTDIR/.z
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
-| Updater state: last check, a skipped version | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
+| Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under
 `~/.claude/state`, which is Claude Code's own directory and not a place for another program's files;

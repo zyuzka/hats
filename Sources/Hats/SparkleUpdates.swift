@@ -37,6 +37,11 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
 
     var canCheckNow: Bool { controller?.updater.canCheckForUpdates ?? false }
 
+    var checksAutomatically: Bool {
+        get { controller?.updater.automaticallyChecksForUpdates ?? false }
+        set { controller?.updater.automaticallyChecksForUpdates = newValue }
+    }
+
     func start() {
         let controller = SPUStandardUpdaterController(
             startingUpdater: true,
@@ -52,6 +57,9 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
             DispatchQueue.main.async { self?.whenCanCheckNowChanges?() }
         }
         self.controller = controller
+        Journal.log("update.started", [
+            "automaticChecks": String(controller.updater.automaticallyChecksForUpdates),
+        ])
     }
 
     func checkNow() {
