@@ -78,6 +78,7 @@ struct HatsSnapshot: Equatable {
     var bannerFromTitle: String = ""
     var version: String = "dev"
     var canCheckForUpdates: Bool?
+    var checksForUpdatesAutomatically: Bool?
     var changing: String?
     var startAtLogin = LoginItem.face(for: .notRegistered)
     var retiredPort: Int?
@@ -142,6 +143,7 @@ protocol HatsActions: AnyObject {
     func openSessions()
     func showSettings()
     func checkForUpdates()
+    func toggleAutomaticUpdateChecks()
     func showReleases()
     func toggleStartAtLogin()
     func toggleHatNameInTheMenuBar()

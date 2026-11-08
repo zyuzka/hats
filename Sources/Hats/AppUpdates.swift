@@ -2,6 +2,7 @@ import Foundation
 
 protocol AppUpdater: AnyObject {
     var canCheckNow: Bool { get }
+    var checksAutomatically: Bool { get set }
     var whenCanCheckNowChanges: (() -> Void)? { get set }
     func start()
     func checkNow()

@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-13%2B-0969da" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/version-0.4.0-1a7f37" alt="version 0.4.0">
+  <img src="https://img.shields.io/badge/version-0.4.1-1a7f37" alt="version 0.4.1">
   <img src="https://img.shields.io/badge/license-MIT-59636e" alt="MIT">
 </p>
 
@@ -36,8 +36,9 @@ Not affiliated with Anthropic.
 
 - **Its network traffic is to Anthropic, and to GitHub for updates.** The relay forwards your own
   Claude Code requests, and each hat's usage is read from Anthropic's usage endpoint with that hat's
-  own token. About every six hours Hats reads the release feed of this repository on GitHub, and it
-  downloads a release only after you press Install. Nothing goes anywhere else.
+  own token. About every six hours Hats reads the release feed of this repository on GitHub (with
+  the automatic look turned off, only when you press Check for Updates…; see [Updating](#updating)),
+  and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
 
@@ -45,7 +46,7 @@ Not affiliated with Anthropic.
 
 Download the `.dmg` from [Releases](../../releases), open it and drag Hats to Applications.
 
-macOS 13 or later, and Claude Code already installed and logged in.
+A Mac with Apple silicon and macOS 13 or later, and Claude Code already installed and logged in.
 
 Hats is signed with an Apple Developer ID and notarized by Apple, so it opens on the first launch.
 
@@ -73,12 +74,16 @@ says so if Hats found it on its own. **Install Update** downloads the release an
 signed with the same key as the copy you run. A second window then says it is ready to install, and
 **Install and Relaunch** there installs it and opens the new version.
 
+From 0.4.1, Settings → General also has **Check for updates automatically**. Turned off, Hats looks
+for a new release only when you press **Check for Updates…**, so no notification about one comes
+either.
+
 Installing restarts Hats, and the restart stops the gateway for a moment. If a Claude Code session is
 running through the gateway, or Hats cannot read a session's settings to tell, it asks after Install
 and Relaunch: a request going through the gateway at that moment is cut off. **Later** leaves the
 update waiting, and it installs the next time Hats quits.
 
-**From 0.3.x, update by hand one last time** — those versions cannot install an update themselves.
+**From 0.3.x or earlier, update by hand one last time** — those versions cannot install an update themselves.
 Quit Hats first — the power button at the foot of the popover, or `Cmd-Q` while it is open. It asks
 before quitting if any Claude Code session is running, and says how many: quitting stops the relay,
 so such a session stops working until Hats is back or its shell is cleared.
@@ -168,7 +173,7 @@ markers in whichever profile your login shell reads: `~/.zshrc` (or `$ZDOTDIR/.z
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
-| Updater state: last check, a skipped version | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
+| Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under
 `~/.claude/state`, which is Claude Code's own directory and not a place for another program's files;

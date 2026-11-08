@@ -7,7 +7,7 @@ struct UsageWindow: Codable, Equatable {
 
     var percent: Int {
         guard limit > 0 else { return 0 }
-        return min(100, max(0, used * 100 / limit))
+        return min(max(used, 0), limit) * 100 / limit
     }
 
     static func parsed(_ bucket: Any?) -> UsageWindow? {
@@ -23,7 +23,7 @@ struct UsageWindow: Codable, Equatable {
 
     private static func wholeNumber(_ value: Any?) -> Int? {
         if let int = value as? Int { return int }
-        if let double = value as? Double, double.isFinite { return Int(double.rounded()) }
+        if let double = value as? Double, double.isFinite { return Int(exactly: double.rounded()) }
         return nil
     }
 }

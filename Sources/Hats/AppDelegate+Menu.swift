@@ -63,6 +63,15 @@ extension AppDelegate {
         afterThePopoverSettles { [weak self] in self?.updater?.checkNow() }
     }
 
+    func toggleAutomaticUpdateChecks() {
+        guard let updater else { return }
+        updater.checksAutomatically.toggle()
+        Journal.log("update.automaticChecks", [
+            "enabled": String(updater.checksAutomatically),
+        ])
+        redraw()
+    }
+
     func quit() {
         let live = SessionDiscovery.everySessionSeenRecently()
         guard let cost = HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown) else {

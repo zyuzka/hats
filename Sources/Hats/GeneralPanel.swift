@@ -11,6 +11,10 @@ struct GeneralPanel: View {
             Divider()
             startAtLoginRow
             Divider()
+            if let checks = snapshot.checksForUpdatesAutomatically {
+                automaticUpdateChecksRow(checks)
+                Divider()
+            }
             versionRow
             Spacer()
         }
@@ -52,6 +56,17 @@ struct GeneralPanel: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
         }
+        .padding(.horizontal, 14)
+    }
+
+    private func automaticUpdateChecksRow(_ checks: Bool) -> some View {
+        Toggle(isOn: Binding(
+            get: { checks },
+            set: { _ in model.actions?.toggleAutomaticUpdateChecks() }
+        )) { Text("Check for updates automatically").font(.system(size: 13)) }
+        .toggleStyle(.switch)
+        .help("Hats looks for a new release on GitHub by itself and notifies you when one is out. "
+            + "Off: it looks only when you press Check for Updates\u{2026}.")
         .padding(.horizontal, 14)
     }
 
