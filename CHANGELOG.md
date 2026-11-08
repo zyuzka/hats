@@ -34,6 +34,10 @@ what it shipped is folded into the single entry below, and public numbering star
   share used and when it resets, like the weekly one; while auto-switch is on and the worn hat's usage
   is known, its row names the hat it would switch to: `next: Personal`.
 
+- **Hats opens on the first launch.** It is now signed with an Apple Developer ID and notarized by
+  Apple. Earlier downloads were blocked by macOS until you went to System Settings → Privacy &
+  Security and chose Open Anyway; this one opens straight away.
+
 ## 0.3.2 — 2026-10-15
 
 - **Signing in to one hat no longer costs another hat its login.** Claude Code replaces its login a few
