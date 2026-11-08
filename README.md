@@ -46,6 +46,8 @@ Not affiliated with Anthropic.
 
 Download the `.dmg` from [Releases](../../releases), open it and drag Hats to Applications.
 
+Or with Homebrew: `brew install zyuzka/tap/hats`.
+
 A Mac with Apple silicon and macOS 13 or later, and Claude Code already installed and logged in.
 
 Hats is signed with an Apple Developer ID and notarized by Apple, so it opens on the first launch.
