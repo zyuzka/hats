@@ -1,4 +1,4 @@
-# Swift build output, and the app bundle Dev/build-app.sh produces
+# Swift build output, and the app bundle Build/build-app.sh produces
 .build/
 *.app/
 dist/
