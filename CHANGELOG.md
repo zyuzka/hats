@@ -15,18 +15,20 @@ what it shipped is folded into the single entry below, and public numbering star
   check showed the worn hat under its 85% threshold, four minutes later 23 sessions and agents were
   refused at once, and the switch came fifty seconds after that, when they had already paused until the
   limit reset. Claude's answers through Hats' gateway carry the current usage, and Hats now reads it.
-  When an answer shows the hat you wear past its threshold, Hats checks at once and switches on what
-  that check says. Such early checks happen at most once every 30 seconds, and at most once every five
-  minutes while you keep wearing the same hat. For a few minutes after Claude Code renews its login,
-  Hats does not recognise the new one yet and falls back to the five-minute check. A session that was
-  refused before the switch still waits for its old limit to reset until you send it a message: that
-  wait is Claude Code's own.
+  When an answer shows the hat you wear past its 5-hour or weekly threshold, Hats checks at once and
+  switches on what that check says. Such early checks happen at most once every 30 seconds, and at
+  most once every five minutes while you keep wearing the same hat. For a few minutes after Claude
+  Code renews its login, Hats does not recognise the new one yet and falls back to the five-minute
+  check. A session that was refused before the switch still waits for its old limit to reset until you
+  send it a message: that wait is Claude Code's own.
 
 - **Every hat shows its weekly limit.** Each hat, worn or parked, has a line under the 5-hour one with
-  its weekly use and the moment the week resets: `week 51% (Fri 13 Nov 14:00)`. A `?` at the end means
-  the latest check did not confirm the number; once the reset has passed the line reads
-  `week ? (Fri 13 Nov 14:00)` until a check brings the new week. The last figure of each hat is kept
-  across restarts, for showing only: auto-switch never decides on it.
+  its weekly use and, when the server says it, the moment the week resets:
+  `week 51% (Fri 13 Nov 14:00)`, or `week 51%` without one. A `?` at the end means the latest check did
+  not confirm the number; once the reset has passed the line reads `week ? (Fri 13 Nov 14:00)` until a
+  check brings the new week. The last figure of each hat is kept across restarts so the line is not
+  blank after one. That kept figure is only shown: the weekly threshold still switches hats, but on a
+  fresh check, never on the kept figure.
 
 ## 0.3.2 — 2026-10-15
 
