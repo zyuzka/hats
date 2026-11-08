@@ -20,6 +20,26 @@ final class UsageFetcherTests: XCTestCase {
         XCTAssertNil(UsageFetcher.reading(status: 200, body: nil))
     }
 
+    func testAUtilizationTooLargeForAWholeNumberIsNoWindowInsteadOfTrapping() {
+        let rows: [(sent: String, used: Int?, percent: Int?)] = [
+            ("1e300", nil, nil),
+            ("-1e300", nil, nil),
+            ("9223372036854775807", Int.max, 100),
+            ("107", 107, 100),
+            ("-0.6", -1, 0),
+            ("99.5", 100, 100),
+        ]
+        for row in rows {
+            let body = Data(#"{"five_hour":{"utilization":\#(row.sent)},"seven_day":{"utilization":22}}"#.utf8)
+
+            let reading = UsageFetcher.reading(status: 200, body: body)
+
+            XCTAssertEqual(reading?.session?.used, row.used, "utilization \(row.sent) as the endpoint sends it")
+            XCTAssertEqual(reading?.session?.percent, row.percent, "utilization \(row.sent) as the meter shows it")
+            XCTAssertEqual(reading?.weekly?.percent, 22, "the other window of the same answer still reads")
+        }
+    }
+
     func testAFailedFetchSaysWhichWayItFailed() {
         let body = Data(#"{"five_hour":{"utilization":26,"resets_at":"2026-08-30T12:50:00Z"}}"#.utf8)
         XCTAssertEqual(UsageFetcher.outcome(status: 401, body: body), .refused(401),

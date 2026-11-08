@@ -27,6 +27,11 @@ final class UsageReadingTests: XCTestCase {
         XCTAssertEqual(reading.session?.percent, 78, "a fractional percent rounds, not truncates")
     }
 
+    func testThePercentOfTheLargestWholeNumbersStaysInZeroToAHundredInsteadOfOverflowing() {
+        XCTAssertEqual(UsageWindow(used: Int.max, limit: 100, resetsAt: nil).percent, 100)
+        XCTAssertEqual(UsageWindow(used: Int.min, limit: 100, resetsAt: nil).percent, 0)
+    }
+
     func testPercentNeverLeavesZeroToAHundred() {
         XCTAssertEqual(UsageWindow(used: 3, limit: 4, resetsAt: nil).percent, 75)
         XCTAssertEqual(UsageWindow(used: 107, limit: 100, resetsAt: nil).percent, 100,
