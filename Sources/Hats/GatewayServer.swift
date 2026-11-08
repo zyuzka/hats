@@ -6,6 +6,7 @@ import NIOPosix
 final class GatewayServer {
     let port: Int
     let refusal: GatewayRefusal?
+    let usageSink: ((String, UsageReading) -> Void)?
     let ledger = GatewayLedger()
 
     private let group: MultiThreadedEventLoopGroup
@@ -39,6 +40,7 @@ final class GatewayServer {
     init(
         port: Int,
         refusal: GatewayRefusal?,
+        usageSink: ((String, UsageReading) -> Void)?,
         upstream: URL = GatewayServer.defaultUpstream,
         accountReader: @escaping () -> String? = GatewayServer.liveAccountAddress,
         sessionsReader: @escaping () -> [Session]? = { SessionDiscovery.everySessionSeenRecently() },
@@ -46,6 +48,7 @@ final class GatewayServer {
     ) {
         self.port = port
         self.refusal = refusal
+        self.usageSink = usageSink
         self.upstream = upstream
         self.accountReader = accountReader
         self.sessionsReader = sessionsReader

@@ -8,17 +8,26 @@ final class UpstreamRelay: NSObject, URLSessionDataDelegate, @unchecked Sendable
     private let path: String
     private let credential: String
     private let sessionID: String?
+    private let usageSink: ((String, UsageReading) -> Void)?
     private let lock = NSLock()
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var wroteHead = false
 
-    init(channel: Channel, ledger: GatewayLedger, path: String, credential: String, session sessionID: String?) {
+    init(
+        channel: Channel,
+        ledger: GatewayLedger,
+        path: String,
+        credential: String,
+        session sessionID: String?,
+        usageSink: ((String, UsageReading) -> Void)?
+    ) {
         self.channel = channel
         self.ledger = ledger
         self.path = path
         self.credential = credential
         self.sessionID = sessionID
+        self.usageSink = usageSink
     }
 
     func start(request: URLRequest) {
@@ -74,6 +83,9 @@ final class UpstreamRelay: NSObject, URLSessionDataDelegate, @unchecked Sendable
         lock.lock()
         wroteHead = true
         lock.unlock()
+        if let usageSink, let reading = RateLimitHeaders.findReading(in: http.value(forHTTPHeaderField:)) {
+            usageSink(credential, reading)
+        }
         completionHandler(.allow)
     }
 

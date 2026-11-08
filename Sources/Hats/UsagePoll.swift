@@ -43,6 +43,11 @@ extension AutoSwitchWatch {
             case .trouble(let trouble):
                 batch.troubles[hat.id] = trouble
             case .fetch(let token):
+                batch.setLiveCredential(
+                    from: token,
+                    of: hat.id,
+                    isWearing: hat.isWearing
+                )
                 Self.record(
                     world.usage(token),
                     for: hat.id,

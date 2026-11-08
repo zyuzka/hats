@@ -42,6 +42,7 @@ final class GatewayEndToEndTests: XCTestCase {
         gateway = GatewayServer(
             port: 0,
             refusal: refusal,
+            usageSink: nil,
             upstream: URL(string: "http://127.0.0.1:\(upstream.port)")!,
             accountReader: { [weak self] in self?.account },
             sessionsReader: { [weak self] in
