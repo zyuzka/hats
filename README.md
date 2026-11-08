@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-13%2B-0969da" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/version-0.4.0-1a7f37" alt="version 0.4.0">
+  <img src="https://img.shields.io/badge/version-0.4.1-1a7f37" alt="version 0.4.1">
   <img src="https://img.shields.io/badge/license-MIT-59636e" alt="MIT">
 </p>
 
@@ -46,7 +46,7 @@ Not affiliated with Anthropic.
 
 Download the `.dmg` from [Releases](../../releases), open it and drag Hats to Applications.
 
-macOS 13 or later, and Claude Code already installed and logged in.
+A Mac with Apple silicon and macOS 13 or later, and Claude Code already installed and logged in.
 
 Hats is signed with an Apple Developer ID and notarized by Apple, so it opens on the first launch.
 
@@ -83,7 +83,7 @@ running through the gateway, or Hats cannot read a session's settings to tell, i
 and Relaunch: a request going through the gateway at that moment is cut off. **Later** leaves the
 update waiting, and it installs the next time Hats quits.
 
-**From 0.3.x, update by hand one last time** — those versions cannot install an update themselves.
+**From 0.3.x or earlier, update by hand one last time** — those versions cannot install an update themselves.
 Quit Hats first — the power button at the foot of the popover, or `Cmd-Q` while it is open. It asks
 before quitting if any Claude Code session is running, and says how many: quitting stops the relay,
 so such a session stops working until Hats is back or its shell is cleared.

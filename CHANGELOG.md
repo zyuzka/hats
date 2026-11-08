@@ -8,6 +8,17 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## 0.4.1 — 2026-11-09
+
+- **Settings → General can turn off the automatic look for updates.** Hats looks for a new release about
+  every six hours. With **Check for updates automatically** off, it looks only when you press
+  **Check for Updates…**, so no notification about a new release comes either.
+
+- **A usage figure Hats cannot read no longer stops it.** An answer from the usage endpoint carrying a
+  figure too large to be a whole number stopped Hats, and with it the gateway and every Claude Code
+  session going through it. Such a figure now counts as no figure for that limit; the other limit in
+  the same answer still reads.
+
 ## 0.4.0 — 2026-11-08
 
 - **Auto-switch no longer waits up to five minutes to notice a limit.** Hats checked usage every five
