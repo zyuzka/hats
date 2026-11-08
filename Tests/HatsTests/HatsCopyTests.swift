@@ -60,19 +60,29 @@ final class HatsCopyTests: XCTestCase {
         let behind = try XCTUnwrap(UsageReading.date(from: "2026-08-31T19:00:00Z"))
         let reading = UsageReading(session: UsageWindow(used: 5, limit: 100, resetsAt: ahead), weekly: nil)
 
-        XCTAssertEqual(HatsCopy.parkedUsage(reading, timeZone: utc, now: now), "5% · resets 23:20",
+        XCTAssertEqual(HatsCopy.parkedUsage(reading, timeZone: utc, now: now), "5h: 5% / 23:20",
                        "the one number a person needs in order to decide whether to switch is when the "
                            + "other hat is usable again")
         XCTAssertEqual(HatsCopy.parkedUsage(reading, rose: 4, timeZone: utc, now: now),
-                       "5% · resets 23:20 · up 4 while not being worn",
+                       "5h: 5% / 23:20 · up 4 while not being worn",
                        "a rise while parked is the measurement, and it is what the operator read off the "
                            + "meter himself before the app would say it")
-        XCTAssertEqual(HatsCopy.parkedUsage(reading, rose: 0, timeZone: utc, now: now), "5% · resets 23:20",
+        XCTAssertEqual(HatsCopy.parkedUsage(reading, rose: 0, timeZone: utc, now: now), "5h: 5% / 23:20",
                        "zero is not a rise")
         let stale = UsageReading(session: UsageWindow(used: 5, limit: 100, resetsAt: behind), weekly: nil)
-        XCTAssertEqual(HatsCopy.parkedUsage(stale, timeZone: utc, now: now), "5%",
+        XCTAssertEqual(HatsCopy.parkedUsage(stale, timeZone: utc, now: now), "5h: 5%",
                        "the poll is 300 s, so a parked reading outlives its own window; a reset time "
                            + "already past would be read as a future one")
+        XCTAssertEqual(
+            HatsCopy.parkedUsage(
+                stale,
+                rose: 4,
+                timeZone: utc,
+                now: now
+            ),
+            "5h: 5% · up 4 while not being worn",
+            "with no reset to show the rise follows the percent directly"
+        )
     }
 
     func testTheUsageLineReadsPercentAndResetAndLeavesTheWeekToItsOwnLine() throws {
@@ -83,22 +93,32 @@ final class HatsCopyTests: XCTestCase {
         )
         let before = try XCTUnwrap(UsageReading.date(from: "2026-08-30T18:00:00Z"))
         XCTAssertEqual(HatsCopy.usageLine(reading, timeZone: utc, now: before),
-                       "78% of 5h · resets 18:52")
+                       "5h: 78% / 18:52")
         XCTAssertEqual(HatsCopy.usageLine(reading, timeZone: utc,
                                           now: try XCTUnwrap(UsageReading.date(from: "2026-08-30T19:00:00Z"))),
-                       "78% of 5h",
+                       "5h: 78%",
                        "the worn row shares the 300 s cadence, so a reset time already past is dropped "
                            + "there for the same reason as on a parked row")
+        let undated = UsageReading(session: UsageWindow(used: 78, limit: 100, resetsAt: nil), weekly: nil)
+        XCTAssertEqual(
+            HatsCopy.usageLine(
+                undated,
+                timeZone: utc,
+                now: before
+            ),
+            "5h: 78%",
+            "no reset date from the server, so nothing follows the percent"
+        )
         XCTAssertNil(HatsCopy.usageLine(UsageReading(session: nil, weekly: reading.weekly),
                                         timeZone: utc, now: before),
                      "the week has its own line under this one on every hat, worn or not")
         XCTAssertEqual(HatsCopy.parkedUsage(reading, timeZone: utc, now: before),
-                       "78% · resets 18:52",
+                       "5h: 78% / 18:52",
                        "without an explicit now this read the wall clock: it passed only because "
                            + "the fixture reset time is in the past, and would have included the "
                            + "clause on any machine running before it")
         XCTAssertNil(HatsCopy.parkedUsage(UsageReading(session: nil, weekly: reading.weekly)))
-        XCTAssertEqual(HatsCopy.handover(to: "Personal"), "at the limit → Personal")
+        XCTAssertEqual(HatsCopy.handover(to: "Personal"), "next: Personal")
     }
 
     func testTheSessionsLineIsHonestAboutWhatItKnows() {

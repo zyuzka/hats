@@ -24,11 +24,15 @@ what it shipped is folded into the single entry below, and public numbering star
 
 - **Every hat shows its weekly limit.** Each hat, worn or parked, has a line under the 5-hour one with
   its weekly use and, when the server says it, the moment the week resets:
-  `week 51% (Fri 13 Nov 14:00)`, or `week 51%` without one. A `?` at the end means the latest check did
-  not confirm the number; once the reset has passed the line reads `week ? (Fri 13 Nov 14:00)` until a
+  `week: 51% / Fri 13 Nov 14:00`, or `week: 51%` without one. A `?` after the number means the latest
+  check did not confirm it; once the reset has passed the line reads `week: ? / Fri 13 Nov 14:00` until a
   check brings the new week. The last figure of each hat is kept across restarts so the line is not
   blank after one. That kept figure is only shown: the weekly threshold still switches hats, but on a
   fresh check, never on the kept figure.
+
+- **The 5-hour, weekly and next lines take one form.** The 5-hour line reads `5h: 41% / 17:00`, the
+  share used and when it resets, like the weekly one; while auto-switch is on and the worn hat's usage
+  is known, its row names the hat it would switch to: `next: Personal`.
 
 ## 0.3.2 — 2026-10-15
 

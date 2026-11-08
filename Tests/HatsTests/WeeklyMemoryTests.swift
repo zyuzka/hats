@@ -50,14 +50,14 @@ final class WeeklyMemoryTests: XCTestCase {
         let resets = try date("2026-11-02T14:00:00Z")
 
         XCTAssertEqual(HatsCopy.weekLine(percent: 1, resetsAt: resets, isConfirmed: true, timeZone: utc, now: now),
-                       "week 1% (Mon 2 Nov 14:00)")
+                       "week: 1% / Mon 2 Nov 14:00")
         XCTAssertEqual(HatsCopy.weekLine(percent: 1, resetsAt: resets, isConfirmed: false, timeZone: utc, now: now),
-                       "week 1% (Mon 2 Nov 14:00)?",
+                       "week: 1%? / Mon 2 Nov 14:00",
                        "a number no poll confirmed may be stale, and the row has to say so")
         XCTAssertEqual(HatsCopy.weekLine(percent: 1, resetsAt: nil, isConfirmed: true, timeZone: utc, now: now),
-                       "week 1%")
+                       "week: 1%")
         XCTAssertEqual(HatsCopy.weekLine(percent: 1, resetsAt: nil, isConfirmed: false, timeZone: utc, now: now),
-                       "week 1%?")
+                       "week: 1%?")
     }
 
     func testAResetAlreadyPastHidesTheNumberConfirmedOrNot() throws {
@@ -67,11 +67,11 @@ final class WeeklyMemoryTests: XCTestCase {
         for confirmed in [true, false] {
             XCTAssertEqual(HatsCopy.weekLine(percent: 40, resetsAt: passed, isConfirmed: confirmed,
                                              timeZone: utc, now: now),
-                           "week ? (Tue 27 Oct 11:00)",
+                           "week: ? / Tue 27 Oct 11:00",
                            "the week has reset since, so the spend since then is unknown")
         }
         XCTAssertEqual(HatsCopy.weekLine(percent: 40, resetsAt: now, isConfirmed: true, timeZone: utc, now: now),
-                       "week ? (Wed 28 Oct 12:00)", "a reset at this very second is a reset")
+                       "week: ? / Wed 28 Oct 12:00", "a reset at this very second is a reset")
     }
 
     func testTheDateIsLocalTime() throws {
@@ -80,7 +80,7 @@ final class WeeklyMemoryTests: XCTestCase {
 
         XCTAssertEqual(HatsCopy.weekLine(percent: 1, resetsAt: try date("2026-11-02T14:00:00Z"),
                                          isConfirmed: true, timeZone: kyiv, now: now),
-                       "week 1% (Mon 2 Nov 16:00)")
+                       "week: 1% / Mon 2 Nov 16:00")
     }
 
     func testTheMatrix() throws {
@@ -90,15 +90,15 @@ final class WeeklyMemoryTests: XCTestCase {
 
         XCTAssertEqual(line(remembered.findSighting(of: "a", readings: ["a": reading(weekly: week(1, resets: resets))],
                                                     fresh: ["a"]), now: now),
-                       "week 1% (Mon 2 Nov 14:00)", "a fresh poll")
+                       "week: 1% / Mon 2 Nov 14:00", "a fresh poll")
         XCTAssertEqual(line(remembered.findSighting(of: "a", readings: ["a": reading(weekly: week(1, resets: resets))],
                                                     fresh: []), now: now),
-                       "week 1% (Mon 2 Nov 14:00)?", "the poll failed, or the renewal was put off")
+                       "week: 1%? / Mon 2 Nov 14:00", "the poll failed, or the renewal was put off")
         XCTAssertEqual(line(remembered.findSighting(of: "a", readings: [:], fresh: []), now: now),
-                       "week 1% (Mon 2 Nov 14:00)?", "after a restart, or a trouble that cleared the reading")
+                       "week: 1%? / Mon 2 Nov 14:00", "after a restart, or a trouble that cleared the reading")
         XCTAssertEqual(line(remembered.findSighting(of: "a", readings: ["a": reading(weekly: nil)], fresh: ["a"]),
                             now: now),
-                       "week 1% (Mon 2 Nov 14:00)?", "an answer without the week confirms nothing about it")
+                       "week: 1%? / Mon 2 Nov 14:00", "an answer without the week confirms nothing about it")
         XCTAssertNil(WeeklyMemory().findSighting(of: "a", readings: ["a": reading(weekly: nil)], fresh: ["a"]),
                      "nothing known, no week line")
     }
@@ -268,7 +268,7 @@ final class WeeklyMemoryTests: XCTestCase {
                                 week: memory.findSighting(of: "a", readings: poll, fresh: ["a"]),
                                 now: now, timeZone: utc)
 
-        XCTAssertEqual(before.week, "week 4% (Mon 2 Nov 14:00)?")
-        XCTAssertEqual(after.week, "week 4% (Mon 2 Nov 14:00)")
+        XCTAssertEqual(before.week, "week: 4%? / Mon 2 Nov 14:00")
+        XCTAssertEqual(after.week, "week: 4% / Mon 2 Nov 14:00")
     }
 }
