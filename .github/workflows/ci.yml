@@ -35,9 +35,7 @@ jobs:
         run: HATS_STATE_HOME="$(mktemp -d)" swift test
 
       # The bundle stamps a version and the app shows CHANGELOG.md to whoever installs
-      # it, so a version with no entry reads as a version that changed nothing. The
-      # script that checks this lives in Dev/, which is not part of the repository, so
-      # the check is inlined here rather than skipped.
+      # it, so a version with no entry reads as a version that changed nothing.
       - name: Every stamped version is described
         run: |
           stamped="$(sed -n '/CFBundleShortVersionString/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' \
