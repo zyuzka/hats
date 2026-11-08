@@ -8,7 +8,7 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
-## 0.4.1 — 2026-11-09
+## 0.4.1 — 2026-11-08
 
 - **Settings → General can turn off the automatic look for updates.** Hats looks for a new release about
   every six hours. With **Check for updates automatically** off, it looks only when you press
