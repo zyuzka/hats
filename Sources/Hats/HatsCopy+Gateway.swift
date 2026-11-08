@@ -65,6 +65,25 @@ extension HatsCopy {
         )
     }
 
+    static func getUpdateInstallCost(ports: [Int], sessions: [Session]?) -> String? {
+        let ending = "Installing the update quits Hats and opens the new version. A request going through "
+            + "the gateway at that moment is cut off, and if the new version cannot take the port "
+            + "back the gateway stays down until it can. Later installs the update the next time "
+            + "Hats quits."
+        let unread = ports.isEmpty ? [] : (sessions ?? []).filter { $0.route == .unknown }
+        guard !unread.isEmpty else { return cost(ports: ports, sessions: sessions, ending: ending) }
+        let pids = unread.map(\.pid).sorted().map(String.init).joined(separator: ", ")
+        let noun = "\(unread.count) session\(unread.count == 1 ? "" : "s")"
+        let unreadNote = "The settings of \(noun) (pid \(pids)) could not be read, so Hats cannot tell "
+            + "whether \(unread.count == 1 ? "it runs" : "they run") through the gateway. \(ending)"
+
+        return cost(ports: ports, sessions: sessions, ending: unreadNote) ?? unreadNote
+    }
+
+    static let updateWaitsForQuit =
+        "The update is downloaded and installs the next time Hats quits. Installing it now quits Hats "
+            + "and opens the new version."
+
     private static func cost(ports: [Int], sessions: [Session]?, ending: String) -> String? {
         guard let sessions else {
             return "The process table could not be read, so Hats cannot say what is running through "

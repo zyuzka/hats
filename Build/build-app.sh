@@ -49,15 +49,42 @@ cd "$(dirname "$0")/.."
 APP="Hats.app"
 CONFIG="${1:-release}"
 
-swift build -c "$CONFIG"
+# The app updates itself through Sparkle, which SwiftPM builds as a framework beside the
+# binary. Everything Sparkle needs from the bundle sits in this script: the rpath here, the
+# framework copied in below, the SU keys in the Info.plist and the signing of its parts,
+# innermost first, further down.
+#
+# SwiftPM does not give an executable the rpath an app bundle needs, so the binary would
+# look for Sparkle.framework everywhere except Contents/Frameworks and fail to launch.
+swift build -c "$CONFIG" -Xlinker -rpath -Xlinker @executable_path/../Frameworks
 BIN=".build/$CONFIG/Hats"
 [[ -x "$BIN" ]] || { echo "no binary at $BIN" >&2; exit 1; }
+SPARKLE_BUILT=".build/$CONFIG/Sparkle.framework"
+[[ -d "$SPARKLE_BUILT" ]] || { echo "no Sparkle.framework at $SPARKLE_BUILT" >&2; exit 1; }
+LOAD_COMMANDS="$(otool -l "$BIN")"
+if ! grep -Fq 'path @executable_path/../Frameworks ' <<< "$LOAD_COMMANDS"; then
+    echo "$BIN carries no @executable_path/../Frameworks rpath, so the bundle could not load Sparkle." >&2
+    exit 1
+fi
 
 rm -rf "$APP" AccSwitch.app
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/Hats"
 cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
 cp Build/Hats.icns "$APP/Contents/Resources/Hats.icns"
+
+# ditto keeps the framework's internal symlinks and permissions, which Sparkle's own
+# installation notes require. The XPC services are for sandboxed apps; Hats is not one, and
+# Sparkle's documentation lets a non-sandboxed app remove them. They go before signing,
+# because removing a part afterwards breaks the framework's signature.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+ditto "$SPARKLE_BUILT" "$SPARKLE"
+rm -rf "$SPARKLE/Versions/B/XPCServices" "$SPARKLE/XPCServices"
+SPARKLE_PARTS=(
+    "$SPARKLE/Versions/B/Autoupdate"
+    "$SPARKLE/Versions/B/Updater.app"
+    "$SPARKLE"
+)
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -72,14 +99,26 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>Hats</string>
     <key>CFBundleIconFile</key>
     <string>Hats</string>
-    <key>HatsUpdateRepository</key>
-    <string>zyuzka/hats</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/zyuzka/hats/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>SJ+SqF6QG8EgeJOwpnJNTLw/rarByx+Ef4VJovZSl7w=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>21600</integer>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
     <key>CFBundleDisplayName</key>
     <string>Hats</string>
     <key>CFBundleShortVersionString</key>
     <string>0.4.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>0.4.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSMinimumSystemVersion</key>
@@ -92,6 +131,32 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# Sparkle compares CFBundleVersion with the feed's sparkle:version, so it has to grow with every
+# release; it is kept equal to the version a person sees. A bundle without the public key would
+# start an updater that refuses every update it finds, so the build stops instead.
+PUBLIC_ED_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" 2>/dev/null)" \
+    || PUBLIC_ED_KEY=""
+if [[ -z "${PUBLIC_ED_KEY//[[:space:]]/}" ]]; then
+    echo "SUPublicEDKey is empty in $APP/Contents/Info.plist: the updater could not check any update." >&2
+    echo "print the key with: generate_keys --account dev.tmk.hats -p" >&2
+    exit 1
+fi
+
+# A trial build can point the updater at a feed served from this machine, to watch one build
+# update another without publishing anything. Only such a build carries the transport
+# exception that lets Sparkle read plain http from localhost; Dev/package.sh refuses to
+# package a bundle whose feed is not the published one or which carries the exception.
+if [[ -n "${HATS_UPDATE_FEED_URL:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :SUFeedURL $HATS_UPDATE_FEED_URL" "$APP/Contents/Info.plist"
+    if [[ "$HATS_UPDATE_FEED_URL" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]]; then
+        /usr/libexec/PlistBuddy \
+            -c 'Add :NSAppTransportSecurity dict' \
+            -c 'Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true' \
+            "$APP/Contents/Info.plist"
+    fi
+    echo "TRIAL BUILD: the updater reads $HATS_UPDATE_FEED_URL; Dev/package.sh will refuse this bundle."
+fi
 
 # Signing decides whether a downloaded copy opens on its first launch, and whether
 # macOS treats a rebuild as the same app.
@@ -122,9 +187,29 @@ PLIST
 AVAILABLE_IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
 chooseSigningIdentity
 
+# Sparkle's parts are signed one by one, innermost first, with the same identity and flags
+# as the app, and the app last. --deep would sign them all alike in an order nobody chose,
+# which Sparkle's documentation warns against.
+signEveryPart() {
+    local part
+    for part in "${SPARKLE_PARTS[@]}"; do
+        codesign --force "$@" "$part" || return 1
+    done
+    codesign --force "$@" --identifier dev.tmk.hats "$APP"
+}
+
+verifyEveryPart() {
+    local part
+    for part in "${SPARKLE_PARTS[@]}" "$APP"; do
+        if ! codesign --verify --strict --verbose=2 "$part"; then
+            echo "$part does not pass codesign --verify --strict after signing with $IDENTITY_NAME." >&2
+            exit 1
+        fi
+    done
+}
+
 signForRelease() {
-    if ! codesign --force --options runtime --timestamp --sign "$IDENTITY" \
-            --identifier dev.tmk.hats "$APP"; then
+    if ! signEveryPart --options runtime --timestamp --sign "$IDENTITY"; then
         echo "codesign with $IDENTITY_NAME failed — its own message is above — and the build stops" >&2
         echo "rather than sign the bundle some other way. This signature takes a timestamp from" >&2
         echo "Apple's server, so it needs the network. Without the network, the self-signed" >&2
@@ -132,37 +217,38 @@ signForRelease() {
         echo "  HATS_SIGNING_IDENTITY=\"Hats Dev\" ./Build/build-app.sh" >&2
         exit 1
     fi
-    if ! codesign --verify --strict --verbose=2 "$APP"; then
-        echo "the bundle signed with $IDENTITY_NAME does not pass codesign --verify --strict." >&2
-        exit 1
-    fi
-    local details
-    details="$(codesign -dv --verbose=2 "$APP" 2>&1)"
-    if ! grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$details" \
-            || ! grep -q '^Timestamp=' <<< "$details"; then
-        echo "signed with $IDENTITY_NAME, but without the hardened runtime or Apple's timestamp:" >&2
-        indentEachLine "$details" >&2
-        echo "notarization refuses such a bundle, so the build does not hand it over." >&2
-        exit 1
-    fi
+    verifyEveryPart
+    local part details
+    for part in "${SPARKLE_PARTS[@]}" "$APP"; do
+        details="$(codesign -dv --verbose=2 "$part" 2>&1)"
+        if ! grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$details" \
+                || ! grep -q '^Timestamp=' <<< "$details"; then
+            echo "signed with $IDENTITY_NAME, but $part lacks the hardened runtime or Apple's timestamp:" >&2
+            indentEachLine "$details" >&2
+            echo "notarization refuses such a bundle, so the build does not hand it over." >&2
+            exit 1
+        fi
+    done
     echo "signed with $IDENTITY_NAME: hardened runtime and Apple's timestamp, ready for notarization"
 }
 
 signWithCertificate() {
-    if ! codesign --force --sign "$IDENTITY" --identifier dev.tmk.hats "$APP"; then
+    if ! signEveryPart --sign "$IDENTITY"; then
         echo "codesign with $IDENTITY_NAME failed — fix the signing error before using the bundle." >&2
         exit 1
     fi
+    verifyEveryPart
     echo "signed with $IDENTITY_NAME (grants survive rebuilds; Gatekeeper will block a download)"
 }
 
 signAdHoc() {
-    if ! codesign --force --sign - --identifier dev.tmk.hats "$APP"; then
+    if ! signEveryPart --sign -; then
         echo "codesign failed: the bundle is UNSIGNED, not ad-hoc signed." >&2
         echo "an unsigned bundle prompts for keychain access differently and" >&2
         echo "cannot be packaged — fix the signing error before using it." >&2
         exit 1
     fi
+    verifyEveryPart
     echo "signed ad-hoc — the keychain will re-ask after each rebuild."
     echo "to stop that, run ./Build/setup-signing.sh once and build again."
 }

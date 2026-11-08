@@ -47,6 +47,22 @@ extension AppDelegate {
         }
     }
 
+    func startTheUpdater() {
+        updater = SparkleUpdates.createIfConfigured {
+            GatewayStopDecision.getForAnUpdate(
+                ports: GatewayProcess.heldPorts,
+                sessions: SessionDiscovery.everySessionSeenRecently()
+            )
+        }
+        updater?.whenCanCheckNowChanges = { [weak self] in self?.redraw() }
+        updater?.start()
+    }
+
+    func checkForUpdates() {
+        popover.close()
+        afterThePopoverSettles { [weak self] in self?.updater?.checkNow() }
+    }
+
     func quit() {
         let live = SessionDiscovery.everySessionSeenRecently()
         guard let cost = HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown) else {

@@ -29,12 +29,15 @@ Not affiliated with Anthropic.
   itself. Refusing turns off only the notifications.
 - It writes a marked block into your login shell's profile while the gateway serves, and takes it
   back out when it quits. The first write keeps a backup of the profile beside it.
+- **Whether to restart for an update**, when you press Install and Relaunch and a Claude Code session
+  is running through the gateway. The restart cuts off a request going through it at that moment.
 
 ## What it does not do
 
-- **Its only network traffic is to Anthropic.** The relay forwards your own Claude Code requests, and
-  each hat's usage is read from Anthropic's usage endpoint with that hat's own token. Nothing goes
-  anywhere else.
+- **Its network traffic is to Anthropic, and to GitHub for updates.** The relay forwards your own
+  Claude Code requests, and each hat's usage is read from Anthropic's usage endpoint with that hat's
+  own token. About every six hours Hats reads the release feed of this repository on GitHub, and it
+  downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
 
@@ -64,6 +67,18 @@ Needs a Swift 5.9 toolchain. Build output is git-ignored.
 
 ### Updating
 
+From 0.4.0 on, Hats updates itself. It looks for a new release about every six hours, and Settings →
+General has **Check for Updates…**. When there is one, a window shows what changed, and a notification
+says so if Hats found it on its own. **Install Update** downloads the release and checks that it is
+signed with the same key as the copy you run. A second window then says it is ready to install, and
+**Install and Relaunch** there installs it and opens the new version.
+
+Installing restarts Hats, and the restart stops the gateway for a moment. If a Claude Code session is
+running through the gateway, or Hats cannot read a session's settings to tell, it asks after Install
+and Relaunch: a request going through the gateway at that moment is cut off. **Later** leaves the
+update waiting, and it installs the next time Hats quits.
+
+**From 0.3.x, update by hand one last time** — those versions cannot install an update themselves.
 Quit Hats first — the power button at the foot of the popover, or `Cmd-Q` while it is open. It asks
 before quitting if any Claude Code session is running, and says how many: quitting stops the relay,
 so such a session stops working until Hats is back or its shell is cleared.
@@ -153,6 +168,7 @@ markers in whichever profile your login shell reads: `~/.zshrc` (or `$ZDOTDIR/.z
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
+| Updater state: last check, a skipped version | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under
 `~/.claude/state`, which is Claude Code's own directory and not a place for another program's files;
@@ -180,8 +196,8 @@ sets nothing, because the block asks the relay first. So a leftover block is ine
 hand, see [Switching by itself](#switching-by-itself) above, which names the markers and the profiles.
 
 **You replaced the app in place and it will not launch.** That is the stale bundle record described
-under [Updating](#updating). Deleting `/Applications/Hats.app` and moving the new one in is the
-cure; if the new app is already sitting there, this re-registers it where it is:
+under [Updating](#updating), for an update by hand. Deleting `/Applications/Hats.app` and moving the
+new one in is the cure; if the new app is already sitting there, this re-registers it where it is:
 
 ```sh
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Hats.app
@@ -211,5 +227,6 @@ still point at a `NOTES.md` you will not find here.
 
 ## License
 
-[MIT](LICENSE). The one dependency, [swift-nio](https://github.com/apple/swift-nio), is Apache-2.0 and
-is fetched at build time rather than vendored here.
+[MIT](LICENSE). The two dependencies are fetched at build time rather than vendored here:
+[swift-nio](https://github.com/apple/swift-nio), Apache-2.0, and
+[Sparkle](https://github.com/sparkle-project/Sparkle), MIT, which installs updates.

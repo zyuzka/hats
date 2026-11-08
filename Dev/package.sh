@@ -14,6 +14,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 APP="Hats.app"
 OUT="dist"
+. Dev/package-appcast.sh
 
 # Before anything tries to read inside it. This check used to sit below the version
 # read, so "there is no bundle" came out as a PlistBuddy error about a file that was
@@ -165,6 +166,106 @@ if ! grep -q '^Timestamp=' <<< "$SIGNATURE"; then
     exit 1
 fi
 
+# Sparkle's parts are signed one by one by build-app.sh, and notarization looks at each of
+# them, not only at the bundle around them. The XPC services are removed by the build; one
+# that came back would be an unsigned-by-us part the app does not use.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+if [[ -e "$SPARKLE/Versions/B/XPCServices" || -e "$SPARKLE/XPCServices" ]]; then
+    echo "refusing to package: $SPARKLE still carries XPCServices, which build-app.sh removes." >&2
+    exit 1
+fi
+for PART in "$SPARKLE/Versions/B/Autoupdate" "$SPARKLE/Versions/B/Updater.app" "$SPARKLE"; do
+    if ! PART_SIGNATURE="$(codesign -dv --verbose=2 "$PART" 2>&1)"; then
+        echo "refusing to package: the signature of $PART cannot be read:" >&2
+        echo "$PART_SIGNATURE" >&2
+        exit 1
+    fi
+    if ! PART_VERIFY="$(codesign --verify --strict --verbose=2 "$PART" 2>&1)"; then
+        echo "refusing to package: $PART does not pass codesign --verify --strict:" >&2
+        echo "$PART_VERIFY" >&2
+        exit 1
+    fi
+    if ! grep -q '^Authority=Developer ID Application: ' <<< "$PART_SIGNATURE" \
+            || ! grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$PART_SIGNATURE" \
+            || ! grep -q '^Timestamp=' <<< "$PART_SIGNATURE"; then
+        echo "refusing to package: $PART is not signed with a Developer ID, the hardened runtime" >&2
+        echo "and Apple's timestamp, so notarization would refuse the image:" >&2
+        echo "$PART_SIGNATURE" >&2
+        echo "fix: ./Build/build-app.sh signs every part of Sparkle with the app's identity" >&2
+        exit 1
+    fi
+done
+
+# The bundle must read the published feed, over https, and nothing else. A trial build from
+# build-app.sh with HATS_UPDATE_FEED_URL reads a feed on this machine and lets Sparkle use
+# plain http there; shipped, it would ask a feed nobody else has and never update.
+RELEASE_FEED="https://github.com/zyuzka/hats/releases/latest/download/appcast.xml"
+BUNDLE_FEED="$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist" 2>/dev/null)" \
+    || BUNDLE_FEED=""
+if [[ "$BUNDLE_FEED" != "$RELEASE_FEED" ]]; then
+    echo "refusing to package: $APP reads updates from \"${BUNDLE_FEED:-nothing}\", not $RELEASE_FEED." >&2
+    echo "fix: build without HATS_UPDATE_FEED_URL" >&2
+    exit 1
+fi
+if /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity' "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+    echo "refusing to package: $APP carries an App Transport Security exception, which only a" >&2
+    echo "trial build has. fix: build without HATS_UPDATE_FEED_URL" >&2
+    exit 1
+fi
+
+# Every release carries an EdDSA signature that the installed app checks before it opens the
+# image, and the feed is signed with the same key. The private key lives in the keychain
+# under the account dev.tmk.hats, put there once by generate_keys; Sparkle's tools come with
+# the Swift package. Both are checked now rather than after notarization, which takes most of
+# an hour: the public half of the keychain key must be the one in the bundle, or every
+# installed copy would refuse this release.
+SPARKLE_BIN="${HATS_SPARKLE_BIN:-.build/artifacts/sparkle/Sparkle/bin}"
+SIGN_UPDATE="$SPARKLE_BIN/sign_update"
+GENERATE_KEYS="$SPARKLE_BIN/generate_keys"
+ED_ACCOUNT="dev.tmk.hats"
+if [[ ! -x "$SIGN_UPDATE" || ! -x "$GENERATE_KEYS" ]]; then
+    echo "refusing to package: Sparkle's sign_update and generate_keys are not in $SPARKLE_BIN." >&2
+    echo "fix: swift package resolve (or ./Build/build-app.sh), which downloads them" >&2
+    exit 1
+fi
+BUNDLE_KEY="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist" 2>/dev/null)" \
+    || BUNDLE_KEY=""
+KEYCHAIN_KEY="$("$GENERATE_KEYS" --account "$ED_ACCOUNT" -p 2>/dev/null)" || KEYCHAIN_KEY=""
+KEYCHAIN_KEY="${KEYCHAIN_KEY//[[:space:]]/}"
+if [[ -z "$KEYCHAIN_KEY" ]]; then
+    echo "refusing to package: the keychain holds no EdDSA key for the account $ED_ACCOUNT, so" >&2
+    echo "the release could not be signed for the updater. Restore it from the password manager:" >&2
+    echo "  $GENERATE_KEYS --account $ED_ACCOUNT -f <exported key file>" >&2
+    exit 1
+fi
+if [[ "$KEYCHAIN_KEY" != "${BUNDLE_KEY//[[:space:]]/}" ]]; then
+    echo "refusing to package: the keychain key for $ED_ACCOUNT has the public half $KEYCHAIN_KEY," >&2
+    echo "but $APP carries SUPublicEDKey \"${BUNDLE_KEY:-nothing}\". Installed copies would refuse" >&2
+    echo "a release signed with it." >&2
+    exit 1
+fi
+
+# What the update window shows under "what's new" is this version's entry from the
+# changelog, embedded in the feed; it is checked here so a bad entry costs no notarization.
+RELEASE_ENTRY="$(getChangelogEntry "$VERSION" CHANGELOG.md)"
+if ! checkReleaseEntry "$VERSION" "$RELEASE_ENTRY"; then
+    echo "refusing to package." >&2
+    exit 1
+fi
+
+# The feed states what Sparkle compares and checks, read from the bundle being packaged:
+# CFBundleVersion against the running copy's, and the minimum system the bundle declares.
+if ! BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' \
+        "$APP/Contents/Info.plist" 2>"$PB_ERR")" || [[ -z "$BUNDLE_VERSION" ]]; then
+    echo "refusing to package: cannot read CFBundleVersion from $APP: $(cat "$PB_ERR")" >&2
+    exit 1
+fi
+if ! MINIMUM_SYSTEM="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' \
+        "$APP/Contents/Info.plist" 2>"$PB_ERR")" || [[ -z "$MINIMUM_SYSTEM" ]]; then
+    echo "refusing to package: cannot read LSMinimumSystemVersion from $APP: $(cat "$PB_ERR")" >&2
+    exit 1
+fi
+
 # The image is signed with the very certificate that signed the bundle, picked by its
 # hash. A name would do on most machines, and fails as ambiguous on the one that holds
 # a renewed certificate beside the old one under the same name.
@@ -190,7 +291,8 @@ mkdir -p "$OUT"
 # the repository root instead would put dist/, the notes and everything else inside it.
 STAGE="$(mktemp -d)"
 PACKAGED=""
-trap 'rm -f "$PB_ERR"; rm -rf "$CERTS" "$STAGE"; [[ -n "$PACKAGED" ]] || rm -f "$DMG"' EXIT
+APPCAST="$OUT/appcast.xml"
+trap 'rm -f "$PB_ERR"; rm -rf "$CERTS" "$STAGE"; [[ -n "$PACKAGED" ]] || rm -f "$DMG" "$APPCAST"' EXIT
 ditto "$APP" "$STAGE/$APP"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -quiet -volname "Hats $VERSION" -srcfolder "$STAGE" \
@@ -250,6 +352,37 @@ if (( APP_RC != 0 )) || ! grep -Fqx "$APP: accepted" <<< "$APP_ASSESSMENT"; then
 fi
 echo "Gatekeeper accepts the image and the app: notarized Developer ID"
 
+# The EdDSA signature is made on the image exactly as it will be downloaded: signed, notarized
+# and stapled. Stapling rewrites the file, so a signature made before it would not match.
+if ! ED_SIGNATURE="$("$SIGN_UPDATE" --account "$ED_ACCOUNT" -p "$DMG")" || [[ -z "$ED_SIGNATURE" ]]; then
+    echo "refusing to hand out $DMG: sign_update could not sign it — its message is above." >&2
+    exit 1
+fi
+if ! DMG_VERIFY="$("$SIGN_UPDATE" --account "$ED_ACCOUNT" --verify "$DMG" "$ED_SIGNATURE" 2>&1)"; then
+    echo "refusing to hand out $DMG: its EdDSA signature does not verify against the keychain key:" >&2
+    echo "$DMG_VERIFY" >&2
+    exit 1
+fi
+DMG_LENGTH="$(stat -f %z "$DMG")"
+PUB_DATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
+if ! createAppcast "$VERSION" "$BUNDLE_VERSION" "$(getThreePartVersion "$MINIMUM_SYSTEM")" \
+        "$(basename "$DMG")" "$ED_SIGNATURE" "$DMG_LENGTH" "$RELEASE_ENTRY" "$PUB_DATE" > "$APPCAST"; then
+    echo "refusing to hand out $DMG: the feed could not be written." >&2
+    exit 1
+fi
+# The feed carries its own signature, which an installed copy requires (SURequireSignedFeed):
+# an unsigned or altered feed is refused, and with it the update and its notes.
+if ! "$SIGN_UPDATE" --account "$ED_ACCOUNT" "$APPCAST"; then
+    echo "refusing to hand out $APPCAST: sign_update could not sign the feed — its message is above." >&2
+    exit 1
+fi
+if ! FEED_VERIFY="$("$SIGN_UPDATE" --account "$ED_ACCOUNT" --verify "$APPCAST" 2>&1)"; then
+    echo "refusing to hand out $APPCAST: the feed's signature does not verify against the keychain key:" >&2
+    echo "$FEED_VERIFY" >&2
+    exit 1
+fi
+echo "signed for the updater: $DMG ($DMG_LENGTH bytes) and $APPCAST"
+
 
 # Release notes live next to the image, generated from the changelog entry for this
 # version. They used to be written by hand before packaging, and packaging wipes the
@@ -257,6 +390,10 @@ echo "Gatekeeper accepts the image and the app: notarized Developer ID"
 # needed. Generating them here means they cannot be older than the image beside them.
 NOTES_FILE="$OUT/RELEASE-NOTES-$VERSION.md"
 {
+    echo "<!-- Publishing: create the release v$VERSION as a draft, attach both $(basename "$DMG") and"
+    echo "     appcast.xml, then publish it. Installed copies read appcast.xml from the latest release,"
+    echo "     so a published release missing either file gives every one of them a 404 or a dead link. -->"
+    echo
     echo "## Installing"
     echo
     echo "Download \`$(basename "$DMG")\`, open it and drag Hats to Applications."
@@ -270,12 +407,15 @@ NOTES_FILE="$OUT/RELEASE-NOTES-$VERSION.md"
     echo
     echo "## What changed"
     echo
-    awk -v v="## $VERSION" '$0 ~ "^" v { found = 1; next } found && /^## / { exit } found' CHANGELOG.md
+    getChangelogEntry "$VERSION" CHANGELOG.md
 } > "$NOTES_FILE"
 PACKAGED=1
 
 echo "packaged:"
 echo "  $PWD/$DMG"
+echo "  $PWD/$APPCAST"
 echo "  $PWD/$NOTES_FILE"
+echo
+echo "create the release v$VERSION as a draft, attach both $(basename "$DMG") and appcast.xml, then publish it"
 echo
 echo "size: $(du -h "$DMG" | cut -f1)"
