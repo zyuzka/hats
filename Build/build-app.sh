@@ -93,23 +93,100 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Signing decides how often the keychain interrogates you.
+# Signing decides whether a downloaded copy opens on its first launch, and whether
+# macOS treats a rebuild as the same app.
 #
-# An ad-hoc signature is derived from the binary, so every rebuild looks like a
-# different application and any "Always Allow" granted to the previous build is
-# void. A self-signed certificate keeps the identity stable across rebuilds, so
-# the grant survives. Create one once:
+# The identity is taken in this order, and the build prints which one it used:
 #
-#   Keychain Access → Certificate Assistant → Create a Certificate…
-#   Name: Hats Dev · Identity Type: Self Signed Root
-#   Certificate Type: Code Signing
+#   1. HATS_SIGNING_IDENTITY — a name, or the 40-character hash that
+#      `security find-identity -v -p codesigning` prints; `-` asks for ad-hoc.
+#      A value that names no valid identity stops the build instead of falling
+#      through to the next step.
+#   2. The first valid "Developer ID Application:" identity in the keychain. Only
+#      this one, once Dev/package.sh has had the image notarized, lets a download
+#      open without a detour through Privacy & Security.
+#   3. "Hats Dev", the self-signed certificate ./Build/setup-signing.sh creates.
+#   4. Ad-hoc.
 #
-# Then this picks it up automatically.
-IDENTITY="Hats Dev"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
-    codesign --force --sign "$IDENTITY" --identifier dev.tmk.hats "$APP"
-    echo "signed with $IDENTITY (keychain grants survive rebuilds)"
+# A Developer ID signature is made with the hardened runtime and a timestamp from
+# Apple, because notarization refuses a bundle that lacks either. A signing that
+# fails here — no network to the timestamp server is the usual cause — stops the
+# build rather than leaving a signature the release cannot use. Without the network,
+# HATS_SIGNING_IDENTITY="Hats Dev" builds with the self-signed certificate instead.
+#
+# Ad-hoc is last because its signature is derived from the binary: every rebuild
+# looks like a different application, and any "Always Allow" or Automation grant
+# given to the previous build is void. Both certificates keep the identity stable
+# across rebuilds, so the grants survive.
+AVAILABLE_IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+
+identityNameMatching() {
+    WANTED="$1" awk -F'"' 'NF >= 3 && index($0, ENVIRON["WANTED"]) { print $2; exit }' \
+        <<< "$AVAILABLE_IDENTITIES"
+}
+
+identityHashNamedFrom() {
+    PREFIX="$1" awk -F'"' 'NF >= 3 && index($2, ENVIRON["PREFIX"]) == 1 {
+        split($1, field, " "); print field[2]; exit
+    }' <<< "$AVAILABLE_IDENTITIES"
+}
+
+if [[ -n "${HATS_SIGNING_IDENTITY:-}" ]]; then
+    IDENTITY="$HATS_SIGNING_IDENTITY"
+    if [[ "$IDENTITY" == "-" ]]; then
+        IDENTITY_NAME="ad-hoc"
+    else
+        IDENTITY_NAME="$(identityNameMatching "$IDENTITY")"
+        if [[ -z "$IDENTITY_NAME" ]]; then
+            echo "HATS_SIGNING_IDENTITY=$IDENTITY names no valid signing identity." >&2
+            echo "valid ones, from security find-identity -v -p codesigning:" >&2
+            indentEachLine "$AVAILABLE_IDENTITIES" >&2
+            exit 1
+        fi
+    fi
+elif IDENTITY="$(identityHashNamedFrom "Developer ID Application: ")" && [[ -n "$IDENTITY" ]]; then
+    IDENTITY_NAME="$(identityNameMatching "$IDENTITY")"
+elif IDENTITY="$(identityHashNamedFrom "Hats Dev")" && [[ -n "$IDENTITY" ]]; then
+    IDENTITY_NAME="$(identityNameMatching "$IDENTITY")"
 else
+    IDENTITY="-"
+    IDENTITY_NAME="ad-hoc"
+fi
+
+signForRelease() {
+    if ! codesign --force --options runtime --timestamp --sign "$IDENTITY" \
+            --identifier dev.tmk.hats "$APP"; then
+        echo "codesign with $IDENTITY_NAME failed, and the build stops rather than sign" >&2
+        echo "the bundle some other way. The timestamp comes from Apple's server, so this" >&2
+        echo "signature needs the network. To build without it, use the self-signed one:" >&2
+        echo "  HATS_SIGNING_IDENTITY=\"Hats Dev\" ./Build/build-app.sh" >&2
+        exit 1
+    fi
+    if ! codesign --verify --strict --verbose=2 "$APP"; then
+        echo "the bundle signed with $IDENTITY_NAME does not pass codesign --verify --strict." >&2
+        exit 1
+    fi
+    local details
+    details="$(codesign -dv --verbose=2 "$APP" 2>&1)"
+    if ! grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime' <<< "$details" \
+            || ! grep -q '^Timestamp=' <<< "$details"; then
+        echo "signed with $IDENTITY_NAME, but without the hardened runtime or Apple's timestamp:" >&2
+        indentEachLine "$details" >&2
+        echo "notarization refuses such a bundle, so the build does not hand it over." >&2
+        exit 1
+    fi
+    echo "signed with $IDENTITY_NAME: hardened runtime and Apple's timestamp, ready for notarization"
+}
+
+signWithCertificate() {
+    if ! codesign --force --sign "$IDENTITY" --identifier dev.tmk.hats "$APP"; then
+        echo "codesign with $IDENTITY_NAME failed — fix the signing error before using the bundle." >&2
+        exit 1
+    fi
+    echo "signed with $IDENTITY_NAME (grants survive rebuilds; Gatekeeper will block a download)"
+}
+
+signAdHoc() {
     if ! codesign --force --sign - --identifier dev.tmk.hats "$APP"; then
         echo "codesign failed: the bundle is UNSIGNED, not ad-hoc signed." >&2
         echo "an unsigned bundle prompts for keychain access differently and" >&2
@@ -117,9 +194,14 @@ else
         exit 1
     fi
     echo "signed ad-hoc — the keychain will re-ask after each rebuild."
-    echo "to stop that, create a self-signed 'Code Signing' certificate named '$IDENTITY'"
-    echo "in Keychain Access (Certificate Assistant → Create a Certificate)."
-fi
+    echo "to stop that, run ./Build/setup-signing.sh once and build again."
+}
+
+case "$IDENTITY_NAME" in
+    "Developer ID Application: "*) signForRelease ;;
+    ad-hoc) signAdHoc ;;
+    *) signWithCertificate ;;
+esac
 
 # Re-register with LaunchServices, and stop the running copy first.
 #
