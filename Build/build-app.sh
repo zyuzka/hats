@@ -115,7 +115,7 @@ PLIST
 # HATS_SIGNING_IDENTITY="Hats Dev" builds with the self-signed certificate instead.
 #
 # Ad-hoc is last because its signature is derived from the binary: every rebuild
-# looks like a different application, and any "Always Allow" or Automation grant
+# looks like a different application, and any "Always Allow"
 # given to the previous build is void. Both certificates keep the identity stable
 # across rebuilds, so the grants survive.
 AVAILABLE_IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"

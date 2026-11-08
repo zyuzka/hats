@@ -25,8 +25,8 @@ Not affiliated with Anthropic.
 ## What it asks for
 
 - **Keychain access**, once, to read the credential slot Claude Code uses.
-- **Permission to control Terminal**, so it can close the sign-in window it opened. Refusing only
-  means that window stays open.
+- **Permission to show notifications**, when it first starts — for a new release and for switching by
+  itself. Refusing turns off only the notifications.
 - It writes a marked block into your login shell's profile while the gateway serves, and takes it
   back out when it quits. The first write keeps a backup of the profile beside it.
 
@@ -69,9 +69,7 @@ Then **delete `/Applications/Hats.app` before moving the new one in.** Copying o
 leave macOS serving a stale record of where the bundle lives, and the app then refuses to launch.
 
 Your hats and their stored logins live in `~/Library/Application Support/Hats` and the keychain, not
-inside the app, so they survive an update untouched. Nor do you have to grant the permission to
-control Terminal again — builds carry a stable signing identity, so macOS sees a new version as the
-same app.
+inside the app, so they survive an update untouched.
 
 ## Use it
 
@@ -157,8 +155,7 @@ Credentials are never written to the state directory. Earlier versions kept stat
 `~/.claude/state`, which is Claude Code's own directory and not a place for another program's files;
 both older locations are adopted on first run, newest first, and an emptied one is removed. Parked
 logins are re-filed in the keychain and the block in the shell profile is rewritten at the same
-time. macOS ties an Automation grant to the bundle identifier, so that one permission has to be
-granted once more after the rename.
+time.
 
 ## If something goes wrong
 
