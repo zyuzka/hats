@@ -25,8 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??
-    var updateWaiting: String?
-    let updates = UpdateWatch()
+    var updater: AppUpdater?
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
@@ -49,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blink.watchTheSystem()
         self.blink = blink
 
-        if settings.autoSwitch.wantsNotifications { Notifier.askOnce() }
+        Notifier.askOnce()
 
         GatewayProcess.port = settings.gatewayPort
         listenToUsageHeaders()
@@ -83,7 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.redrawAndDecide()
         }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
-        watchForUpdates()
+        startTheUpdater()
         DockPresence.watch()
 
         redraw()

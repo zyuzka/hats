@@ -77,7 +77,7 @@ struct HatsSnapshot: Equatable {
     var banner: AutoSwitchRecord?
     var bannerFromTitle: String = ""
     var version: String = "dev"
-    var updateWaiting: String?
+    var canCheckForUpdates: Bool?
     var changing: String?
     var startAtLogin = LoginItem.face(for: .notRegistered)
     var retiredPort: Int?

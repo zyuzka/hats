@@ -30,9 +30,23 @@ final class AppSettingsTests: XCTestCase {
         settings.autoSwitch.isOn = true
         settings.autoSwitch.order = ["b", "a"]
         settings.foreignProfileResolution = .keepMine
-        settings.announcedUpdate = "0.2.0"
         try settings.save(to: url)
         XCTAssertEqual(AppSettings.loaded(from: url), settings)
+    }
+
+    func testAFileThatStillCarriesTheAnnouncedUpdateLoads() throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"gatewayPort": 9000, "announcedUpdate": "0.3.2"}"#.utf8).write(to: url)
+        let settings = AppSettings.loaded(from: url)
+        XCTAssertEqual(
+            settings.gatewayPort,
+            9000,
+            "versions before 0.4.0 wrote the update they had announced; the key is gone, and a file "
+                + "that has it must not fall back to the defaults"
+        )
+        try settings.save(to: url)
+        let written = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertFalse(written.contains("announcedUpdate"), written)
     }
 
     func testAFileFromAnOlderVersionFillsInWhatItLacks() throws {
