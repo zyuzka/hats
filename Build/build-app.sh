@@ -98,7 +98,7 @@ PLIST
 #
 # The identity is taken in this order, and the build prints which one it used:
 #
-#   1. HATS_SIGNING_IDENTITY — a name, or the 40-character hash that
+#   1. HATS_SIGNING_IDENTITY — a full name, or the 40-character hash that
 #      `security find-identity -v -p codesigning` prints; `-` asks for ad-hoc.
 #      A value that names no valid identity stops the build instead of falling
 #      through to the next step.
@@ -121,8 +121,17 @@ PLIST
 AVAILABLE_IDENTITIES="$(security find-identity -v -p codesigning 2>/dev/null || true)"
 
 identityNameMatching() {
-    WANTED="$1" awk -F'"' 'NF >= 3 && index($0, ENVIRON["WANTED"]) { print $2; exit }' \
-        <<< "$AVAILABLE_IDENTITIES"
+    WANTED="$1" awk -F'"' 'NF >= 3 {
+        split($1, field, " ")
+        if (field[2] == toupper(ENVIRON["WANTED"])) { print $2; exit }
+    }' <<< "$AVAILABLE_IDENTITIES"
+}
+
+identityHashMatching() {
+    WANTED="$1" awk -F'"' 'NF >= 3 {
+        split($1, field, " ")
+        if (field[2] == toupper(ENVIRON["WANTED"]) || $2 == ENVIRON["WANTED"]) { print field[2]; exit }
+    }' <<< "$AVAILABLE_IDENTITIES"
 }
 
 identityHashNamedFrom() {
@@ -136,9 +145,10 @@ if [[ -n "${HATS_SIGNING_IDENTITY:-}" ]]; then
     if [[ "$IDENTITY" == "-" ]]; then
         IDENTITY_NAME="ad-hoc"
     else
+        IDENTITY="$(identityHashMatching "$HATS_SIGNING_IDENTITY")"
         IDENTITY_NAME="$(identityNameMatching "$IDENTITY")"
         if [[ -z "$IDENTITY_NAME" ]]; then
-            echo "HATS_SIGNING_IDENTITY=$IDENTITY names no valid signing identity." >&2
+            echo "HATS_SIGNING_IDENTITY=$HATS_SIGNING_IDENTITY names no valid signing identity." >&2
             echo "valid ones, from security find-identity -v -p codesigning:" >&2
             indentEachLine "$AVAILABLE_IDENTITIES" >&2
             exit 1
@@ -156,9 +166,10 @@ fi
 signForRelease() {
     if ! codesign --force --options runtime --timestamp --sign "$IDENTITY" \
             --identifier dev.tmk.hats "$APP"; then
-        echo "codesign with $IDENTITY_NAME failed, and the build stops rather than sign" >&2
-        echo "the bundle some other way. The timestamp comes from Apple's server, so this" >&2
-        echo "signature needs the network. To build without it, use the self-signed one:" >&2
+        echo "codesign with $IDENTITY_NAME failed — its own message is above — and the build stops" >&2
+        echo "rather than sign the bundle some other way. This signature takes a timestamp from" >&2
+        echo "Apple's server, so it needs the network. Without the network, the self-signed" >&2
+        echo "certificate from ./Build/setup-signing.sh builds a bundle that cannot be packaged:" >&2
         echo "  HATS_SIGNING_IDENTITY=\"Hats Dev\" ./Build/build-app.sh" >&2
         exit 1
     fi

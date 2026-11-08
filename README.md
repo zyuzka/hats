@@ -57,6 +57,9 @@ Run them from the repository root; each finds it on its own, so the working dire
 matter. `build-app.sh` refuses to stop a running app while a Claude Code session is reaching Claude
 through its gateway — `HATS_BUILD_MAY_STOP_SESSIONS=1` overrides that.
 
+If your keychain holds an Apple Developer ID, the build signs with it instead, which needs the
+network for Apple's timestamp; `HATS_SIGNING_IDENTITY="Hats Dev"` picks the self-signed one.
+
 Needs a Swift 5.9 toolchain. Build output is git-ignored.
 
 ### Updating

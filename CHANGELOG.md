@@ -35,8 +35,8 @@ what it shipped is folded into the single entry below, and public numbering star
   is known, its row names the hat it would switch to: `next: Personal`.
 
 - **Hats opens on the first launch.** It is now signed with an Apple Developer ID and notarized by
-  Apple. Earlier downloads were blocked by macOS until you went to System Settings → Privacy &
-  Security and chose Open Anyway; this one opens straight away.
+  Apple. Earlier downloads were blocked by macOS on the first launch until you allowed them by hand;
+  this one does not need that step.
 
 ## 0.3.2 — 2026-10-15
 

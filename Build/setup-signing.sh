@@ -137,4 +137,5 @@ security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$WORK/cert.pe
 echo "created: $IDENTITY"
 security find-identity -v -p codesigning | grep "$IDENTITY" | sed 's/^/  /'
 echo
-echo "now run ./Build/build-app.sh — it picks the identity up automatically"
+echo "now run ./Build/build-app.sh — it picks the identity up automatically, unless the"
+echo "keychain also holds a Developer ID, which it prefers"
