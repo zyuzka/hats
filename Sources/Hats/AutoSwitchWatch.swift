@@ -18,6 +18,7 @@ final class AutoSwitchWatch {
     private(set) var backoff = RenewalBackoff()
     private(set) var missed = MissedPolls()
     private(set) var freshInTheLastPoll: Set<String> = []
+    private(set) var liveCredential: LiveCredential?
 
     var interval: TimeInterval = 300
     var onReadings: ([String: UsageReading]) -> Void = { _ in Journal.log("usage.readingsIgnored") }
@@ -85,6 +86,7 @@ final class AutoSwitchWatch {
         }
         let ids = Set(polled.map(\.id))
         readings = Self.readingsAfterAPoll(readings, keeping: ids, batch: batch)
+        liveCredential = batch.liveCredential
         let fresh = Set(batch.readings.keys)
         let stamp = Date()
         parked = parked.settled(

@@ -16,6 +16,7 @@ final class GatewayConcurrentAnswerTests: XCTestCase {
         let server = GatewayServer(
             port: 0,
             refusal: nil,
+            usageSink: nil,
             sessionsReader: {
                 [Session(pid: 4242, elapsed: "01:00", isInteractive: false,
                          route: .pointedAt("http://127.0.0.1:1"))]

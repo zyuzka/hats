@@ -50,17 +50,28 @@ enum HatsCopy {
         return "Its stored login came without an expiry date. " + text
     }
 
-    static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String {
-        var parts: [String] = []
-        if let session = reading.session {
-            var line = "\(session.percent)% of 5h"
-            if let resets = session.resetsAt, resets > now {
-                line += " · resets \(UsageReading.clock(resets, timeZone: timeZone))"
-            }
-            parts.append(line)
+    static func usageLine(_ reading: UsageReading, timeZone: TimeZone = .current, now: Date = Date()) -> String? {
+        guard let session = reading.session else { return nil }
+        var line = "5h: \(session.percent)%"
+        if let resets = session.resetsAt, resets > now {
+            line += " / \(UsageReading.clock(resets, timeZone: timeZone))"
         }
-        if let weekly = reading.weekly { parts.append("week \(weekly.percent)%") }
-        return parts.joined(separator: " · ")
+
+        return line
+    }
+
+    static func weekLine(
+        percent: Int,
+        resetsAt: Date?,
+        isConfirmed: Bool,
+        timeZone: TimeZone = .current,
+        now: Date = Date()
+    ) -> String {
+        guard let resetsAt else { return "week: \(percent)%" + (isConfirmed ? "" : "?") }
+        let when = UsageReading.dayAndClock(resetsAt, timeZone: timeZone)
+        guard resetsAt > now else { return "week: ? / \(when)" }
+
+        return "week: \(percent)%" + (isConfirmed ? "" : "?") + " / \(when)"
     }
 
     static func staleReading(_ trouble: UsageTrouble?) -> String? {
@@ -74,18 +85,17 @@ enum HatsCopy {
         timeZone: TimeZone = .current,
         now: Date = Date()
     ) -> String? {
-        guard let session = reading.session else { return nil }
-        var parts = ["\(session.percent)%"]
-        if let resets = session.resetsAt, resets > now {
-            parts.append("resets \(UsageReading.clock(resets, timeZone: timeZone))")
-        }
-        if let rose, rose > 0 {
-            parts.append("up \(rose) while not being worn")
-        }
-        return parts.joined(separator: " · ")
+        guard let line = usageLine(
+            reading,
+            timeZone: timeZone,
+            now: now
+        ) else { return nil }
+        guard let rose, rose > 0 else { return line }
+
+        return line + " · up \(rose) while not being worn"
     }
 
-    static func handover(to title: String) -> String { "at the limit → \(title)" }
+    static func handover(to title: String) -> String { "next: \(title)" }
 
     static func sessions(count: Int?) -> String {
         guard let count else { return "Live sessions unknown — the process table could not be read" }

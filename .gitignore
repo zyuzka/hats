@@ -1,4 +1,4 @@
-# Swift build output, and the app bundle Dev/build-app.sh produces
+# Swift build output, and the app bundle Build/build-app.sh produces
 .build/
 *.app/
 dist/
@@ -19,9 +19,9 @@ __pycache__/
 # out of the repository.
 NOTES.md
 
-# Release and maintenance scripts. Building the app needs none of them — everything
-# the build uses lives in Build/, which is part of the repository.
-Dev/
+# Drafts of pull-request descriptions. The release and maintenance scripts beside them
+# are part of the repository.
+Dev/*.md
 
 # The design note behind moving a running session, and the command-line probe that
 # measured the behaviour the app rests on. Both stay on disk.

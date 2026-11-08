@@ -13,17 +13,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var blink: MarkBlink?
     var liveIdentity: LiveIdentity = .unreadable
     var settings = AppSettings.loaded()
+    var weekly = WeeklyRecord()
+    var lastWeeklyFailure = NoteOnChange()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
     var lastAutoSwitchWarning: AutoSwitchWarning?
     var lastAnnouncedWarning: AutoSwitchWarning?
     var pollsLanded = 0
+    var pollsOnHeaders = PollsOnHeaders()
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??
-    var updateWaiting: String?
-    let updates = UpdateWatch()
+    var updater: AppUpdater?
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
@@ -46,9 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         blink.watchTheSystem()
         self.blink = blink
 
-        if settings.autoSwitch.wantsNotifications { Notifier.askOnce() }
+        Notifier.askOnce()
 
         GatewayProcess.port = settings.gatewayPort
+        listenToUsageHeaders()
         startOrStopTheGateway()
 
         popover.model.actions = self
@@ -74,9 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.store.noteAuthObservation(refused: refused, accepted: accepted)
         }
         usage.onRenewals = { [weak self] renewals in self?.store.noteRenewed(renewals) }
-        usage.onReadings = { [weak self] _ in self?.redrawAndDecide() }
+        usage.onReadings = { [weak self] _ in
+            self?.rememberTheWeek()
+            self?.redrawAndDecide()
+        }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
-        watchForUpdates()
+        startTheUpdater()
         DockPresence.watch()
 
         redraw()

@@ -132,7 +132,8 @@ final class GatewayHandler: ChannelInboundHandler, @unchecked Sendable {
             ledger: server.ledger,
             path: facts.path,
             credential: facts.credential,
-            session: facts.session
+            session: facts.session,
+            usageSink: server.usageSink
         )
         self.relay = relay
         relay.start(request: request)

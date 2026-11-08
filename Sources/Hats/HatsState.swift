@@ -12,6 +12,7 @@ struct HatRowState: Identifiable, Equatable {
     let usage: UsageReading?
     let usageTrouble: UsageTrouble?
     let roseWhileParked: Int?
+    let week: String?
     let browser: String?
     let loginValidity: String?
     let loginAction: String
@@ -22,8 +23,10 @@ struct HatRowState: Identifiable, Equatable {
         usage: UsageReading?,
         usageTrouble: UsageTrouble?,
         roseWhileParked: Int? = nil,
+        week: WeekSighting? = nil,
         chromeNames: [String: String] = [:],
-        now: Date = Date()
+        now: Date = Date(),
+        timeZone: TimeZone = .current
     ) {
         id = hat.id
         title = hat.title
@@ -36,6 +39,15 @@ struct HatRowState: Identifiable, Equatable {
         self.usage = usage
         self.usageTrouble = usageTrouble
         self.roseWhileParked = roseWhileParked
+        self.week = week.map {
+            HatsCopy.weekLine(
+                percent: $0.window.percent,
+                resetsAt: $0.window.resetsAt,
+                isConfirmed: $0.isConfirmed,
+                timeZone: timeZone,
+                now: now
+            )
+        }
         browser = hat.browser?.label(chromeNames: chromeNames)
         loginValidity = HatsCopy.getLoginLine(for: hat, now: now)
         loginAction = hat.hasStoredCredentials ? "Log in again…" : "Log in…"
@@ -65,7 +77,7 @@ struct HatsSnapshot: Equatable {
     var banner: AutoSwitchRecord?
     var bannerFromTitle: String = ""
     var version: String = "dev"
-    var updateWaiting: String?
+    var canCheckForUpdates: Bool?
     var changing: String?
     var startAtLogin = LoginItem.face(for: .notRegistered)
     var retiredPort: Int?

@@ -9,7 +9,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/macOS-13%2B-0969da" alt="macOS 13+">
-  <img src="https://img.shields.io/badge/version-0.3.2-1a7f37" alt="version 0.3.2">
+  <img src="https://img.shields.io/badge/version-0.4.0-1a7f37" alt="version 0.4.0">
   <img src="https://img.shields.io/badge/license-MIT-59636e" alt="MIT">
 </p>
 
@@ -25,16 +25,19 @@ Not affiliated with Anthropic.
 ## What it asks for
 
 - **Keychain access**, once, to read the credential slot Claude Code uses.
-- **Permission to control Terminal**, so it can close the sign-in window it opened. Refusing only
-  means that window stays open.
+- **Permission to show notifications**, when it first starts — for a new release and for switching by
+  itself. Refusing turns off only the notifications.
 - It writes a marked block into your login shell's profile while the gateway serves, and takes it
   back out when it quits. The first write keeps a backup of the profile beside it.
+- **Whether to restart for an update**, when you press Install and Relaunch and a Claude Code session
+  is running through the gateway. The restart cuts off a request going through it at that moment.
 
 ## What it does not do
 
-- **Its only network traffic is to Anthropic.** The relay forwards your own Claude Code requests, and
-  each hat's usage is read from Anthropic's usage endpoint with that hat's own token. Nothing goes
-  anywhere else.
+- **Its network traffic is to Anthropic, and to GitHub for updates.** The relay forwards your own
+  Claude Code requests, and each hat's usage is read from Anthropic's usage endpoint with that hat's
+  own token. About every six hours Hats reads the release feed of this repository on GitHub, and it
+  downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
 
@@ -44,25 +47,7 @@ Download the `.dmg` from [Releases](../../releases), open it and drag Hats to Ap
 
 macOS 13 or later, and Claude Code already installed and logged in.
 
-The build is signed with a self-signed certificate rather than by a registered Apple developer, so
-Gatekeeper refuses the first launch and says it "could not verify Hats.app is free of malware".
-Nothing is wrong with the download — Gatekeeper simply has nothing it trusts to check against.
-
-On macOS 15 and later, including 26:
-
-1. Open the app once and let it fail.
-2. System Settings → Privacy & Security → scroll down.
-3. There: *"Hats.app was blocked"* → **Open Anyway** → Touch ID.
-4. Open it again; it launches from then on.
-
-On macOS 14 and earlier, right-click → Open → Open did the same thing, and `xattr -dr
-com.apple.quarantine` was the fallback. Apple closed both in 15: the menu no longer offers Open for
-an unnotarised app, and the flag it blocks on is `com.apple.provenance`, which `xattr` will not
-remove. Measured on 26.6.2.
-
-This goes away only with notarisation, which needs a paid Apple Developer account. What the
-self-signed certificate does buy is a signature that survives a rebuild — that is what keeps macOS
-treating each new version as the same app rather than asking for its permissions again.
+Hats is signed with an Apple Developer ID and notarized by Apple, so it opens on the first launch.
 
 ### Build it yourself
 
@@ -75,23 +60,34 @@ Run them from the repository root; each finds it on its own, so the working dire
 matter. `build-app.sh` refuses to stop a running app while a Claude Code session is reaching Claude
 through its gateway — `HATS_BUILD_MAY_STOP_SESSIONS=1` overrides that.
 
+If your keychain holds an Apple Developer ID, the build signs with it instead, which needs the
+network for Apple's timestamp; `HATS_SIGNING_IDENTITY="Hats Dev"` picks the self-signed one.
+
 Needs a Swift 5.9 toolchain. Build output is git-ignored.
 
 ### Updating
 
+From 0.4.0 on, Hats updates itself. It looks for a new release about every six hours, and Settings →
+General has **Check for Updates…**. When there is one, a window shows what changed, and a notification
+says so if Hats found it on its own. **Install Update** downloads the release and checks that it is
+signed with the same key as the copy you run. A second window then says it is ready to install, and
+**Install and Relaunch** there installs it and opens the new version.
+
+Installing restarts Hats, and the restart stops the gateway for a moment. If a Claude Code session is
+running through the gateway, or Hats cannot read a session's settings to tell, it asks after Install
+and Relaunch: a request going through the gateway at that moment is cut off. **Later** leaves the
+update waiting, and it installs the next time Hats quits.
+
+**From 0.3.x, update by hand one last time** — those versions cannot install an update themselves.
 Quit Hats first — the power button at the foot of the popover, or `Cmd-Q` while it is open. It asks
 before quitting if any Claude Code session is running, and says how many: quitting stops the relay,
 so such a session stops working until Hats is back or its shell is cleared.
 
 Then **delete `/Applications/Hats.app` before moving the new one in.** Copying over it in place can
-leave macOS serving a stale record of where the bundle lives, and the app then refuses to launch —
-the Gatekeeper step does not cure that, because it is not Gatekeeper.
+leave macOS serving a stale record of where the bundle lives, and the app then refuses to launch.
 
 Your hats and their stored logins live in `~/Library/Application Support/Hats` and the keychain, not
-inside the app, so they survive an update untouched. What you do have to redo is the Gatekeeper step,
-once per download, since the block is per file. What you do not have to redo is the permission to
-control Terminal — builds carry a stable signing identity, so macOS sees a new version as the same
-app.
+inside the app, so they survive an update untouched.
 
 ## Use it
 
@@ -172,13 +168,13 @@ markers in whichever profile your login shell reads: `~/.zshrc` (or `$ZDOTDIR/.z
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
+| Updater state: last check, a skipped version | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under
 `~/.claude/state`, which is Claude Code's own directory and not a place for another program's files;
 both older locations are adopted on first run, newest first, and an emptied one is removed. Parked
 logins are re-filed in the keychain and the block in the shell profile is rewritten at the same
-time. macOS ties an Automation grant to the bundle identifier, so that one permission has to be
-granted once more after the rename.
+time.
 
 ## If something goes wrong
 
@@ -199,10 +195,9 @@ Only a shell opened *while* the relay was serving reaches that state; one opened
 sets nothing, because the block asks the relay first. So a leftover block is inert. To remove it by
 hand, see [Switching by itself](#switching-by-itself) above, which names the markers and the profiles.
 
-**You replaced the app in place, it will not launch, and clearing the quarantine flag changes
-nothing.** That is the stale bundle record described under [Updating](#updating). Deleting
-`/Applications/Hats.app` and moving the new one in is the cure; if the new app is already sitting
-there, this re-registers it where it is:
+**You replaced the app in place and it will not launch.** That is the stale bundle record described
+under [Updating](#updating), for an update by hand. Deleting `/Applications/Hats.app` and moving the
+new one in is the cure; if the new app is already sitting there, this re-registers it where it is:
 
 ```sh
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f /Applications/Hats.app
@@ -232,5 +227,6 @@ still point at a `NOTES.md` you will not find here.
 
 ## License
 
-[MIT](LICENSE). The one dependency, [swift-nio](https://github.com/apple/swift-nio), is Apache-2.0 and
-is fetched at build time rather than vendored here.
+[MIT](LICENSE). The two dependencies are fetched at build time rather than vendored here:
+[swift-nio](https://github.com/apple/swift-nio), Apache-2.0, and
+[Sparkle](https://github.com/sparkle-project/Sparkle), MIT, which installs updates.

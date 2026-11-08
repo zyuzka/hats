@@ -47,6 +47,14 @@ enum HatDialogs {
         )) == 0
     }
 
+    static func hasConfirmedInstallingTheUpdate(cost: String) -> Bool {
+        PromptWindow.ask(HatPrompt(
+            title: "Install the update now?",
+            text: cost,
+            buttons: ["Install", "Later"]
+        )) == 0
+    }
+
     static func askAboutTheSignInInFlight(_ text: String) -> SignInInFlightChoice {
         SignInInFlightChoice.of(PromptWindow.ask(HatPrompt(
             title: "A sign-in is already running",
