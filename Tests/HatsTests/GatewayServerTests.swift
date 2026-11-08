@@ -103,7 +103,12 @@ final class GatewayServerTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         upstream = try FakeUpstream()
-        gateway = GatewayServer(port: 0, refusal: nil, upstream: upstream.url)
+        gateway = GatewayServer(
+            port: 0,
+            refusal: nil,
+            usageSink: nil,
+            upstream: upstream.url
+        )
         try gateway.start()
     }
 
@@ -348,8 +353,12 @@ final class GatewayServerTests: XCTestCase {
     }
 
     func testAnUnreachableUpstreamIsTheGatewaysOwnFailure() throws {
-        let dead = GatewayServer(port: 0, refusal: nil,
-                                 upstream: URL(string: "http://127.0.0.1:9")!)
+        let dead = GatewayServer(
+            port: 0,
+            refusal: nil,
+            usageSink: nil,
+            upstream: URL(string: "http://127.0.0.1:9")!
+        )
         try dead.start()
         defer { dead.stop() }
 
@@ -376,7 +385,12 @@ final class GatewayServerTests: XCTestCase {
 
     func testAfterASwitchEachSessionIsRefusedOnceThroughTheServedGateway() throws {
         let refusal = GatewayRefusal(settle: 0, account: "a@x.co")
-        let served = GatewayServer(port: 0, refusal: refusal, upstream: upstream.url)
+        let served = GatewayServer(
+            port: 0,
+            refusal: refusal,
+            usageSink: nil,
+            upstream: upstream.url
+        )
         try served.start()
         defer { served.stop() }
 

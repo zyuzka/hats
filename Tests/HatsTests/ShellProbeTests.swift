@@ -55,7 +55,11 @@ final class ShellProbeTests: XCTestCase {
     }
 
     func testOnlyOurOwnGatewayMakesTheBlockExport() throws {
-        let ours = GatewayServer(port: 0, refusal: nil)
+        let ours = GatewayServer(
+            port: 0,
+            refusal: nil,
+            usageSink: nil
+        )
         try ours.start()
         defer { ours.stop() }
         let port = try XCTUnwrap(ours.boundPort)
@@ -114,7 +118,11 @@ final class ShellProbeTests: XCTestCase {
     }
 
     func testAllThreeVariablesCrossTheGuardTogether() throws {
-        let ours = GatewayServer(port: 0, refusal: nil)
+        let ours = GatewayServer(
+            port: 0,
+            refusal: nil,
+            usageSink: nil
+        )
         try ours.start()
         defer { ours.stop() }
         let port = try XCTUnwrap(ours.boundPort)
@@ -139,7 +147,11 @@ final class ShellProbeTests: XCTestCase {
     func testTheCshBlockIsRunByCshAndNotOnlyParsedByIt() throws {
         let csh = "/bin/tcsh"
         try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: csh))
-        let ours = GatewayServer(port: 0, refusal: nil)
+        let ours = GatewayServer(
+            port: 0,
+            refusal: nil,
+            usageSink: nil
+        )
         try ours.start()
         defer { ours.stop() }
         let port = try XCTUnwrap(ours.boundPort)

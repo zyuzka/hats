@@ -3,6 +3,8 @@ import Foundation
 enum GatewayProcess {
     static var port = 8787
 
+    static var usageSink: ((String, UsageReading) -> Void)?
+
     static var baseURL: String { baseURL(port: port) }
 
     static func baseURL(port: Int) -> String { "http://127.0.0.1:\(port)" }
@@ -72,7 +74,8 @@ enum GatewayProcess {
     private static func attempted(on candidatePort: Int, settle: TimeInterval) -> (GatewayServer, Status) {
         let candidate = GatewayServer(
             port: candidatePort,
-            refusal: GatewayRefusal(settle: settle, account: GatewayServer.liveAccountAddress())
+            refusal: GatewayRefusal(settle: settle, account: GatewayServer.liveAccountAddress()),
+            usageSink: usageSink
         )
         var started = true
         do {

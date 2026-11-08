@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastAutoSwitchWarning: AutoSwitchWarning?
     var lastAnnouncedWarning: AutoSwitchWarning?
     var pollsLanded = 0
+    var pollsOnHeaders = PollsOnHeaders()
     var gatewayEnvironment: GatewayEnvironmentReport?
     var changing: String?
     var lookAtTheProcessTable: [Session]??
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.autoSwitch.wantsNotifications { Notifier.askOnce() }
 
         GatewayProcess.port = settings.gatewayPort
+        listenToUsageHeaders()
         startOrStopTheGateway()
 
         popover.model.actions = self
