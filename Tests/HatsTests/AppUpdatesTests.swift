@@ -142,6 +142,14 @@ final class AppUpdatesTests: XCTestCase {
         XCTAssertTrue(cost.contains("Installing the update quits Hats"), cost)
     }
 
+    func testWithTheGatewayHoldingNoPortAnUnreadableProcessTableDoesNotAsk() {
+        XCTAssertEqual(
+            GatewayStopDecision.getForAnUpdate(ports: [], sessions: nil),
+            .proceed,
+            "with no listener there is no request to cut off, whatever the process table says"
+        )
+    }
+
     func testTheUpdateCostIsNotTheGatewayRestartSentence() throws {
         let sessions = [
             session(4242, port: 8787),

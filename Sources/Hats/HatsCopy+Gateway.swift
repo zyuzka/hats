@@ -66,11 +66,12 @@ extension HatsCopy {
     }
 
     static func getUpdateInstallCost(ports: [Int], sessions: [Session]?) -> String? {
+        guard !ports.isEmpty else { return nil }
         let ending = "Installing the update quits Hats and opens the new version. A request going through "
             + "the gateway at that moment is cut off, and if the new version cannot take the port "
             + "back the gateway stays down until it can. Later installs the update the next time "
             + "Hats quits."
-        let unread = ports.isEmpty ? [] : (sessions ?? []).filter { $0.route == .unknown }
+        let unread = (sessions ?? []).filter { $0.route == .unknown }
         guard !unread.isEmpty else { return cost(ports: ports, sessions: sessions, ending: ending) }
         let pids = unread.map(\.pid).sorted().map(String.init).joined(separator: ", ")
         let noun = "\(unread.count) session\(unread.count == 1 ? "" : "s")"
