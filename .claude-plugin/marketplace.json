@@ -1,0 +1,14 @@
+{
+  "name": "hats",
+  "description": "Claude Code plugins that ship with the Hats menu-bar app.",
+  "owner": {
+    "name": "zyuzka"
+  },
+  "plugins": [
+    {
+      "name": "hats",
+      "source": "./plugin",
+      "description": "Session handoff for Claude Code, shipped with the Hats menu-bar app."
+    }
+  ]
+}

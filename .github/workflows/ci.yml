@@ -9,7 +9,7 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Both jobs only read this checkout: they build, test and lint, and write nothing back.
+# Every job only reads this checkout: they build, test and lint, and write nothing back.
 # Without this block the token arrives with whatever the repository default grants,
 # which is how a workflow ends up able to push or comment by accident.
 permissions:
@@ -19,7 +19,7 @@ jobs:
   build-and-test:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       - name: Toolchain
         run: swift --version
@@ -51,8 +51,32 @@ jobs:
     # that turns it red is new. Warnings still ride along without failing the job —
     # only error-severity rules stop it.
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: SwiftLint
         run: |
           brew install swiftlint
           swiftlint --reporter github-actions-logging
+
+  plugin-tests:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: GNU timeout for the handoff tests
+        run: command -v timeout || brew install coreutils
+
+      - name: Handoff hook
+        run: |
+          python3 --version
+          bash plugin/tests/handoff.test.sh
+
+      - name: Save reminder hook
+        run: bash plugin/tests/save-state-nudge.test.sh
+
+      - name: Both hooks under the system Python
+        run: |
+          export PATH="/usr/bin:$PATH"
+          python3 --version
+          bash plugin/tests/handoff.test.sh
+          bash plugin/tests/save-state-nudge.test.sh

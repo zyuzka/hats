@@ -1,0 +1,10 @@
+{
+  "name": "hats",
+  "version": "0.1.0",
+  "description": "Hands a saved resume note to the next Claude Code session: back to the same session after /clear, and as a list of notes when a new session starts in the same folder.",
+  "author": {
+    "name": "zyuzka"
+  },
+  "repository": "https://github.com/zyuzka/hats",
+  "license": "MIT"
+}
