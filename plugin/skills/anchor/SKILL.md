@@ -35,7 +35,8 @@ let one of them write the resume note instead of this skill.
    case) is a call of that skill with the Skill tool; any other step is an instruction to carry out.
    Never call anchor from a step, by any name or through another skill: this skill is already
    running. A step that fails — a skill call or a command that errs, an instruction you cannot carry
-   out — stops nothing: note it for the summary and go on with the next step. If the command itself
+   out — stops nothing: note it for the summary and go on with the next step. A failed step that
+   writes the resume note gives no note path, and then there is no handoff (step 3). If the command itself
    fails, note its first line and go on with step 1: the core never waits for own steps.
    `no own steps` means there are none.
 1. **Each repository this session touched** — the working folder, if it is a repository, and any
@@ -154,7 +155,8 @@ line, for example:
 
 `own steps: before 1, after 0; failed: skill:daily-journal — Unknown skill: daily-journal; skipped /work/app/.claude/anchor-steps.json: not JSON: Expecting value: line 1 column 1 (char 0)`
 
-The `index` and `MEMORY.md` lines are `not run` when step 4 was skipped or failed; `MEMORY.md` is
+The `index` and `MEMORY.md` lines are `not run` when step 4 was skipped or failed, and the `handoff`
+line when step 4 was skipped; `MEMORY.md` is
 `none` when `save` printed no `MEMORY.md` line, as for a note outside the memory folder. The
 `resume note` line is `<path> (written by own steps)` for the note an own step wrote, and `none`
 when no note was written or taken; when the command of step 0 failed, it ends with

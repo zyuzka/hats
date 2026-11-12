@@ -247,11 +247,18 @@ ignores it.
   ```
 
   If a skill of yours writes the resume note itself, say so with `"note": "steps"` in either file
-  (the project's value wins when that file counts; the default is `"anchor"`): then a step in
-  `before` writes the note and prints one line `resume note: <absolute path>`, and anchor hands that
-  path to the handoff without writing a note of its own or touching that one. The path must lie in
-  Claude Code's memory folder of the project or in the notes folder above; otherwise the handoff
-  refuses it.
+  (the project's value wins when that file counts; the default is `"anchor"`). Keep the step that
+  writes the note in the same file as `"note": "steps"`: the general and the project steps add up, so
+  a writer in the general file still runs under a project's `"anchor"`, and the task gets two notes.
+  That step, in `before`, writes the note and prints exactly one line `resume note: <path>` during
+  this anchor command — in a command's output or in its reply — with a path from the root and without
+  `"`, `$`, a backquote, a backslash or a line break; anchor hands that path to the handoff without
+  writing a note of its own or touching that one. Otherwise there is no handoff, and the summary says
+  "Not saved" with the reason. The path must lie in a Claude Code memory folder — of any project: the
+  plugin does not check which, and a path into another project's memory rewrites that project's
+  index — or in this project's notes folder above; otherwise the handoff refuses it. If the command
+  that reads your steps fails, anchor writes its own note and warns that the task may now have two
+  notes.
 
   Steps that change a repository belong in `before`: the save then sees the state they leave. Keep a
   project file out of git, for example in `.git/info/exclude`: committed, it runs for everyone who
