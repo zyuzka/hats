@@ -189,7 +189,25 @@ is reported and left alone. **Remove…** runs
 notes and your settings stay, and an installation for a project is shown but not touched. Quitting
 Hats removes nothing.
 
-Without Hats, the same two commands work in a terminal.
+When Hats itself is updated and comes with a newer plugin than the one Claude Code lists, the row says
+**Update available: 0.1.0 → 0.2.0** and offers **Update…**, and one notification says so for each new
+version (a click opens Settings). Hats does not ask GitHub for this: it compares the installed version
+with the one it was built with. **Update…** shows what it will run, and runs nothing until you press
+Update there:
+
+```sh
+claude plugin marketplace update hats --json
+claude plugin update hats@hats --scope user --json
+```
+
+The first refreshes Claude Code's copy of the `hats` marketplace; the second installs the version
+GitHub offers now, so the window afterwards names the version Claude Code then lists, which may still
+be older than the one this Hats comes with. A plugin switched off in Claude Code stays switched off —
+the row offers the update, the notification stays silent, and the window afterwards says how to turn
+it on. A plugin from a folder marketplace loads in place and is never offered an update. Running
+sessions get the new version after `/reload-plugins`, new ones when they start.
+
+Without Hats, the same commands work in a terminal.
 
 ## Supported CLIs
 

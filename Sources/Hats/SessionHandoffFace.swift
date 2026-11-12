@@ -25,6 +25,42 @@ enum SessionHandoffFace: Equatable {
         guard case .installed = self else { return false }
         return true
     }
+
+    func findOffer(own: String) -> SessionHandoffOffer? {
+        guard case .installed(let version?, .none, _, _) = self,
+              let installed = PluginVersion(version),
+              let bundled = PluginVersion(own),
+              installed < bundled else { return nil }
+
+        return SessionHandoffOffer(installed: version, own: own)
+    }
+}
+
+struct SessionHandoffOffer: Equatable {
+    let installed: String
+    let own: String
+}
+
+struct PluginVersion: Comparable {
+    private static let digits = UInt8(ascii: "0")...UInt8(ascii: "9")
+
+    let parts: [Int]
+
+    init?(_ text: String) {
+        let pieces = text.split(separator: ".", omittingEmptySubsequences: false)
+        guard pieces.count == 3 else { return nil }
+        var parts: [Int] = []
+        for piece in pieces {
+            let isDigits = !piece.isEmpty && piece.utf8.allSatisfy(Self.digits.contains)
+            guard isDigits, let number = Int(piece) else { return nil }
+            parts.append(number)
+        }
+        self.parts = parts
+    }
+
+    static func < (lhs: PluginVersion, rhs: PluginVersion) -> Bool {
+        lhs.parts.lexicographicallyPrecedes(rhs.parts)
+    }
 }
 
 enum SessionHandoffProvenance {
@@ -33,6 +69,7 @@ enum SessionHandoffProvenance {
     static let pluginID = "hats@hats"
     static let repository = "zyuzka/hats"
     static let userScope = "user"
+    static let bundledVersion = "0.1.0"
 
     static func getSource(_ marketplaces: [MarketplaceRecord]) -> SessionHandoffSource {
         guard let ours = marketplaces.first(where: { $0.name == marketplaceName }) else { return .absent }

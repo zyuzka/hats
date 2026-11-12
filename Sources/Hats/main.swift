@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var updater: AppUpdater?
     let handoffWork = SessionHandoffWork(world: .real)
     lazy var handoff = SessionHandoffFlow(
+        own: SessionHandoffProvenance.bundledVersion,
         perform: { [handoffWork] work in handoffWork.perform(work) },
         onMain: { DispatchQueue.main.async(execute: $0) },
         ask: { PromptWindow.ask($0) == 0 },
@@ -57,6 +58,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.blink = blink
 
         Notifier.askOnce()
+        Notifier.listen { [weak self] in self?.showSettings() }
 
         GatewayProcess.port = settings.gatewayPort
         listenToUsageHeaders()
@@ -95,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         redraw()
         DispatchQueue.main.async { [weak self] in self?.syncWithWorld() }
+        offerThePluginUpdateOnce()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

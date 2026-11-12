@@ -14,6 +14,7 @@ struct GeneralPanel: View {
             SessionHandoffRowView(
                 row: snapshot.sessionHandoff,
                 install: { model.actions?.installSessionHandoff() },
+                update: { model.actions?.updateSessionHandoff() },
                 remove: { model.actions?.removeSessionHandoff() }
             )
             Divider()

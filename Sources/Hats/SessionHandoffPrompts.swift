@@ -26,6 +26,31 @@ enum SessionHandoffPrompts {
         )
     }
 
+    static func createUpdate(_ plan: SessionHandoffUpdatePlan) -> HatPrompt {
+        let commands = [
+            SessionHandoffUpdateSteps.refreshArguments,
+            SessionHandoffUpdateSteps.updateArguments,
+        ]
+        let text = "Hats will run, with the Claude Code at \(plan.target.cli):\n"
+            + commands.map { "claude " + $0.joined(separator: " ") }.joined(separator: "\n") + "\n\n"
+            + "The first refreshes Claude Code's copy of the hats marketplace from "
+            + "github.com/\(SessionHandoffProvenance.repository). The second updates your user installation of "
+            + "\(SessionHandoffProvenance.pluginID), recorded in the settings folder \(plan.target.configFolder), "
+            + "from version \(plan.installed) to the version GitHub offers now; this Hats comes with \(plan.own).\n\n"
+            + "Your resume notes, your own steps, your hooks and your settings stay. Installations for a project are "
+            + "not touched, and a plugin switched off in Claude Code stays switched off. "
+            + SessionHandoffUpdateCopy.reloadNote
+
+        return HatPrompt(
+            title: "Update the session handoff plugin?",
+            text: text,
+            buttons: [
+                "Update",
+                "Cancel",
+            ]
+        )
+    }
+
     static func createRemove() -> HatPrompt {
         let text = "Hats will run:\nclaude " + SessionHandoffSteps.removeArguments.joined(separator: " ") + "\n\n"
             + "It removes only your user installation of \(SessionHandoffProvenance.pluginID). The hats "

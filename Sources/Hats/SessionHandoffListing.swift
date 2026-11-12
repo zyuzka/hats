@@ -87,6 +87,14 @@ enum SessionHandoffListing {
         return PluginChangeAnswer(isDone: isDone, message: message ?? outcome.trouble ?? "exit code \(code)")
     }
 
+    static func getUpdateAnswer(of outcome: PluginCommandOutcome) -> PluginChangeAnswer {
+        let answer = getAnswer(of: outcome)
+        let isRefreshFailed = findLastObject(in: outcome.stdout)?["refreshFailed"] as? Bool == true
+        guard answer.isDone, isRefreshFailed else { return answer }
+
+        return PluginChangeAnswer(isDone: false, message: answer.message)
+    }
+
     static func findLastObject(in stdout: Data) -> [String: Any]? {
         let lines = (String(bytes: stdout, encoding: .utf8) ?? "").split(separator: "\n").reversed()
         for line in lines {

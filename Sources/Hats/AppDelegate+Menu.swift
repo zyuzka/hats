@@ -14,7 +14,7 @@ extension AppDelegate {
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
             self.settingsWindow.show(model: self.popover.model)
-            self.handoff.refresh()
+            self.handoff.refresh(then: nil)
         }
     }
 

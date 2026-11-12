@@ -151,6 +151,26 @@ final class AppSettingsTests: XCTestCase {
                            + "threshold that was crossed")
     }
 
+    func testThePluginVersionToldAboutSurvivesARoundTrip() throws {
+        var settings = AppSettings()
+        settings.pluginVersionToldAbout = "0.2.0"
+
+        try settings.save(to: url)
+
+        XCTAssertEqual(AppSettings.loaded(from: url).pluginVersionToldAbout, "0.2.0")
+        XCTAssertTrue(try String(contentsOf: url, encoding: .utf8).contains("\"pluginVersionToldAbout\" : \"0.2.0\""))
+    }
+
+    func testAFileWithoutThePluginVersionToldAboutLoadsAsNotToldYet() throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"gatewayPort": 9000}"#.utf8).write(to: url)
+
+        let settings = AppSettings.loaded(from: url)
+
+        XCTAssertEqual(settings.gatewayPort, 9000, "the file is read, not replaced by the defaults")
+        XCTAssertNil(settings.pluginVersionToldAbout)
+    }
+
     func testACorruptFileIsTheDefaultsRatherThanACrash() throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                 withIntermediateDirectories: true)

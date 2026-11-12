@@ -71,6 +71,6 @@ final class SessionHandoffWorkTests: XCTestCase {
         let start = try XCTUnwrap(menu.range(of: "func showSettings()"))
         let end = try XCTUnwrap(menu.range(of: "func toggleStartAtLogin()", range: start.upperBound..<menu.endIndex))
 
-        XCTAssertTrue(menu[start.lowerBound..<end.lowerBound].contains("self.handoff.refresh()"))
+        XCTAssertTrue(menu[start.lowerBound..<end.lowerBound].contains("self.handoff.refresh(then: nil)"))
     }
 }

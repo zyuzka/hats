@@ -430,6 +430,326 @@ enum PluginCLISamples {
         stderr: "",
         exitCode: 0
     )
+
+    static let marketplacesThroughGitHub = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-a, run from /, after install hats --marketplace zyuzka/hats; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin marketplace list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "name": "hats",
+            "source": "github",
+            "repo": "zyuzka/hats",
+            "installLocation": "/home/node/cfg-a/plugins/marketplaces/hats"
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let listUserThroughGitHub010 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-a, run from /, after install hats --marketplace zyuzka/hats; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "id": "hats@hats",
+            "version": "0.1.0",
+            "scope": "user",
+            "enabled": true,
+            "installPath": "/home/node/cfg-a/plugins/cache/hats/hats/0.1.0",
+            "installedAt": "2026-11-12T22:51:07.115Z",
+            "lastUpdated": "2026-11-12T22:51:07.115Z",
+            "projectEnabled": false
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let listUserAndProjectThroughGitHub010 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-b, run from /, after install hats@hats --scope project from /tmp/proj; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "id": "hats@hats",
+            "version": "0.1.0",
+            "scope": "user",
+            "enabled": true,
+            "installPath": "/home/node/cfg-b/plugins/cache/hats/hats/0.1.0",
+            "installedAt": "2026-11-12T22:51:08.086Z",
+            "lastUpdated": "2026-11-12T22:51:08.086Z",
+            "projectEnabled": false
+          },
+          {
+            "id": "hats@hats",
+            "version": "0.1.0",
+            "scope": "project",
+            "enabled": true,
+            "installPath": "/home/node/cfg-b/plugins/cache/hats/hats/0.1.0",
+            "installedAt": "2026-11-12T22:51:11.878Z",
+            "lastUpdated": "2026-11-12T22:51:11.878Z",
+            "projectPath": "/tmp/proj",
+            "projectEnabled": false
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let listOffThroughGitHub010 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-c, run from /, after disable hats@hats --scope user; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "id": "hats@hats",
+            "version": "0.1.0",
+            "scope": "user",
+            "enabled": false,
+            "installPath": "/home/node/cfg-c/plugins/cache/hats/hats/0.1.0",
+            "installedAt": "2026-11-12T22:51:09.183Z",
+            "lastUpdated": "2026-11-12T22:51:09.183Z",
+            "projectEnabled": false
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let updateHelp322 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-a, run from /; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin update --help
+        """#,
+        stdout: #"""
+        Usage: claude plugin update [options] <plugin>
+
+        Update a plugin to the latest version (restart required to apply)
+
+        Options:
+          --accept-command <sha256>  Accept the marketplace-declared command (a
+                                     command-source install, or the headersHelper that
+                                     fetches the archive) whose sha256 a previous --json
+                                     run reported as shownCommand.sha256; counts as -y
+                                     for exactly that command, for that plugin and
+                                     marketplace catalog, and nothing else. If either
+                                     changed (a refresh that moved the catalog counts),
+                                     the run refuses and reports the command again, to
+                                     be shown to a person again
+          -h, --help                 Display help for command
+          --json                     Print one machine-readable result line on stdout
+                                     instead of the human message (same exit codes; a
+                                     marketplace-declared command is still shown and
+                                     must be confirmed — pass -y when not interactive)
+          -s, --scope <scope>        Installation scope: user, project, local, managed
+                                     (default: auto-detect)
+          -y, --yes                  Accept the displayed marketplace-declared command
+                                     without the confirmation prompt — a changed install
+                                     command, or the headersHelper command that fetches
+                                     its archive (required when stdin or stdout is not a
+                                     TTY)
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let marketplaceUpdateHelp322 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-a, run from /; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin marketplace update --help
+        """#,
+        stdout: #"""
+        Usage: claude plugin marketplace update [options] [name]
+
+        Update marketplace(s) from their source - updates all if no name specified
+
+        Options:
+          -h, --help  Display help for command
+          --json      With a marketplace name: print one machine-readable result line as
+                      the last line on stdout (same exit codes)
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let updateUpToDate010 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-a, run from /, after 0.2.0 was pushed, without marketplace update first: the catalog was seconds old and was not refreshed; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin update hats@hats --scope user --json
+        """#,
+        stdout: #"""
+        {"command":"update","outcome":"ok","plugin":"hats@hats","pluginId":"hats@hats","scope":"user","message":"hats is already at the latest version (0.1.0).","updateOutcome":"up_to_date","oldVersion":"0.1.0","newVersion":"0.1.0"}
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let marketplaceUpdateDone = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-b, run from /, after 0.2.0 was pushed; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin marketplace update hats --json
+        """#,
+        stdout: #"""
+        {"command":"marketplace-update","outcome":"ok","marketplace":"hats","message":"Refreshing marketplace cache (timeout: 120s)…\nCloning repository (timeout: 120s): https://github.com/zyuzka/hats.git\nReplacing the existing marketplace clone…\nClone complete, validating marketplace…\nSuccessfully updated marketplace: hats"}
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let updateDone010To020 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-b, run from /, right after marketplace update hats; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin update hats@hats --scope user --json
+        """#,
+        stdout: #"""
+        {"command":"update","outcome":"ok","plugin":"hats@hats","pluginId":"hats@hats","scope":"user","message":"Plugin \"hats\" updated from 0.1.0 to 0.2.0 for scope user. Restart to apply changes.","updateOutcome":"updated","oldVersion":"0.1.0","newVersion":"0.2.0"}
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let listUserAndProjectThroughGitHub020 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-b, run from /, after the update of the user installation; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "id": "hats@hats",
+            "version": "0.2.0",
+            "scope": "user",
+            "enabled": true,
+            "installPath": "/home/node/cfg-b/plugins/cache/hats/hats/0.2.0",
+            "installedAt": "2026-11-12T22:51:08.086Z",
+            "lastUpdated": "2026-11-12T22:51:15.833Z",
+            "projectEnabled": false
+          },
+          {
+            "id": "hats@hats",
+            "version": "0.1.0",
+            "scope": "project",
+            "enabled": true,
+            "installPath": "/home/node/cfg-b/plugins/cache/hats/hats/0.1.0",
+            "installedAt": "2026-11-12T22:51:11.878Z",
+            "lastUpdated": "2026-11-12T22:51:11.878Z",
+            "projectPath": "/tmp/proj",
+            "projectEnabled": false
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let listOffThroughGitHub020 = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-c, run from /, after marketplace update and update of the switched-off plugin; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin list --json
+        """#,
+        stdout: #"""
+        [
+          {
+            "id": "hats@hats",
+            "version": "0.2.0",
+            "scope": "user",
+            "enabled": false,
+            "installPath": "/home/node/cfg-c/plugins/cache/hats/hats/0.2.0",
+            "installedAt": "2026-11-12T22:51:09.183Z",
+            "lastUpdated": "2026-11-12T22:51:18.873Z",
+            "projectEnabled": false
+          }
+        ]
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
+
+    static let marketplaceUpdateRepositoryGone = PluginCLISample(
+        origin: #"""
+        Docker, image node:22.23.5-bookworm-slim, user node, claude 2.1.322 from npm, git from root, a copy of this repository's marketplace committed as 0.1.0 (later 0.2.0) into a bare repository that stands in for https://github.com/zyuzka/hats.git through git insteadOf, 2026-11-12, run 3; CLAUDE_CONFIG_DIR=/home/node/cfg-d, run from /, with the bare repository moved away; Dev/plugin-cli-check.sh repeats it
+        """#,
+        command: #"""
+        claude plugin marketplace update hats --json
+        """#,
+        stdout: #"""
+        {"command":"marketplace-update","marketplace":"hats","outcome":"failed","message":"Failed to refresh marketplace 'hats': Fetching the marketplace from GitHub failed on both attempts. HTTPS (https://github.com/zyuzka/hats.git): Failed to clone marketplace repository: SSH authentication failed. Please ensure your SSH keys are configured for GitHub, or use an HTTPS URL instead.\n\nOriginal error: Cloning into '/home/node/cfg-d/plugins/marketplaces/hats..clone'...\nfatal: '/tmp/hats.git' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n\nSSH (git@github.com:zyuzka/hats.git): Failed to clone marketplace repository: SSH host key is not in your known_hosts file. To add it, connect once manually (this will show the fingerprint for you to verify):\n  ssh -T git@github.com\n\nOr use an HTTPS URL instead (recommended for public repos).\n\nOriginal error: Cloning into '/home/node/cfg-d/plugins/marketplaces/hats..clone'...\nNo ED25519 host key is known for github.com and you have requested strict checking. \nHost key verification failed. \nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.","failureCode":"error_unknown"}
+        """# + "\n",
+        stderr: #"""
+        ✘ Failed to update marketplace(s): Failed to refresh marketplace 'hats': Fetching the marketplace from GitHub failed on both attempts. HTTPS (https://github.com/zyuzka/hats.git): Failed to clone marketplace repository: SSH authentication failed. Please ensure your SSH keys are configured for GitHub, or use an HTTPS URL instead.
+
+        Original error: Cloning into '/home/node/cfg-d/plugins/marketplaces/hats..clone'...
+        fatal: '/tmp/hats.git' does not appear to be a git repository
+        fatal: Could not read from remote repository.
+
+        Please make sure you have the correct access rights
+        and the repository exists.
+
+        SSH (git@github.com:zyuzka/hats.git): Failed to clone marketplace repository: SSH host key is not in your known_hosts file. To add it, connect once manually (this will show the fingerprint for you to verify):
+          ssh -T git@github.com
+
+        Or use an HTTPS URL instead (recommended for public repos).
+
+        Original error: Cloning into '/home/node/cfg-d/plugins/marketplaces/hats..clone'...
+        No ED25519 host key is known for github.com and you have requested strict checking. 
+        Host key verification failed. 
+        fatal: Could not read from remote repository.
+
+        Please make sure you have the correct access rights
+        and the repository exists.
+        """# + "\n",
+        exitCode: 1
+    )
+
+    static let updateRefreshFailed = PluginCLISample(
+        origin: #"""
+        Docker, the same setup as run 3 by hand before Dev/plugin-cli-check.sh took it over, 2026-11-12; CLAUDE_CONFIG_DIR=/home/node/cfg-d, run from /, the bare repository moved away, the catalog about 45 seconds old; the script does not repeat it: there the catalog is seconds old and plugin update skips the refresh
+        """#,
+        command: #"""
+        claude plugin update hats@hats --scope user --json
+        """#,
+        stdout: #"""
+        {"command":"update","outcome":"ok","plugin":"hats@hats","pluginId":"hats@hats","scope":"user","message":"hats is already at the latest version (0.1.0). Warning: marketplace not refreshed (Failed to refresh marketplace 'hats': Failed to clone marketplace repository: SSH authentication failed. Please ensure your SSH keys are configured for GitHub, or use an HTTPS URL instead.) — version shown may be stale.","updateOutcome":"up_to_date","oldVersion":"0.1.0","newVersion":"0.1.0","refreshFailed":true}
+        """# + "\n",
+        stderr: "",
+        exitCode: 0
+    )
 }
 
 struct PluginCLISample {

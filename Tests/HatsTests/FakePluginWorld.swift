@@ -33,6 +33,8 @@ final class FakePluginWorld {
     init() {
         answer(Self.claude(["--version"]), PluginCLISamples.version322)
         answer(Self.claude(SessionHandoffSteps.helpArguments), PluginCLISamples.installHelp322)
+        answer(Self.claude(SessionHandoffUpdateSteps.helps[0].arguments), PluginCLISamples.marketplaceUpdateHelp322)
+        answer(Self.claude(SessionHandoffUpdateSteps.helps[1].arguments), PluginCLISamples.updateHelp322)
         answer(Self.claude(SessionHandoffSteps.listArguments), PluginCLISamples.listEmpty)
         answer(Self.claude(SessionHandoffSteps.marketplaceArguments), PluginCLISamples.marketplacesEmpty)
         answers[Self.key(Self.shell, ["-lc", "command -v python3"])] = Self.printed(Self.homebrewPython + "\n")
@@ -56,6 +58,8 @@ final class FakePluginWorld {
                 || line.arguments.starts(with: ["plugin", "uninstall"])
                 || line.arguments.starts(with: ["plugin", "marketplace", "add"])
                 || line.arguments.starts(with: ["plugin", "marketplace", "remove"])
+                || line.arguments.starts(with: ["plugin", "update"]) && !line.arguments.contains("--help")
+                || line.arguments.starts(with: ["plugin", "marketplace", "update"]) && !line.arguments.contains("--help")
         }
     }
 
