@@ -1,7 +1,7 @@
 {
   "name": "hats",
   "version": "0.1.0",
-  "description": "Hands a resume note, saved with the anchor command (/hats:anchor), to the next Claude Code session: back to the same session after /clear, and as a list of notes when a new session starts in the same folder.",
+  "description": "Hands a resume note, saved with the anchor command (/hats:anchor), to the next Claude Code session: back to the same session after /clear, and as a list of notes when a new session starts in the same folder. With Claude Code's memory on, it writes the note and a resume-index.md into the project's memory folder, creates MEMORY.md with a line pointing to that index when there is none, and asks the session to add the line to an existing MEMORY.md.",
   "author": {
     "name": "zyuzka"
   },

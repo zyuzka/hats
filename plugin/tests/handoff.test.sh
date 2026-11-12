@@ -687,6 +687,13 @@ printf '## NOW\n\nproc line\n' >"$dir/r.md"
 out=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" python3 -I "$HOOK" save --note "$dir/r.md" --topic proc 2>&1)
 has "where и save без --cwd — одна папка: отметка записана" "marker:" "$out"
 if [ "$(markerfield "$markers" cwd)" = "$(realp "$other")" ]; then ok; else bad "where и save без --cwd: папка в отметке — из /proc" "$(markerfield "$markers" cwd)"; fi
+rm -f "$markers"/*.json
+p=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" python3 -I "$HOOK" new --slug t 2>&1)
+if [ "$p" = "$dir/resume-t.md" ] && [ -f "$p" ]; then ok; else bad "new без --cwd и --memory: папка Hats проекта процесса Claude (/proc), а не оболочки" "«${p}»"; fi
+printf '## NOW\n\nnew proc line\n' >"$p" 2>/dev/null
+out=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" python3 -I "$HOOK" save --note "$p" --topic proc 2>&1)
+has "new и save без --cwd — одна папка: отметка записана" "marker:" "$out"
+if [ "$(markerfield "$markers" note)" = "$(realp "$p")" ]; then ok; else bad "new и save без --cwd: в отметке записка из new" "$(markerfield "$markers" note)"; fi
 
 reset; own_dir=$(notes_of "$proj"); other_dir=$(notes_of "$other")
 printf 'share 73%%\n' >"$own_dir/x.md"; printf 'share 73%%\n' >"$other_dir/y.md"; printf 'share 73%%\n' >"$proj/src.md"
@@ -795,6 +802,10 @@ out=$(newnote --slug t --memory "$mem/lnk/.."); rc=$?
 has "new: созданный путь не прошёл проверку записки — так и сказано" "did not pass the note check" "$out"
 if [ $rc -eq 1 ] && [ -z "$(ls -A "$work/.claude/projects/-other/memory" | grep -v '^sub$')" ] && [ "$(resumes_in "$mem")" -eq 0 ]; then ok
 else bad "new: ссылка/.. уводит в чужую память — код 1, созданный файл убран" "rc=$rc $(ls -A "$work/.claude/projects/-other/memory")"; fi
+printf 'своя\n' >"$mem/resume-t.md"; out=$(newnote --slug t --memory "$mem/lnk/.."); rc=$?
+if [ $rc -eq 1 ] && [ -z "$(ls -A "$work/.claude/projects/-other/memory" | grep -v '^sub$')" ] && [ "$(cat "$mem/resume-t.md")" = "своя" ]; then ok
+else bad "new: ссылка/.. в чужую память при записке того же имени в лексической папке — код 1, файла нет, своя цела" "rc=$rc «${out:0:200}» $(ls -A "$work/.claude/projects/-other/memory")"; fi
+rm -f "$mem/resume-t.md" "$mem/lnk"
 mkdir -p "$work/cfg/projects/-proj/memory"
 out=$(env CLAUDE_CONFIG_DIR="$work/cfg" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" new --cwd "$proj" --slug t --memory "$mem" 2>&1); rc=$?
 if [ $rc -eq 1 ] && [ ! -e "$mem/resume-t.md" ]; then ok; else bad "new: CLAUDE_CONFIG_DIR — память ~/.claude не его, отказ" "rc=$rc «${out:0:200}»"; fi
@@ -965,10 +976,27 @@ lacks "записка папки Hats: строки MEMORY.md нет" "MEMORY.md
 if [ $rc -eq 0 ] && [ ! -e "$own_dir/resume-index.md" ] && [ ! -e "$index" ] && [ ! -e "$memmd" ]; then ok; else bad "записка папки Hats: ни индекса, ни MEMORY.md" "rc=$rc $(ls -A "$own_dir" "$mem")"; fi
 reset; rm -rf "$work/vault"; mkdir -p "$work/vault" "$work/.claude/projects/-linked"; ln -s "$work/vault" "$work/.claude/projects/-linked/memory"
 printf '## NOW\n\nx\n' >"$work/vault/n.md"; out=$(save "$proj" "$work/.claude/projects/-linked/memory/n.md" "ссылка")
-has "память-ссылка: индекса нет — так и сказано" "index: none" "$out"
+has "память-ссылка: индекса нет — так и сказано" "index: none (the memory folder is a link)" "$out"
+out=$(newnote --slug t --memory "$work/.claude/projects/-linked/memory"); rc=$?
+if [ $rc -eq 1 ] && [ ! -e "$work/vault/resume-t.md" ]; then ok; else bad "new: папка памяти — ссылка: код 1, записки нет" "rc=$rc «${out:0:200}»"; fi
+has "new: папка памяти — ссылка: отказ называет настоящий путь" "its real path" "$out"
 if [ -z "$(ls -A "$work/vault" | grep -v '^n\.md$')" ]; then ok; else bad "память-ссылка: в её папке ни индекса, ни MEMORY.md" "$(ls -A "$work/vault")"; fi
 rm -rf "$work/vault"
 
+reset; printf '## NOW\n\na\n' >"$mem/resume-a.md"
+if [ -e "$mem/RESUME-A.md" ]; then
+  save "$proj" "$mem/resume-a.md" "первый" >/dev/null; save "$proj" "$mem/RESUME-A.md" "второй" >/dev/null
+  if [ "$(entries)" -eq 1 ]; then ok; else bad "индекс: та же записка путём в другом регистре — одна строка" "$(cat "$index")"; fi
+fi
+if [ "$(id -u)" -ne 0 ]; then
+  reset; printf '## NOW\n\nx\n' >"$mem/resume-t.md"; chmod 500 "$mem"
+  out=$(save "$proj" "$mem/resume-t.md" t); rc=$?; chmod 700 "$mem"
+  if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ]; then ok; else bad "индекс не записать: код 0 и одна отметка" "rc=$rc ${out:0:300}"; fi
+  has "индекс не записать: так и сказано" "index not updated: resume-index.md cannot be written" "$out"
+  has "индекс не записать: MEMORY.md не проверялся" "MEMORY.md: not checked: index not updated" "$out"
+  has "индекс не записать: проверка записки на месте" "quotes and numbers: all verified" "$out"
+  lacks "индекс не записать: без трассировки" "Traceback" "$out"
+fi
 reset; p=$(newnote --slug flow --memory "$mem"); printf '## NOW\n\nflow line\n' >"$p"
 out=$(save "$proj" "$p" "поток"); has "new → save: отметка, индекс, MEMORY.md" "index: updated
 MEMORY.md: created with the index line" "$out"

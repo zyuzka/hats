@@ -232,7 +232,9 @@ ignores it.
   command «анкор» (`anchor`, or `/hats:anchor`) saves it. The note goes into Claude Code's memory
   folder of the project, beside a `resume-index.md` that lists the saved sessions, and one line at the
   top of `MEMORY.md` points to that index — so a session finds the note even after the plugin is
-  removed. The plugin alone writes the index; do not edit it. With Claude Code's memory switched off
+  removed. The plugin alone writes the index; do not edit it. So the plugin writes into Claude Code's
+  memory folder: it creates `MEMORY.md` with that line when there is none, and asks the session to add
+  the line at the top of an existing one. With Claude Code's memory switched off
   the notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
   them. Your own steps run with it, from two optional files:
