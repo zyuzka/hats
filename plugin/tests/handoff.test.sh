@@ -832,9 +832,10 @@ for line in lines[lines.index("allowed-tools:") + 1:]:
         break
     rules.append(line[4:])
 bash = [r for r in rules if r.startswith("Bash(")]
-rule = re.fullmatch(r"Bash\((.+) \*\)", bash[0]) if len(bash) == 1 else None
+handoff_rules = [r for r in bash if "/scripts/handoff.py" in r]
+rule = re.fullmatch(r"Bash\((.+) \*\)", handoff_rules[0]) if len(bash) == 2 and len(handoff_rules) == 1 else None
 if not rule:
-    sys.exit("allowed-tools has no single Bash(<prefix> *): %r" % rules)
+    sys.exit("allowed-tools has not two Bash rules, one of them Bash(<handoff.py prefix> *): %r" % rules)
 prefix = rule.group(1)
 spans = re.findall(r"`([^`\n]+)`", body)
 saves = [c for c in spans if " save " in c]
@@ -848,6 +849,14 @@ spaced = shlex.split(prefix.replace("${CLAUDE_PLUGIN_ROOT}", "/a b")) == ["sh", 
 print("name=%s same=%s where=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
     fields.get("name"), same, where, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
     bool(files) and all(os.path.isfile(f) for f in files), spaced))
+own = [re.fullmatch(r"Bash\((.+)\)", r) for r in bash if "/scripts/anchor-steps.py" in r]
+own_line = own[0].group(1) if len(own) == 1 and own[0] else ""
+own_words = shlex.split(own_line)
+print("steps: same=%s wrapped=%s file=%s spaced=%s" % (
+    bool(own_line) and [c for c in spans if "anchor-steps.py" in c] == [own_line],
+    own_words == ["sh", "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh", "${CLAUDE_PLUGIN_ROOT}/scripts/anchor-steps.py"],
+    len(own_words) == 3 and os.path.isfile(own_words[2].replace("${CLAUDE_PLUGIN_ROOT}", root)),
+    shlex.split(own_line.replace("${CLAUDE_PLUGIN_ROOT}", "/a b")) == ["sh", "/a b/scripts/py.sh", "/a b/scripts/anchor-steps.py"]))
 folders = [re.fullmatch(r"(Write|Edit|Read)\(~(/.+)/\*\*\)", r) for r in rules if r not in bash]
 roots = sorted({m.group(2) for m in folders if m})
 print("rules=%d tools=%s roots=%d root=%s|" % (
@@ -855,9 +864,11 @@ print("rules=%d tools=%s roots=%d root=%s|" % (
   "$plugin_root" "$work" 2>&1)
 has "SKILL.md anchor: save и where в теле и правило Bash в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
   "name=anchor same=True where=True wrapped=True handoff=True files=True spaced=True" "$out"
+has "SKILL.md anchor: шаг 0 — ровно команда второго правила Bash через py.sh, anchor-steps.py есть, путь с пробелом цел" \
+  "steps: same=True wrapped=True file=True spaced=True" "$out"
 reset; hook_root=$(notes_of "$proj"); hook_root=${hook_root%/*}
-has "SKILL.md anchor: allowed-tools — YAML-список из четырёх правил, Write/Edit/Read на корень записок handoff.py" \
-  "rules=4 tools=Edit,Read,Write roots=1 root=$hook_root|" "$out"
+has "SKILL.md anchor: allowed-tools — YAML-список из пяти правил, Write/Edit/Read на корень записок handoff.py" \
+  "rules=5 tools=Edit,Read,Write roots=1 root=$hook_root|" "$out"
 out=$(python3 -I -c 'import json,os,sys
 root = sys.argv[1]
 plugins = json.load(open(os.path.join(root, ".claude-plugin", "marketplace.json"), encoding="utf-8"))["plugins"]

@@ -3,6 +3,7 @@ name: anchor
 description: Save this session's state for the next session — a resume note and a handoff marker — when the user's message is itself the anchor command, in any language («анкор», "anchor", «якорь») or typed as /hats:anchor, or when the user asks whether the session is anchored. Call it again on every later anchor command in the session. A message that only contains the word, such as "anchor the regex", is not the command, and other requests to save the session are not this skill's.
 allowed-tools:
   - Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" *)
+  - Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/anchor-steps.py")
   - Write(~/Library/Application Support/Hats/notes/**)
   - Edit(~/Library/Application Support/Hats/notes/**)
   - Read(~/Library/Application Support/Hats/notes/**)
@@ -12,10 +13,25 @@ allowed-tools:
 
 Saves where this session stands, so the next one can pick it up: after `/clear` the plugin's start
 hook gives this session's note back, and a new session started in the same folder lists the notes of
-closed sessions. Every step is a command, and its output goes into the summary.
+closed sessions. Every step is a command, and its output goes into the summary. The user's own steps,
+if they have any, run before steps 1–4 and after them, on the anchor command only.
 
 ## Steps
 
+0. **Own steps before** — only on the anchor command, not when the user only asks whether the session
+   is anchored. Run exactly this command; it prints the user's own steps, from a general file in the
+   Hats folder and from this project's `.claude/anchor-steps.json`:
+
+   `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/anchor-steps.py"`
+
+   Carry out the steps listed under `before anchor:` now, one by one in their order, then go on with
+   step 1; the `after anchor:` list is for step 5. A step `skill:<name>` (the prefix in any letter
+   case) is a call of that skill with the Skill tool; any other step is an instruction to carry out.
+   Never call anchor from a step, by any name or through another skill: this skill is already
+   running. A step that fails — a skill call or a command that errs, an instruction you cannot carry
+   out — stops nothing: note it for the summary and go on with the next step. If the command itself
+   fails, note its first line and go on with step 1: the core never waits for own steps.
+   `no own steps` means there are none.
 1. **Each repository this session touched** — the working folder, if it is a repository, and any
    other repository you wrote to. In the working folder run the plain commands, each as its own call
    and written exactly so — Claude Code asks for approval of an unquoted `@{u}..`:
@@ -76,10 +92,24 @@ closed sessions. Every step is a command, and its output goes into the summary.
    another Python. If it fails otherwise — exit code 1: no Claude process found, the note cannot be
    read, the marker cannot be written — report its first line in the summary. For a note outside
    both folders, move the note into the folder `where` printed and run the command again.
+5. **Own steps after** — only when step 0 ran. Run the command of step 0 again, also when it failed
+   there, and carry out the steps it lists under `after anchor:`, in their order and the way step 0
+   says, also when step 4 was skipped or failed. An after step that wrote to a repository makes step 1
+   stale for it: run step 1's three commands for that repository again and put their result on its
+   line of the summary.
 
 ## Summary — one block, nothing else
 
-Written in the user's language; the labels below give the structure.
+Written in the user's language; the labels below give the structure. The `own steps` line starts with
+`not run` when the user only asked whether the session is anchored, with `none` when the command of
+step 0 printed `no own steps`, and otherwise with the counts of steps carried out,
+`before <n>, after <n>` — `before 0, after 0` when every file was skipped. Then, each after `; `,
+come every failed step as `failed: <step> — <first line of its error>`, the command of step 0 as
+`failed: own steps command — <its first line>` when it failed in both step 0 and step 5, and every
+line it printed that starts with `skipped`, `dropped` or `project steps skipped`, as printed. One full
+line, for example:
+
+`own steps: before 1, after 0; failed: skill:daily-journal — Unknown skill: daily-journal; skipped /work/app/.claude/anchor-steps.json: not JSON: Expecting value: line 1 column 1 (char 0)`
 
 ```
 Saved:
@@ -87,10 +117,11 @@ Saved:
 - background: none | <task> — <what it is for>, waits for <what>
 - resume note: <path> (read back)
 - handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output>
+- own steps: not run | none | before <n>, after <n>[; failed: <step> — <first line>]…[; <line of step 0>]…
 Not saved: <what and why> | nothing
 ```
 
 Every anchor command is a fresh call of this skill through the Skill tool, also the second one in a
 session: the copy loaded at the first call may be older than this file. Once this skill has run, the
-plugin adds a one-line reminder to every later prompt. Asked whether the session is anchored, run the
-steps again instead of recalling that they ran.
+plugin adds a one-line reminder to every later prompt. Asked whether the session is anchored, run
+steps 1–4 again instead of recalling that they ran; own steps (0 and 5) run on the anchor command only.

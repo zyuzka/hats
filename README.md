@@ -230,7 +230,21 @@ ignores it.
 - [`plugin/`](plugin/) — a Claude Code plugin that hands a saved resume note to the next session: the
   command «анкор» (`anchor`, or `/hats:anchor`) saves it. The notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
-  them. Its tests sit beside it, and
+  them. Your own steps run with it, from two optional files:
+  `~/Library/Application Support/Hats/anchor-steps.json` for every project, and
+  `<project>/.claude/anchor-steps.json`, which counts only when the session runs in a folder listed in
+  `projects` of the first one — that folder itself, not a subfolder. Each holds the lists `before` and
+  `after`; a step is `skill:<name>` or a plain instruction, and the general steps come first:
+
+  ```json
+  {"before": ["skill:daily-journal", "Commit the vault files you wrote, by explicit path."], "projects": ["~/projects/hats"]}
+  ```
+
+  Steps that change a repository belong in `before`: the save then sees the state they leave. Keep a
+  project file out of git, for example in `.git/info/exclude`: committed, it runs for everyone who
+  lists that folder. A file over 16 KB, a list over 20 steps, a step over 500 characters or any
+  malformed entry skips the whole file, and a skipped general file marks no project; the reason shows
+  on the `own steps` line of the anchor summary. The plugin's tests sit beside it, and
   [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) lists it.
 
 The source carries no comments — a SwiftLint rule enforces it, and what a name cannot say goes into a
