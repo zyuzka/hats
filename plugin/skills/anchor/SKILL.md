@@ -17,17 +17,20 @@ closed sessions. With Claude Code's memory on, the note sits in the memory folde
 `resume-index.md` beside it, named by a line of `MEMORY.md`, lists it, so a session finds it even
 without the plugin.
 Every step is a command, and its output goes into the summary. The user's own steps,
-if they have any, run before steps 1–4 and after them, on the anchor command only.
+if they have any, run before steps 1–4 and after them, on the anchor command only, and the user may
+let one of them write the resume note instead of this skill.
 
 ## Steps
 
-0. **Own steps before** — only on the anchor command, not when the user only asks whether the session
-   is anchored. Run exactly this command; it prints the user's own steps, from a general file in the
-   Hats folder and from this project's `.claude/anchor-steps.json`:
+0. **Own steps before** — run exactly this command, also when the user only asks whether the session
+   is anchored; it prints the user's own steps, from a general file in the Hats folder and from this
+   project's `.claude/anchor-steps.json`, and who writes the resume note:
 
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/anchor-steps.py"`
 
-   Carry out the steps listed under `before anchor:` now, one by one in their order, then go on with
+   Asked only whether the session is anchored, run it for its `note:` lines alone (step 3): carry out
+   none of its steps and go on with step 1. On the anchor command, carry out the steps listed under
+   `before anchor:` now, one by one in their order, keeping what each one printed, then go on with
    step 1; the `after anchor:` list is for step 5. A step `skill:<name>` (the prefix in any letter
    case) is a call of that skill with the Skill tool; any other step is an instruction to carry out.
    Never call anchor from a step, by any name or through another skill: this skill is already
@@ -52,6 +55,24 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
    told when one ends but not what it was for. A monitor ends with the session — note what it watched.
 3. **Resume note** — one note per task: two sessions in one folder work on different tasks and would
    overwrite one shared note.
+   - Who writes it, first: the `note:` lines the command of step 0 printed in this turn.
+     - `note: written by own steps` — an own step writes the note, and this skill never writes to it
+       or moves it, also after step 4: skip every other point of step 3. On the anchor command the
+       note's path is the line `resume note: <path>` that a before step of this anchor command
+       printed; a step that failed gives no path. Take that path exactly as printed, if there is
+       exactly one (the same path printed twice is one) and it is absolute and holds none of `"`,
+       `$`, a backquote, a backslash or a line break — it goes into a shell command. Otherwise skip
+       step 4 and put the reason under "Not saved":
+       `own steps write the note and printed no path` (adding `note: no before step to write it`
+       when the command printed that line), `own steps printed several note paths: <paths>`,
+       `the note path from own steps is not absolute: <path>` or
+       `the note path from own steps holds <the character>: <path>`.
+       Asked only whether the session is anchored, use the path this skill took at the latest
+       anchor command of this session that took one; if none did, skip step 4 and put
+       `Not saved: own steps run only on the anchor command`.
+     - No `note:` line — this skill writes the note: go on with the points below.
+     - The command of step 0 failed — the owner is unknown: this skill writes the note as below, and
+       the summary says this task may now have two notes.
    - Which file, in this order:
      1. This task already has a note of its own — update it in place. Its own note is one the start
         hook gave this session (after `/clear`, or from its list when the user picked it), one the
@@ -107,12 +128,14 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
    if the line could not be inserted, say so in the summary. Never write `MEMORY.md` with Write, and
    never edit `resume-index.md`: the plugin alone writes it. Fix every line it lists as not verified
    and run
-   it again, or leave them — the next session gets them marked "not verified". If it says the handoff
+   it again, or leave them — the next session gets them marked "not verified". In a note own steps
+   wrote, leave them: that note is not this skill's to fix. If it says the handoff
    is off, nothing was written. If it says `python3` is required, nothing ran: tell the user the
    handoff needs `python3` — on a Mac, the Xcode Command Line Tools (`xcode-select --install`) or
    another Python. If it fails otherwise — exit code 1: no Claude process found, the note cannot be
    read, the marker cannot be written — report its first line in the summary.
-5. **Own steps after** — only when step 0 ran. Run the command of step 0 again, also when it failed
+5. **Own steps after** — on the anchor command only, never when the user only asks whether the
+   session is anchored. Run the command of step 0 again, also when it failed
    there, and carry out the steps it lists under `after anchor:`, in their order and the way step 0
    says, also when step 4 was skipped or failed. An after step that wrote to a repository makes step 1
    stale for it: run step 1's three commands for that repository again and put their result on its
@@ -132,14 +155,17 @@ line, for example:
 `own steps: before 1, after 0; failed: skill:daily-journal — Unknown skill: daily-journal; skipped /work/app/.claude/anchor-steps.json: not JSON: Expecting value: line 1 column 1 (char 0)`
 
 The `index` and `MEMORY.md` lines are `not run` when step 4 was skipped or failed; `MEMORY.md` is
-`none` when `save` printed no `MEMORY.md` line, as for a note outside the memory folder.
+`none` when `save` printed no `MEMORY.md` line, as for a note outside the memory folder. The
+`resume note` line is `<path> (written by own steps)` for the note an own step wrote, and `none`
+when no note was written or taken; when the command of step 0 failed, it ends with
+`; owner unknown: own steps command failed — this task may now have two notes`.
 
 ```
 Saved:
 - <repo>: clean | uncommitted: <files> | unpushed: <n> (<why>) | no upstream: <n> not on <base> | detached HEAD
 - background: none | <task> — <what it is for>, waits for <what>
-- resume note: <path> (read back)[; not in memory: <first line of the refusal> | no memory folder]
-- handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output>
+- resume note: <path> (read back)[; not in memory: <first line of the refusal> | no memory folder][; owner unknown: …] | <path> (written by own steps) | none
+- handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output> | not run
 - index: updated | not updated: <reason> | none (<reason as printed>) | not run
 - MEMORY.md: <as save printed it> | index line added first, checked | index line not added: <reason> | none | not run
 - own steps: not run | none | before <n>, after <n>[; failed: <step> — <first line>]…[; <line of step 0>]…
@@ -149,4 +175,5 @@ Not saved: <what and why> | nothing
 Every anchor command is a fresh call of this skill through the Skill tool, also the second one in a
 session: the copy loaded at the first call may be older than this file. Once this skill has run, the
 plugin adds a one-line reminder to every later prompt. Asked whether the session is anchored, run
-steps 1–4 again instead of recalling that they ran; own steps (0 and 5) run on the anchor command only.
+the command of step 0 for its `note:` lines and steps 1–4 again instead of recalling that they ran;
+the own steps themselves, before and after, are carried out on the anchor command only.

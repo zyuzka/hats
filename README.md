@@ -247,6 +247,13 @@ ignores it.
   {"before": ["skill:daily-journal", "Commit the vault files you wrote, by explicit path."], "projects": ["~/projects/hats"]}
   ```
 
+  If a skill of yours writes the resume note itself, say so with `"note": "steps"` in either file
+  (the project's value wins when that file counts; the default is `"anchor"`): then a step in
+  `before` writes the note and prints one line `resume note: <absolute path>`, and anchor hands that
+  path to the handoff without writing a note of its own or touching that one. The path must lie in
+  Claude Code's memory folder of the project or in the notes folder above; otherwise the handoff
+  refuses it.
+
   Steps that change a repository belong in `before`: the save then sees the state they leave. Keep a
   project file out of git, for example in `.git/info/exclude`: committed, it runs for everyone who
   lists that folder. A file over 16 KB, a list over 20 steps, a step over 500 characters or any
