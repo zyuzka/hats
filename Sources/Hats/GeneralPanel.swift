@@ -11,6 +11,12 @@ struct GeneralPanel: View {
             Divider()
             startAtLoginRow
             Divider()
+            SessionHandoffRowView(
+                row: snapshot.sessionHandoff,
+                install: { model.actions?.installSessionHandoff() },
+                remove: { model.actions?.removeSessionHandoff() }
+            )
+            Divider()
             if let checks = snapshot.checksForUpdatesAutomatically {
                 automaticUpdateChecksRow(checks)
                 Divider()

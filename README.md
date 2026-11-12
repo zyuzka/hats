@@ -163,6 +163,34 @@ markers in whichever profile your login shell reads: `~/.zshrc` (or `$ZDOTDIR/.z
 
 </details>
 
+## Session handoff
+
+A Claude Code plugin that ships with Hats: the command «анкор» (`anchor`, or `/hats:anchor`) saves a
+resume note, and the next session in the same folder is offered it. What it writes and where is under
+[`plugin/`](#what-else-is-here) below.
+
+Hats never installs it on its own. Open **Settings › General › Session handoff**: the row says whether
+the plugin is installed, from where, and whether it is switched off in Claude Code. **Install…** first
+checks what the plugin needs, then shows what it will install and into which Claude Code settings
+folder, and runs nothing until you press Install there:
+
+```sh
+claude plugin install hats --marketplace zyuzka/hats --scope user --json
+```
+
+It refuses, with the reason and the cure, when Claude Code is missing or too old (no `--marketplace`),
+when running sessions use different settings folders or `CLAUDE_CONFIG_DIR` is not a full path, when
+the first `python3` on the PATH is the macOS placeholder that offers the Command Line Tools
+(`xcode-select --install`), when `settings.json` cannot be read as JSON, and when `settings.json`
+already starts the same handoff hook by itself — remove that entry by hand first: Hats shows it and
+never edits the file. A marketplace named `hats` from another source, or another plugin named `hats`,
+is reported and left alone. **Remove…** runs
+`claude plugin uninstall hats@hats --scope user --keep-data --json`: the `hats` marketplace, your
+notes and your settings stay, and an installation for a project is shown but not touched. Quitting
+Hats removes nothing.
+
+Without Hats, the same two commands work in a terminal.
+
 ## Supported CLIs
 
 | Tool | Status |
