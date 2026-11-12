@@ -4,8 +4,9 @@ Claude process, and the SessionStart hook gives the note back after /clear, or l
 of closed sessions when a new session starts in the same folder.
 
   handoff.py start                      SessionStart hook (matcher startup|clear), stdin = hook input
-  handoff.py save --note P --topic T    after a save request: marker + check of the note
+  handoff.py save --note P --topic T    after a save request: marker + check of the note + resume index
   handoff.py check P                    the check alone
+  handoff.py new --slug S [--memory D]  creates an empty note resume-S.md under a free name, prints its path
   handoff.py where                      creates and prints the notes folder of the working folder
 
 The marker is keyed to the Claude process (pid + start time read in UTC), not to the folder:
@@ -26,6 +27,64 @@ The note must sit in one of two folders: the notes folder, or Claude Code's memo
 the note's head into the model's context, and any other path would let a marker print an arbitrary
 file. `save` and the start hook check it with one function, `allowed_note`, against the working
 folder of the save (`save` its own, the hook the marker's).
+
+Memory comes first (user, 2026-11-12: the line in MEMORY.md is backward compatibility — the plugin
+may be removed, Claude Code's memory comes with Claude Code). A new note goes into Claude Code's
+memory folder of the project, `resume-index.md` beside it lists the saved sessions, and one line of
+MEMORY.md points to that index, so a session finds the note even without the plugin. With memory
+switched off, or a memory folder `new` refuses, the note goes into the notes folder, without an index
+(the user's choice of 2026-11-12). Measured on Claude Code 2.1.322, 2026-11-12:
+  1. With memory off (CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 or autoMemoryEnabled false) a session is
+     given neither MEMORY.md nor the path of the memory folder.
+  2. With the plugin disabled, a session asked to continue read MEMORY.md's line, the index and the
+     note, 2 runs of 2.
+  3. Claude Code loads the first 200 lines of MEMORY.md, then cuts at the last newline before 25,000
+     characters, counted as JavaScript counts a string's length (UTF-16 units). So the index line
+     goes first, and it is looked for only in that loaded part.
+  4. The memory folder is <config>/projects/<name>/memory unless a setting moves it, and a worktree
+     shares the one of its main repository. So `new` takes the folder from the session, whose
+     instructions name it, and never computes it.
+  5. Write overwrites an existing file of the memory folder that the session never read, with no
+     refusal. So a name the session picks itself protects nothing; `new` creates the file only if the
+     name is free.
+`new --slug S [--memory D]`: S is [a-z0-9]+(-[a-z0-9]+)*, up to 60 characters, not "index". D must
+resolve to exactly <real <config>/projects>/<name>/memory, a folder that exists (Claude Code creates
+it when a session starts, measured 2026-11-12); without D the note goes into the notes folder that
+`where` prints. The name is resume-S.md, then resume-S-2.md up to -99 while the name is taken, and
+the file is created with O_CREAT|O_EXCL|O_NOFOLLOW, mode 600. The path is joined without normpath
+and printed through D as the session gave it, so it matches the memory folder in its instructions;
+the created path must pass `allowed_note`. `where` stays: a copy of the skill loaded before an update
+still calls it.
+
+The index: `save` rewrites `resume-index.md` only for a note whose real path sits directly in a
+memory folder under <config>/projects, and in that same folder. A header line marks it as the
+plugin's, a paragraph tells the session to ask the user before continuing a listed task (its session
+may still be at work), and one line per note follows, newest first, at most 20:
+`- [<topic>](<<file>>) — saved <time>, folder <working folder>`. The topic, cut to 120 characters for
+the marker already, loses [ ] ( ) < > `, control characters and runs of spaces; the working folder
+loses control characters. A note whose name holds <, >, / or a
+control character is not indexed. An old line stays only when it parses, its file is a plain .md
+name, not a service file, not this note, a regular file of that folder, and saved within 30 days. The
+rewrite, from reading the index to os.replace of a temporary file in the same folder, runs under flock
+on <config>/state/handoff/index-<16 hex digits of the sha256 of the folder's real path>.lock, waited
+for up to 10 seconds: one lock per memory folder, so projects never wait for each other. An existing
+index is touched only when it is a regular file, not a link, up to 64 KB, UTF-8, with the plugin's
+header; otherwise, and when the lock stays busy, `save` prints `index not updated: <reason>`. Then,
+under the same lock, MEMORY.md: absent — created with the index line (O_EXCL|O_NOFOLLOW); empty — the
+line appended; a link or not a regular file — not checked; otherwise read (O_NOFOLLOW|O_NONBLOCK, up
+to 100 KB, UTF-8) and searched, in the part Claude Code loads, for a line that starts with "- [" and
+links to resume-index.md. Without one, `save` asks the session to put the line first with Edit: the
+script never changes a MEMORY.md that has content. A marker written means exit 0, whatever happens
+to the index and MEMORY.md. `allowed_note` refuses a note named resume-index.md or MEMORY.md, in any
+letter case. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE also widens the window between choosing a name
+in `new` and creating the file and the one between reading the index and replacing it, and
+HANDOFF_TEST_INDEX_WAIT=<s> shortens the wait for the lock.
+
+Known gaps of the index: memory of any project under <config>/projects is accepted, as before; a
+memory folder that is a link gets no index, and a quote of it is not caught (below); two config
+folders that share one memory take different locks; two sessions that continue one note both edit
+it — races are closed only for new files and the index; a failure between `new` and `save` leaves an
+empty note, and the next `new` takes -2.
 
 The notes folder is the plugin's own (user, 2026-11-11 and 2026-11-12): ~/Library/Application
 Support/Hats/notes/<project>/<name>.md, where <project> is the first 16 hex digits of the sha256 of
@@ -119,9 +178,11 @@ import json
 import os
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 
 try:
@@ -146,6 +207,43 @@ TRACE_FIELD_LIMIT = 500
 TRACE_LOCK_S = 0.5
 NOTES_ROOT = "~/Library/Application Support/Hats/notes"
 PROJECT_FOLDER_LENGTH = 16
+SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+SLUG_LIMIT = 60
+NAME_TRIES = 99
+INDEX_NAME = "resume-index.md"
+MEMORY_NAME = "MEMORY.md"
+SERVICE_NAMES = {
+    "resume-index.md",
+    "memory.md",
+}
+INDEX_HEADER = "# Resume index — written by the Hats plugin; do not edit"
+INDEX_ABOUT = (
+    "One line per saved session, newest first. A session may still be working on a task listed here: "
+    "ask the user before continuing one."
+)
+INDEX_LINE = re.compile(
+    r"- \[(?P<topic>[^\[\]()<>`]*)\]\(<(?P<name>[^<>/\n]+)>\) — saved "
+    r"(?P<saved>\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ), folder (?P<folder>.*)"
+)
+INDEX_TOPIC_DROP = "[]()<>`"
+INDEX_ENTRY_LIMIT = 20
+INDEX_SIZE_LIMIT = 64 * 1024
+INDEX_LOCK_S = 10.0
+MEMORY_LINE = (
+    "- [Resume index](resume-index.md) — sessions saved for the next one; "
+    "read it when the user asks to continue earlier work"
+)
+MEMORY_SIZE_LIMIT = 100 * 1024
+MEMORY_LOADED_LINES = 200
+MEMORY_LOADED_UNITS = 25_000
+MEMORY_SKIPPED = "MEMORY.md: not checked: index not updated"
+CONTROL = {
+    "Cc",
+    "Cf",
+    "Cs",
+    "Zl",
+    "Zp",
+}
 
 CITE = re.compile(
     r"\((?:(?i:cite):|цит\.)\s+(?P<path>[^«»“”\"()\n]{1,300}?):(?P<line>\d{1,7})\s+"
@@ -352,14 +450,37 @@ def find_own_note(path, cwd):
     return real if is_own_note(real, folder) else None
 
 
+def is_service_name(path):
+    return os.path.basename(path).lower() in SERVICE_NAMES
+
+
 def allowed_note(path, cwd):
-    if not usable(path):
+    if not usable(path) or is_service_name(path):
         return None
+    kept = find_allowed_note(path, cwd)
+    if kept is None or is_service_name(os.path.realpath(kept)):
+        return None
+
+    return kept
+
+
+def find_allowed_note(path, cwd):
     kept = note_in_memory(path)
     if kept is None:
         return find_own_note(path, cwd)
     real = os.path.realpath(kept)
     return kept if kept.endswith(".md") and real.endswith(".md") and os.path.isfile(real) else None
+
+
+def is_memory_folder(folder):
+    real = os.path.realpath(folder)
+
+    return (
+        os.path.isabs(folder)
+        and os.path.basename(real) == "memory"
+        and os.path.dirname(os.path.dirname(real)) == memory_root()
+        and os.path.isdir(real)
+    )
 
 
 def checked_markers():
@@ -881,6 +1002,306 @@ def cmd_start(seen):
     return 0
 
 
+def get_plain(text):
+    return "".join(ch for ch in text if unicodedata.category(ch) not in CONTROL)
+
+
+def is_indexable(name):
+    return not any(ch in "<>/" for ch in name) and get_plain(name) == name
+
+
+def is_regular_file(path):
+    try:
+        return stat.S_ISREG(os.lstat(path).st_mode)
+    except (OSError, ValueError):
+        return False
+
+
+def get_index_wait():
+    if testing() and os.environ.get("HANDOFF_TEST_INDEX_WAIT"):
+        return float(os.environ["HANDOFF_TEST_INDEX_WAIT"])
+    return INDEX_LOCK_S
+
+
+def try_lock(fd):
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+
+    return True
+
+
+def get_index_lock(folder):
+    if fcntl is None:
+        return None, "no file locking here"
+    digest = hashlib.sha256(os.fsencode(folder)).hexdigest()[:PROJECT_FOLDER_LENGTH]
+    path = os.path.join(state_dir(), f"index-{digest}.lock")
+    try:
+        fd = os.open(
+            path,
+            os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+        )
+    except OSError as error:
+        return None, f"lock cannot be opened: {error.strerror or error}"
+    wait_until = time.monotonic() + get_index_wait()
+    while not try_lock(fd):
+        if time.monotonic() >= wait_until:
+            os.close(fd)
+            return None, "lock busy"
+        time.sleep(0.05)
+
+    return fd, None
+
+
+def get_regular_bytes(fd, limit):
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        return None, "is not a regular file"
+    data = b""
+    while len(data) <= limit:
+        chunk = os.read(fd, limit + 1 - len(data))
+        if not chunk:
+            break
+        data += chunk
+    if len(data) > limit:
+        return None, f"is larger than {limit // 1024} KB"
+
+    return data, None
+
+
+def get_small_text(path, limit):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as error:
+        return None, f"cannot be read: {error.strerror or error}"
+    try:
+        data, error = get_regular_bytes(fd, limit)
+    except OSError as error:
+        return None, f"cannot be read: {error.strerror or error}"
+    finally:
+        os.close(fd)
+    if error:
+        return None, error
+    try:
+        return data.decode("utf-8"), None
+    except UnicodeDecodeError:
+        return None, "is not UTF-8"
+
+
+def get_index_text(path):
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return "", None
+    except OSError as error:
+        return None, f"{INDEX_NAME} cannot be read: {error.strerror or error}"
+    if stat.S_ISLNK(info.st_mode):
+        return None, f"{INDEX_NAME} is a link"
+    text, error = get_small_text(path, INDEX_SIZE_LIMIT)
+    if error:
+        return None, f"{INDEX_NAME} {error}"
+    if text.split("\n", 1)[0] != INDEX_HEADER:
+        return None, f"{INDEX_NAME} has another first line, so the plugin did not write it"
+
+    return text, None
+
+
+def is_kept_entry(
+    match,
+    folder,
+    name,
+    now,
+):
+    other = match.group("name")
+    try:
+        saved = datetime.strptime(match.group("saved"), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False
+
+    return (
+        other.endswith(".md")
+        and other != name
+        and is_indexable(other)
+        and not is_service_name(other)
+        and now - saved <= MAX_AGE
+        and is_regular_file(os.path.join(folder, other))
+    )
+
+
+def get_index_entry(name, marker):
+    topic = " ".join("".join(ch for ch in get_plain(marker["topic"]) if ch not in INDEX_TOPIC_DROP).split())
+
+    return f"- [{topic}](<{name}>) — saved {marker['saved_at']}, folder {get_plain(marker['cwd'])}"
+
+
+def set_index_file(
+    folder,
+    name,
+    marker,
+):
+    path = os.path.join(folder, INDEX_NAME)
+    text, error = get_index_text(path)
+    if error:
+        return error
+    now = datetime.now(timezone.utc)
+    kept = []
+    for line in text.split("\n")[1:]:
+        match = INDEX_LINE.fullmatch(line)
+        if match and is_kept_entry(
+            match,
+            folder,
+            name,
+            now,
+        ):
+            kept.append(line)
+    lines = [
+        INDEX_HEADER,
+        "",
+        INDEX_ABOUT,
+        "",
+        get_index_entry(name, marker),
+        *kept[:INDEX_ENTRY_LIMIT - 1],
+    ]
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        fd = os.open(
+            tmp,
+            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        test_pause()
+        os.replace(tmp, path)
+    except (OSError, ValueError) as error:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return f"{INDEX_NAME} cannot be written: {error}"
+
+    return None
+
+
+def get_loaded_memory(text):
+    head = "\n".join(text.split("\n")[:MEMORY_LOADED_LINES])
+    cut = cap_utf16(head, MEMORY_LOADED_UNITS)
+    if cut == head:
+        return head
+    end = cut.rfind("\n")
+
+    return cut[:end] if end > 0 else cut
+
+
+def is_index_link(line):
+    return line.startswith("- [") and (
+        "](resume-index.md)" in line
+        or "](<resume-index.md>)" in line
+    )
+
+
+def create_memory_file(path):
+    try:
+        fd = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(MEMORY_LINE + "\n")
+    except OSError as error:
+        return f"not checked: {error.strerror or error}"
+
+    return "created with the index line"
+
+
+def is_still_empty(fd):
+    info = os.fstat(fd)
+
+    return stat.S_ISREG(info.st_mode) and info.st_size == 0
+
+
+def set_empty_memory_file(path):
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as error:
+        return f"not checked: {error.strerror or error}"
+    try:
+        if not is_still_empty(fd):
+            return f"not checked: {MEMORY_NAME} changed while it was checked"
+        os.write(fd, (MEMORY_LINE + "\n").encode("utf-8"))
+    except OSError as error:
+        return f"not checked: {error.strerror or error}"
+    finally:
+        os.close(fd)
+
+    return "was empty, the index line written"
+
+
+def find_memory_line(path):
+    text, error = get_small_text(path, MEMORY_SIZE_LIMIT)
+    if error:
+        return f"not checked: {MEMORY_NAME} {error}"
+    if any(is_index_link(line) for line in get_loaded_memory(text).split("\n")):
+        return "has the index line"
+
+    return f"add the index line: insert it with Edit before the current first line: {MEMORY_LINE}"
+
+
+def set_memory_line(folder):
+    path = os.path.join(folder, MEMORY_NAME)
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return create_memory_file(path)
+    except OSError as error:
+        return f"not checked: {error.strerror or error}"
+    if stat.S_ISLNK(info.st_mode):
+        return f"not checked: {MEMORY_NAME} is a link"
+    if not stat.S_ISREG(info.st_mode):
+        return f"not checked: {MEMORY_NAME} is not a regular file"
+    if info.st_size == 0:
+        return set_empty_memory_file(path)
+
+    return find_memory_line(path)
+
+
+def set_memory_index(
+    folder,
+    name,
+    marker,
+):
+    if not is_indexable(name):
+        return ["index not updated: note name cannot be indexed", MEMORY_SKIPPED]
+    lock, error = get_index_lock(folder)
+    if error:
+        return [f"index not updated: {error}", MEMORY_SKIPPED]
+    try:
+        error = set_index_file(
+            folder,
+            name,
+            marker,
+        )
+        if error:
+            return [f"index not updated: {error}", MEMORY_SKIPPED]
+        return ["index: updated", f"MEMORY.md: {set_memory_line(folder)}"]
+    finally:
+        os.close(lock)
+
+
+def set_index(note, marker):
+    real = os.path.realpath(note)
+    if not in_memory(real):
+        return ["index: none (note not in Claude Code's memory)"]
+
+    return set_memory_index(
+        os.path.dirname(real),
+        os.path.basename(real),
+        marker,
+    )
+
+
 def cmd_save(args):
     proc = claude_process()
     if not proc:
@@ -941,6 +1362,7 @@ def cmd_save(args):
     print(f"marker: {path}")
     if retired:
         print(f"removed markers of closed sessions with the same note: {retired}")
+    print("\n".join(set_index(note, marker)))
     problems = checked(text, cwd, os.path.realpath(note))
     if problems:
         print("not verified in the note:")
@@ -950,15 +1372,92 @@ def cmd_save(args):
     return 0
 
 
-def cmd_where(args):
-    cwd = find_work_folder(args.cwd, None if args.cwd else claude_process())
+def create_notes_folder(cwd):
     root = get_notes_root()
     path = os.path.join(root, get_project_folder(cwd))
     try:
         os.makedirs(root, 0o700, exist_ok=True)
         os.makedirs(path, 0o700, exist_ok=True)
     except OSError as error:
-        print(f"handoff: could not create the notes folder {path}: {error}")
+        return None, f"handoff: could not create the notes folder {path}: {error}"
+
+    return path, None
+
+
+def cmd_where(args):
+    cwd = find_work_folder(args.cwd, None if args.cwd else claude_process())
+    path, error = create_notes_folder(cwd)
+    if error:
+        print(error)
+        return 1
+    print(path)
+
+    return 0
+
+
+def find_memory_folder(given):
+    folder = os.path.expanduser(given) if usable(given) else None
+    if folder is None or not is_memory_folder(folder):
+        return None, (f"handoff: {given!r} is not an existing memory folder "
+                      f"{memory_root()}/<project>/memory — no note created")
+
+    return folder, None
+
+
+def create_note(folder, slug):
+    for number in range(1, NAME_TRIES + 1):
+        name = f"resume-{slug}.md" if number == 1 else f"resume-{slug}-{number}.md"
+        path = os.path.join(folder, name)
+        if os.path.lexists(path):
+            continue
+        test_pause()
+        try:
+            fd = os.open(
+                path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+            )
+            os.close(fd)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            return None, f"handoff: could not create the note {path}: {error}"
+        return path, None
+
+    return None, f"handoff: resume-{slug}.md and -2 to -{NAME_TRIES} are all taken in {folder} — no note created"
+
+
+def is_good_slug(slug):
+    return (
+        SLUG.fullmatch(slug) is not None
+        and len(slug) <= SLUG_LIMIT
+        and slug != "index"
+    )
+
+
+def cmd_new(args):
+    if not is_good_slug(args.slug):
+        print(f"handoff: the slug must be lowercase latin letters and digits, words joined by single hyphens, "
+              f"up to {SLUG_LIMIT} characters, and not \"index\"; {args.slug!r} is not — no note created")
+        return 1
+    cwd = find_work_folder(args.cwd, None if args.cwd else claude_process())
+    if args.memory is None:
+        folder, error = create_notes_folder(cwd)
+    else:
+        folder, error = find_memory_folder(args.memory)
+    if error:
+        print(error)
+        return 1
+    path, error = create_note(folder, args.slug)
+    if error:
+        print(error)
+        return 1
+    if allowed_note(path, cwd) is None:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        print(f"handoff: the created note {path} did not pass the note check — removed, no note created")
         return 1
     print(path)
 
@@ -992,6 +1491,10 @@ def main(argv):
     check.add_argument("--cwd")
     where = commands.add_parser("where")
     where.add_argument("--cwd")
+    new = commands.add_parser("new")
+    new.add_argument("--slug", required=True)
+    new.add_argument("--memory")
+    new.add_argument("--cwd")
     args = parser.parse_args(argv)
     if args.command == "start":
         began = time.monotonic()
@@ -1009,6 +1512,8 @@ def main(argv):
         return cmd_save(args)
     if args.command == "where":
         return cmd_where(args)
+    if args.command == "new":
+        return cmd_new(args)
     return cmd_check(args)
 
 

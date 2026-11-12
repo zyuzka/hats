@@ -13,7 +13,10 @@ allowed-tools:
 
 Saves where this session stands, so the next one can pick it up: after `/clear` the plugin's start
 hook gives this session's note back, and a new session started in the same folder lists the notes of
-closed sessions. Every step is a command, and its output goes into the summary. The user's own steps,
+closed sessions. With Claude Code's memory on, the note sits in the memory folder, and
+`resume-index.md` beside it, named by a line of `MEMORY.md`, lists it, so a session finds it even
+without the plugin.
+Every step is a command, and its output goes into the summary. The user's own steps,
 if they have any, run before steps 1–4 and after them, on the anchor command only.
 
 ## Steps
@@ -49,20 +52,32 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
    told when one ends but not what it was for. A monitor ends with the session — note what it watched.
 3. **Resume note** — one note per task: two sessions in one folder work on different tasks and would
    overwrite one shared note.
-   - Which file: if this task already has a note — the one the start hook gave this session (after
-     `/clear`, or from its list when the user picked it), or one this session already wrote — update
-     that note in place, whether it sits in the notes folder or in the memory folder Claude Code keeps
-     for this working folder (`<config>/projects/<project>/memory/`, where `<config>` is
-     `$CLAUDE_CONFIG_DIR` or else `~/.claude`). Otherwise run exactly this command; it creates the
-     notes folder of this working folder and prints its path:
+   - Which file, in this order:
+     1. This task already has a note of its own — update it in place. Its own note is one the start
+        hook gave this session (after `/clear`, or from its list when the user picked it), one the
+        user picked from `resume-index.md`, one a line of `MEMORY.md` points to directly and that is
+        about this task, or one this session already wrote. Write to no other note.
+     2. Otherwise create the note with exactly this command. `<slug>` is the task's topic in
+        lowercase latin letters and digits, words joined by single hyphens, up to 60 characters and
+        not `index`; `<memory folder>` is the memory folder your instructions name for this working
+        folder (Claude Code's memory):
 
-     `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" where`
+        `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" new --slug <slug> --memory "<memory folder>"`
 
-     and start a new note `<printed folder>/resume-<topic-slug>.md`. If that file already exists, it is
-     another session's note: add `-2`, `-3` and so on to the name until it is free. Write only to a
-     note this session started or got from the start hook. If `where` fails, write no note, skip
-     step 4, and report its first line in the summary: `needs python3` on the handoff line when it
-     says `python3` is required, otherwise under "Not saved".
+        If your instructions name no memory folder, or the command refuses it, run it without the
+        folder and keep the refusal's first line for the summary:
+
+        `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" new --slug <slug>`
+
+        It creates an empty note under a free name — never pick or create the file name yourself —
+        and prints its path. Read that file with the Read tool, then write the note into it with
+        Write. A refused slug: correct it and run the command again. If the command fails otherwise,
+        write no note, skip step 4, and report its first line in the summary: `needs python3` on the
+        handoff line when it says `python3` is required, otherwise under "Not saved".
+     3. If step 4 prints `MEMORY.md: add the index line`, insert the line it gives with the Edit
+        tool before the current first line of `MEMORY.md`, then read the first line back with the
+        Read tool and check it is that line. Never write `MEMORY.md` with Write, and never edit
+        `resume-index.md`: the plugin alone writes it.
    - Contents: what is done (with commits), what is open, the next step, every decision taken without
      the user, and every background task and subagent from step 2 with what it is for. The current
      state goes under a `## NOW` heading — the start hook prints that section.
@@ -78,20 +93,21 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
    - A task moved out of a shared resume note into its own: in the same save, replace its state and
      next step in the shared note with one line naming the new note, and rewrite the shared note's
      line in `MEMORY.md` so it no longer describes the task.
-   - Add no new line to a `MEMORY.md` index. If it already has a line pointing to this note, keep that
-     line accurate.
+   - If `MEMORY.md` already has a line pointing to this note, keep that line accurate.
    - Then read the note back with the Read tool and check the lines you wrote.
 4. **Handoff** — run exactly this command, with the note's absolute path and a short topic:
 
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" save --note "<note path>" --topic "<task topic>"`
 
-   It records a marker for this Claude process and checks the note. Fix every line it lists and run
+   It records a marker for this Claude process and checks the note. For a note in the memory folder
+   it also rewrites `resume-index.md` and checks `MEMORY.md`: its `index` line and, after it, its
+   `MEMORY.md` line go into the summary as printed, and when it asks for the line, do item 3 of
+   step 3. Fix every line it lists as not verified and run
    it again, or leave them — the next session gets them marked "not verified". If it says the handoff
    is off, nothing was written. If it says `python3` is required, nothing ran: tell the user the
    handoff needs `python3` — on a Mac, the Xcode Command Line Tools (`xcode-select --install`) or
    another Python. If it fails otherwise — exit code 1: no Claude process found, the note cannot be
-   read, the marker cannot be written — report its first line in the summary. For a note outside
-   both folders, move the note into the folder `where` printed and run the command again.
+   read, the marker cannot be written — report its first line in the summary.
 5. **Own steps after** — only when step 0 ran. Run the command of step 0 again, also when it failed
    there, and carry out the steps it lists under `after anchor:`, in their order and the way step 0
    says, also when step 4 was skipped or failed. An after step that wrote to a repository makes step 1
@@ -115,8 +131,10 @@ line, for example:
 Saved:
 - <repo>: clean | uncommitted: <files> | unpushed: <n> (<why>) | no upstream: <n> not on <base> | detached HEAD
 - background: none | <task> — <what it is for>, waits for <what>
-- resume note: <path> (read back)
+- resume note: <path> (read back)[; not in memory: <first line of the refusal> | no memory folder]
 - handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output>
+- index: updated | not updated: <reason> | none (note not in Claude Code's memory)
+- MEMORY.md: <save's MEMORY.md line, as printed> | index line added first, checked
 - own steps: not run | none | before <n>, after <n>[; failed: <step> — <first line>]…[; <line of step 0>]…
 Not saved: <what and why> | nothing
 ```

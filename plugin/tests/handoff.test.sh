@@ -722,6 +722,260 @@ has "корень записок — ссылка: цитата по пути з
 rm -rf "$work/hatsdata"
 
 
+# --- записки в памяти: new, индекс resume-index.md, строка MEMORY.md
+index="$mem/resume-index.md"; memmd="$mem/MEMORY.md"
+header_line='# Resume index — written by the Hats plugin; do not edit'
+about_line='One line per saved session, newest first. A session may still be working on a task listed here: ask the user before continuing one.'
+memory_line='- [Resume index](resume-index.md) — sessions saved for the next one; read it when the user asks to continue earlier work'
+newnote() { env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" new --cwd "$proj" "$@" 2>&1; }
+saveas() {  # saveas <номер процесса> <записка> <тема> [env...]
+  local p="$1" n="$2" t="$3"; shift 3
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$p:$own_started" "$@" python3 -I "$HOOK" save --cwd "$proj" --note "$n" --topic "$t" 2>&1
+}
+entries() { if [ -f "$index" ]; then awk '/^- \[/{n++} END{print n+0}' "$index"; else echo 0; fi; }
+resumes_in() { ls -A "$1" 2>/dev/null | grep -c '^resume-'; }
+entry_at() { sed -n "${1}p" "$index"; }
+
+reset; out=$(newnote --slug t --memory "$mem"); rc=$?
+if [ $rc -eq 0 ] && [ "$out" = "$mem/resume-t.md" ] && [ -f "$mem/resume-t.md" ] && [ ! -s "$mem/resume-t.md" ]; then ok
+else bad "new: память — пустой resume-t.md, напечатан путь через D" "rc=$rc «${out}»"; fi
+has "new: права записки — 600" "0o600" "$(mode_of "$mem/resume-t.md")"
+if [ -z "$(ls -A "$work/Library" 2>/dev/null)" ]; then ok; else bad "new с памятью: папка Hats не заводится" "$(ls -A "$work/Library")"; fi
+reset; ln -s "$work/.claude" "$work/cfglink"; out=$(newnote --slug t --memory "$work/cfglink/projects/-proj/memory"); rc=$?; rm -f "$work/cfglink"
+if [ $rc -eq 0 ] && [ "$out" = "$work/cfglink/projects/-proj/memory/resume-t.md" ] && [ -f "$mem/resume-t.md" ]; then ok
+else bad "new: D через ссылку — путь напечатан через D, как дан, а не настоящий" "rc=$rc «${out}»"; fi
+reset; out=$(newnote --slug t); rc=$?; own_dir=$(notes_of "$proj")
+if [ $rc -eq 0 ] && [ "$out" = "$own_dir/resume-t.md" ] && [ -f "$out" ] && [ "$(resumes_in "$mem")" -eq 0 ]; then ok
+else bad "new без --memory: resume-t.md в папке Hats проекта" "rc=$rc «${out}»"; fi
+has "new без --memory: папка проекта — права 700" "0o700" "$(mode_of "$own_dir")"
+
+reset; printf 'чужая\n' >"$mem/resume-t.md"; out=$(newnote --slug t --memory "$mem")
+if [ "$out" = "$mem/resume-t-2.md" ] && [ "$(cat "$mem/resume-t.md")" = "чужая" ]; then ok; else bad "new: имя занято — resume-t-2.md, чужой файл цел" "«${out}» $(cat "$mem/resume-t.md")"; fi
+out=$(newnote --slug t --memory "$mem"); if [ "$out" = "$mem/resume-t-3.md" ]; then ok; else bad "new: заняты оба — resume-t-3.md" "«${out}»"; fi
+ln -s "$work/nowhere.md" "$mem/resume-u.md"; out=$(newnote --slug u --memory "$mem")
+if [ "$out" = "$mem/resume-u-2.md" ] && [ ! -e "$work/nowhere.md" ]; then ok; else bad "new: ссылка в никуда занимает имя, по ней не пишется" "«${out}»"; fi
+reset; : >"$mem/resume-t.md"; for i in $(seq 2 99); do : >"$mem/resume-t-$i.md"; done
+out=$(newnote --slug t --memory "$mem"); rc=$?
+has "new: заняты все имена до -99 — так и сказано" "are all taken" "$out"
+if [ $rc -eq 1 ] && [ "$(resumes_in "$mem")" -eq 99 ]; then ok; else bad "new: заняты все имена — код 1, новых файлов нет" "rc=$rc файлов $(resumes_in "$mem")"; fi
+reset; : >"$mem/resume-t.md"; for i in $(seq 2 98); do : >"$mem/resume-t-$i.md"; done
+out=$(newnote --slug t --memory "$mem"); if [ "$out" = "$mem/resume-t-99.md" ] && [ -f "$out" ]; then ok; else bad "new: заняты имена до -98 — берётся -99" "«${out:0:200}»"; fi
+reset; for i in 1 2 3 4 5; do HANDOFF_TEST_PAUSE=0.3 newnote --slug t --memory "$mem" >"$work/new$i.out" & done; wait
+distinct=$(cat "$work"/new*.out | sort -u | grep -c "^$mem/resume-t")
+if [ "$distinct" -eq 5 ] && [ "$(resumes_in "$mem")" -eq 5 ]; then ok; else bad "new: пять разом на одну тему — пять разных файлов" "разных путей $distinct, файлов $(resumes_in "$mem"): $(cat "$work"/new*.out | tr '\n' ' ')"; fi
+rm -f "$work"/new*.out
+
+reset; long60=$(printf 'a%.0s' $(seq 1 60))
+for slug in 'a/b' '..' 'тема' '' "${long60}a" 'index' 'Index' 'T' 'a--b' '-a' 'a-' 'a b' 'a.b' 'a_b'; do
+  out=$(newnote "--slug=$slug" --memory "$mem"); rc=$?
+  if [ $rc -eq 1 ] && [ "$(resumes_in "$mem")" -eq 0 ]; then ok; else bad "new: плохой slug «${slug}» — код 1, файла нет" "rc=$rc «${out:0:200}» $(ls -A "$mem")"; fi
+done
+out=$(newnote --slug '..'); rc=$?
+if [ $rc -eq 1 ] && [ ! -e "$notes" ]; then ok; else bad "new без --memory: плохой slug — код 1, папки Hats нет" "rc=$rc «${out:0:200}»"; fi
+has "new: плохой slug — отказ называет правило" "the slug must be" "$out"
+has "new: slug index — отказ правилом slug, а не проверкой записки" "the slug must be" "$(newnote --slug index --memory "$mem")"
+out=$(newnote --slug "$long60" --memory "$mem"); rc=$?
+if [ $rc -eq 0 ] && [ "$out" = "$mem/resume-$long60.md" ]; then ok; else bad "new: slug ровно 60 знаков принимается" "rc=$rc «${out:0:200}»"; fi
+out=$(newnote --slug a1-b2-3 --memory "$mem"); rc=$?
+if [ $rc -eq 0 ] && [ "$out" = "$mem/resume-a1-b2-3.md" ]; then ok; else bad "new: slug из слов через дефис принимается" "rc=$rc «${out:0:200}»"; fi
+
+reset; mkdir -p "$mem/sub" "$mem/memory" "$work/.claude/projects/memory" "$work/.claude/projects/-proj/notmemory" "$work/.claude/projects/-file"; printf 'x' >"$work/.claude/projects/-file/memory"
+mkdir -p "$work/outer/projects/-proj/memory"
+for d in "$proj" "$work/.claude/projects/-nope/memory" "$work/.claude/projects/-proj" "$mem/sub" "$work/.claude/projects" \
+         "$work/.claude/projects/-proj/notmemory" "$work/.claude/projects/-file/memory" "$work/outer/projects/-proj/memory" \
+         ".claude/projects/-proj/memory" "$work/.claude/projects/memory" "$mem/memory" ""; do
+  out=$( (cd "$work" && newnote --memory "$d" --slug t) ); rc=$?
+  if [ $rc -eq 1 ] && [ "$(find "$work/.claude/projects" "$work/outer" -name 'resume-*' | wc -l | tr -d ' ')" -eq 0 ] && [ ! -e "$notes" ]; then ok
+  else bad "new: не папка памяти «${d}» — код 1, файла нет" "rc=$rc «${out:0:200}»"; fi
+  has "new: не папка памяти «${d}» — отказ называет папку памяти" "is not an existing memory folder" "$out"
+done
+has "new: отказ папке называет папку памяти" "is not an existing memory folder" "$(newnote --memory "$proj" --slug t)"
+reset; mkdir -p "$work/.claude/projects/-other/memory/sub"; ln -s "$work/.claude/projects/-other/memory/sub" "$mem/lnk"
+out=$(newnote --slug t --memory "$mem/lnk/.."); rc=$?
+has "new: созданный путь не прошёл проверку записки — так и сказано" "did not pass the note check" "$out"
+if [ $rc -eq 1 ] && [ -z "$(ls -A "$work/.claude/projects/-other/memory" | grep -v '^sub$')" ] && [ "$(resumes_in "$mem")" -eq 0 ]; then ok
+else bad "new: ссылка/.. уводит в чужую память — код 1, созданный файл убран" "rc=$rc $(ls -A "$work/.claude/projects/-other/memory")"; fi
+mkdir -p "$work/cfg/projects/-proj/memory"
+out=$(env CLAUDE_CONFIG_DIR="$work/cfg" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" new --cwd "$proj" --slug t --memory "$mem" 2>&1); rc=$?
+if [ $rc -eq 1 ] && [ ! -e "$mem/resume-t.md" ]; then ok; else bad "new: CLAUDE_CONFIG_DIR — память ~/.claude не его, отказ" "rc=$rc «${out:0:200}»"; fi
+out=$(env CLAUDE_CONFIG_DIR="$work/cfg" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" new --cwd "$proj" --slug t --memory "$work/cfg/projects/-proj/memory" 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ "$out" = "$work/cfg/projects/-proj/memory/resume-t.md" ]; then ok; else bad "new: CLAUDE_CONFIG_DIR — его память принимается" "rc=$rc «${out:0:200}»"; fi
+rm -rf "$work/cfg" "$work/outer"
+
+reset; for n in resume-index.md MEMORY.md memory.md RESUME-INDEX.md; do
+  rm -f "$mem/$n"; printf '## NOW\n\nx\n' >"$mem/$n"; rm -f "$markers"/*.json
+  out=$(save "$proj" "$mem/$n" "служебная"); rc=$?
+  has "save: служебное имя $n — отказ" "the note must be a file" "$out"
+  if [ $rc -eq 1 ] && [ "$(markers_n)" -eq 0 ]; then ok; else bad "save: служебное имя $n — код 1 и без отметки" "rc=$rc $(ls "$markers")"; fi
+  rm -f "$mem/$n"
+done
+printf '## NOW\n\nx\n' >"$memmd"; ln -s "$memmd" "$mem/x.md"
+has "save: записка-ссылка на MEMORY.md — отказ" "the note must be a file" "$(save "$proj" "$mem/x.md" "ссылка")"
+reset; printf '## NOW\n\nx\n' >"$mem/r.md"; ln -s "$mem/r.md" "$mem/RESUME-INDEX.md"
+has "save: ссылка с именем служебного файла на обычную записку — отказ" "the note must be a file" "$(save "$proj" "$mem/RESUME-INDEX.md" "имя")"
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/Resume-Index.md"
+has "save: служебное имя в папке Hats — отказ" "the note must be a file" "$(save "$proj" "$own_dir/Resume-Index.md" "служебная")"
+reset; printf '## NOW\n\nSERVICE-LINE\n' >"$memmd"; printf '## NOW\n\nlegit line\n' >"$mem/r.md"
+marker good "$dead_pid" "$dead_started" "$proj" "$mem/r.md" "обычная"
+marker svc 99989 "$dead_started" "$proj" "$memmd" "служебная"
+out=$(start startup); has "новая сессия: обычная записка памяти в списке" "\"обычная\"" "$out"; lacks "новая сессия: отметка на MEMORY.md не в списке" "служебная" "$out"
+rm -f "$markers"/*.json; printf '%s\n\n- SERVICE-LINE\n' "$header_line" >"$index"; mine a "$proj" "$index" "индекс"
+empty "/clear: отметка на resume-index.md — молчит" "$(start clear)"
+
+reset; for n in a b c; do printf '## NOW\n\n%s\n' "$n" >"$mem/resume-$n.md"; done
+mkdir "$mem/resume-dir.md" "$mem/sub"; printf 'x\n' >"$mem/sub/x.md"; printf 'x\n' >"$mem/notes.txt"; ln -s "$mem/resume-b.md" "$mem/resume-link.md"
+printf '%s\n' "$memory_line" >"$memmd"; fresh=$(now)
+{ printf '%s\n\nold paragraph\n\n' "$header_line"
+  for pair in "прежняя этой|resume-a.md|$fresh" "живая|resume-b.md|$fresh" "старше 30 дней|resume-c.md|2020-01-01T00:00:00Z" \
+              "без файла|resume-gone.md|$fresh" "служебная|MEMORY.md|$fresh" "ссылка|resume-link.md|$fresh" "папка|resume-dir.md|$fresh" \
+              "не md|notes.txt|$fresh" "вложенная|sub/x.md|$fresh" "дата не дата|resume-b.md|2026-13-45T99:00:00Z"; do
+    IFS='|' read -r t n s <<<"$pair"; printf -- '- [%s](<%s>) — saved %s, folder /x\n' "$t" "$n" "$s"
+  done
+  printf -- '- [без угловых](resume-b.md) — saved %s, folder /x\nмусорная строка\n' "$fresh"; } >"$index"
+out=$(save "$proj" "$mem/resume-a.md" "новая тема"); rc=$?
+has "save памяти: индекс обновлён" "index: updated" "$out"
+if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ]; then ok; else bad "save памяти: код 0 и отметка" "rc=$rc $(ls "$markers")"; fi
+if [ "$(entry_at 1)" = "$header_line" ] && [ -z "$(entry_at 2)" ] && [ "$(entry_at 3)" = "$about_line" ] && [ -z "$(entry_at 4)" ]; then ok
+else bad "индекс: первая строка, пустая, абзац, пустая" "$(head -4 "$index")"; fi
+want="- [новая тема](<resume-a.md>) — saved $(markerfield "$markers" saved_at), folder $(realp "$proj")"
+if [ "$(entry_at 5)" = "$want" ]; then ok; else bad "индекс: новая строка наверху, в формате договора" "ждали «${want}», получили «$(entry_at 5)»"; fi
+if [ "$(entry_at 6)" = "- [живая](<resume-b.md>) — saved $fresh, folder /x" ]; then ok; else bad "индекс: живая строка сохранена второй" "«$(entry_at 6)»"; fi
+if [ "$(entries)" -eq 2 ]; then ok; else bad "индекс: ровно две строки записок" "$(entries): $(cat "$index")"; fi
+idx=$(cat "$index")
+for gone in "прежняя этой" "старше 30 дней" "без файла" "служебная" "ссылка" "[папка]" "не md" "вложенная" "дата не дата" "без угловых" "мусорная" "old paragraph"; do
+  lacks "индекс: выпала строка «${gone}»" "$gone" "$idx"
+done
+if [ "$(cat "$memmd")" = "$memory_line" ]; then ok; else bad "save памяти: MEMORY.md со строкой не тронут" "$(cat "$memmd")"; fi
+has "save памяти: MEMORY.md — строка есть" "MEMORY.md: has the index line" "$out"
+if [ -z "$(ls -A "$mem" | grep '\.tmp$')" ]; then ok; else bad "индекс: временный файл убран" "$(ls -A "$mem")"; fi
+has "индекс: права 600" "0o600" "$(mode_of "$index")"
+
+reset; printf 'x\n' >"$mem/resume-t.md"; save "$proj" "$mem/resume-t.md" $'a [b] (c) <d> `e`\x01f   g ( ) h' >/dev/null
+case "$(entry_at 5)" in "- [a b c d ef g h](<resume-t.md>) — saved "*) ok ;; *) bad "индекс: из темы убраны скобки, обратная кавычка, управляющие знаки; пробелы схлопнуты" "«$(entry_at 5)»" ;; esac
+reset; printf 'x\n' >"$mem/resume-t.md"; save "$proj" "$mem/resume-t.md" "$(printf 'x%.0s' $(seq 1 130))" >/dev/null
+topic=$(entry_at 5 | sed -E 's/^- \[([^]]*)\].*/\1/'); if [ ${#topic} -eq 120 ]; then ok; else bad "индекс: тема не длиннее 120 знаков" "${#topic}"; fi
+reset; mkdir -p "$work/odd"; printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"python3 handoff.py start"}]}]}}' >"$work/.claude/settings.json"
+odd="$work/odd/a"$'\n'"b"; mkdir -p "$odd"; printf 'x\n' >"$mem/resume-t.md"
+env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$odd" --note "$mem/resume-t.md" --topic t >/dev/null 2>&1
+if [ "$(entries)" -eq 1 ] && [ "$(wc -l <"$index" | tr -d ' ')" -eq 5 ]; then ok; else bad "индекс: управляющий знак в рабочей папке не рвёт строку" "$(cat "$index")"; fi
+rm -rf "$work/odd"
+
+reset; { printf '%s\n\n%s\n\n' "$header_line" "$about_line"
+  for i in $(seq 1 25); do printf 'x\n' >"$mem/resume-n$i.md"; printf -- '- [n%s](<resume-n%s.md>) — saved %s, folder /x\n' "$i" "$i" "$(now)"; done; } >"$index"
+printf 'x\n' >"$mem/resume-t.md"; save "$proj" "$mem/resume-t.md" "свежая" >/dev/null; idx=$(cat "$index")
+if [ "$(entries)" -eq 20 ]; then ok; else bad "индекс: строк не больше 20" "$(entries)"; fi
+case "$(entry_at 5)" in "- [свежая]"*) ok ;; *) bad "индекс: при 20 строках новая всё равно наверху" "«$(entry_at 5)»" ;; esac
+has "индекс: при 20 строках остаётся 19-я прежняя" "- [n19]" "$idx"; lacks "индекс: 20-я прежняя выпала" "- [n20]" "$idx"
+
+for odd_name in 'a<b.md' 'a>b.md' $'a\tb.md'; do
+  reset; printf 'x\n' >"$mem/$odd_name"; out=$(save "$proj" "$mem/$odd_name" "странное имя"); rc=$?
+  has "индекс: имя «${odd_name}» — не индексируется" "index not updated: note name cannot be indexed" "$out"
+  if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ] && [ ! -e "$index" ] && [ ! -e "$memmd" ]; then ok; else bad "индекс: имя «${odd_name}» — код 0, отметка есть, индекса и MEMORY.md нет" "rc=$rc"; fi
+done
+
+reset; for i in $(seq 1 10); do printf '## NOW\n\n%s\n' "$i" >"$mem/resume-p$i.md"; done
+for i in $(seq 1 10); do saveas "43$i" "$mem/resume-p$i.md" "параллель $i" HANDOFF_TEST_PAUSE=0.3 >"$work/ps$i.out" & done; wait
+idx=$(cat "$index" 2>/dev/null)
+if [ "$(entries)" -eq 10 ]; then ok; else bad "одновременно: 10 сохранений в одну папку памяти — в индексе все 10" "строк $(entries): $(grep -c 'index: updated' "$work"/ps*.out | tr '\n' ' ')"; fi
+for i in $(seq 1 10); do has "одновременно: в индексе записка $i" "- [параллель $i](<resume-p$i.md>)" "$idx"; done
+if [ "$(cat "$memmd")" = "$memory_line" ]; then ok; else bad "одновременно: MEMORY.md создан один раз, одна строка" "$(cat "$memmd" 2>&1)"; fi
+if [ "$(grep -l 'MEMORY.md: created' "$work"/ps*.out | wc -l | tr -d ' ')" -eq 1 ]; then ok; else bad "одновременно: MEMORY.md создал ровно один save" "$(grep -h 'MEMORY.md' "$work"/ps*.out | sort | uniq -c | tr '\n' ' ')"; fi
+rm -f "$work"/ps*.out
+
+reset; printf 'x\n' >"$mem/resume-t.md"; printf '%s\n\n- [прежняя](<resume-t.md>) — saved %s, folder /x\n' "$header_line" "$(now)" >"$index"; cp "$index" "$work/index.before"
+lockf="$markers/index-$(python3 -I -c 'import hashlib,os,sys; print(hashlib.sha256(os.fsencode(os.path.realpath(sys.argv[1]))).hexdigest()[:16])' "$mem").lock"
+python3 -I -c 'import fcntl,os,sys,time; fd=os.open(sys.argv[1],os.O_RDWR|os.O_CREAT); fcntl.flock(fd,fcntl.LOCK_EX); open(sys.argv[2],"w").close(); time.sleep(6)' "$lockf" "$work/locked" &
+holder=$!; for _ in $(seq 1 100); do [ -f "$work/locked" ] && break; sleep 0.05; done
+s=$(date +%s); out=$(saveas 4242 "$mem/resume-t.md" t HANDOFF_TEST_INDEX_WAIT=0.5); rc=$?; e=$(date +%s); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null; rm -f "$work/locked"
+has "блокировка индекса занята: так и сказано" "index not updated: lock busy" "$out"
+has "блокировка индекса занята: MEMORY.md не проверялся" "MEMORY.md: not checked: index not updated" "$out"
+if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ] && cmp -s "$index" "$work/index.before" && [ ! -e "$memmd" ]; then ok
+else bad "блокировка индекса занята: код 0, отметка есть, индекс цел" "rc=$rc $(ls "$markers")"; fi
+if [ $((e - s)) -le 3 ]; then ok; else bad "блокировка индекса: срок ожидания задаётся HANDOFF_TEST_INDEX_WAIT" "$((e - s)) с"; fi
+
+foreign() {  # foreign <случай> — готовит чужой индекс
+  rm -rf "$index" "$work/target.md"
+  case "$1" in
+    no-header) printf '# my own index\n\n- [x](<resume-t.md>) — saved %s, folder /x\n' "$(now)" >"$index" ;;
+    link) printf '%s\n' "$header_line" >"$work/target.md"; ln -s "$work/target.md" "$index" ;;
+    pipe) mkfifo "$index" ;;
+    dir) mkdir "$index" ;;
+    big) { printf '%s\n' "$header_line"; python3 -I -c 'print("x" * 70000)'; } >"$index" ;;
+    not-utf8) printf '%s\n\xff\n' "$header_line" >"$index" ;;
+  esac
+}
+for case_ in no-header link pipe dir big not-utf8; do
+  reset; printf 'x\n' >"$mem/resume-t.md"; foreign "$case_"; [ -f "$index" ] && ! [ -L "$index" ] && cp "$index" "$work/index.before"
+  out=$(timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$proj" --note "$mem/resume-t.md" --topic t 2>&1); rc=$?
+  has "чужой индекс ($case_): не обновлён, так и сказано" "index not updated: resume-index.md" "$out"
+  [ "$case_" = link ] && has "чужой индекс (link): причина — ссылка" "index not updated: resume-index.md is a link" "$out"
+  case "$case_" in pipe|dir) has "чужой индекс ($case_): причина — не обычный файл" "index not updated: resume-index.md is not a regular file" "$out" ;; esac
+  has "чужой индекс ($case_): MEMORY.md не проверялся" "MEMORY.md: not checked: index not updated" "$out"
+  if [ ! -e "$memmd" ]; then ok; else bad "чужой индекс ($case_): MEMORY.md не создан" "$(cat "$memmd")"; fi
+  if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ]; then ok; else bad "чужой индекс ($case_): код 0, отметка есть" "rc=$rc ${out:0:200}"; fi
+  case "$case_" in
+    link) if [ -L "$index" ] && [ "$(cat "$work/target.md")" = "$header_line" ]; then ok; else bad "чужой индекс (link): ссылка и её файл целы" "-"; fi ;;
+    pipe) if [ -p "$index" ]; then ok; else bad "чужой индекс (pipe): канал цел" "-"; fi ;;
+    dir) if [ -d "$index" ]; then ok; else bad "чужой индекс (dir): папка цела" "-"; fi ;;
+    *) if cmp -s "$index" "$work/index.before"; then ok; else bad "чужой индекс ($case_): файл не тронут" "-"; fi ;;
+  esac
+done
+
+reset; printf 'x\n' >"$mem/resume-t.md"; out=$(save "$proj" "$mem/resume-t.md" t)
+has "MEMORY.md нет: создан" "MEMORY.md: created with the index line" "$out"
+if [ "$(cat "$memmd")" = "$memory_line" ] && [ "$(wc -l <"$memmd" | tr -d ' ')" -eq 1 ]; then ok; else bad "MEMORY.md нет: создан одной строкой индекса" "$(cat "$memmd")"; fi
+reset; printf 'x\n' >"$mem/resume-t.md"; : >"$memmd"; out=$(save "$proj" "$mem/resume-t.md" t)
+has "MEMORY.md пустой: дописан" "MEMORY.md: was empty, the index line written" "$out"
+if [ "$(cat "$memmd")" = "$memory_line" ]; then ok; else bad "MEMORY.md пустой: в нём строка индекса" "$(cat "$memmd")"; fi
+memory_case() {  # memory_case <название> <ждём в выводе> — MEMORY.md уже лежит; проверка, что он не тронут
+  printf 'x\n' >"$mem/resume-t.md"; cp "$memmd" "$work/memory.before"
+  out=$(save "$proj" "$mem/resume-t.md" t); rc=$?
+  has "MEMORY.md, $1" "$2" "$out"
+  if [ $rc -eq 0 ] && cmp -s "$memmd" "$work/memory.before"; then ok; else bad "MEMORY.md, $1: код 0, файл не тронут" "rc=$rc"; fi
+}
+ask="MEMORY.md: add the index line: insert it with Edit before the current first line: $memory_line"
+reset; { for i in $(seq 1 15); do printf -- '- [Topic %s](topic-%s.md) — %s\n' "$i" "$i" "$(printf 'w%.0s' $(seq 1 300))"; done; } >"$memmd"
+memory_case "15 строк, около 5 КБ, строки нет: просьба поставить её первой" "$ask"
+reset; { printf '%s\n' "$memory_line"; printf -- '- [Other](other.md) — x\n'; } >"$memmd"; memory_case "строка первой: есть" "MEMORY.md: has the index line"
+reset; printf -- '- [Other](other.md) — x\n- [Index](<resume-index.md>) — x\n' >"$memmd"; memory_case "ссылка в угловых скобках: есть" "MEMORY.md: has the index line"
+reset; printf -- '- [Other](other.md) — sessions are in resume-index.md\nResume index: [x](resume-index.md)\n' >"$memmd"
+memory_case "имя индекса только в тексте строки: просьба" "$ask"
+reset; { for i in $(seq 1 199); do printf -- '- line %s\n' "$i"; done; printf '%s\n' "$memory_line"; } >"$memmd"; memory_case "ссылка на 200-й строке: есть" "MEMORY.md: has the index line"
+reset; { for i in $(seq 1 200); do printf -- '- line %s\n' "$i"; done; printf '%s\n' "$memory_line"; } >"$memmd"; memory_case "ссылка на 201-й строке: просьба" "$ask"
+reset; python3 -I -c 'import sys; open(sys.argv[1], "w", encoding="utf-8").write(("\U0001F600" * 4500 + "\n") * 3 + sys.argv[2] + "\n")' "$memmd" "$memory_line"
+memory_case "ссылка за 25 000 знаков в единицах UTF-16 (13 503 знака Python): просьба" "$ask"
+reset; python3 -I -c 'import sys; open(sys.argv[1], "w", encoding="utf-8").write(("\U0001F600" * 4500 + "\n") * 2 + sys.argv[2] + "\n")' "$memmd" "$memory_line"
+memory_case "ссылка до 25 000 единиц UTF-16: есть" "MEMORY.md: has the index line"
+reset; python3 -I -c 'import sys; open(sys.argv[1], "w", encoding="utf-8").write("a" * 24949 + "\n" + sys.argv[2] + "\n")' "$memmd" "$memory_line"
+memory_case "25 000-й знак внутри строки индекса — обрезка по переводу строки: просьба" "$ask"
+reset; printf '%s\n' "$memory_line" >"$work/target.md"; ln -s "$work/target.md" "$memmd"; memory_case "ссылка: не проверен" "MEMORY.md: not checked: MEMORY.md is a link"
+if [ -L "$memmd" ] && [ "$(cat "$work/target.md")" = "$memory_line" ]; then ok; else bad "MEMORY.md-ссылка: ссылка и её файл целы" "-"; fi
+reset; printf -- '- x\n\xff\n' >"$memmd"; memory_case "не UTF-8: не проверен" "MEMORY.md: not checked: MEMORY.md is not UTF-8"
+reset; { printf '%s\n' "$memory_line"; python3 -I -c 'print("x" * 110000)'; } >"$memmd"; memory_case "больше 100 КБ: не проверен" "MEMORY.md: not checked: MEMORY.md is larger than 100 KB"
+for kind in pipe dir; do
+  reset; printf 'x\n' >"$mem/resume-t.md"; if [ "$kind" = pipe ]; then mkfifo "$memmd"; else mkdir "$memmd"; fi
+  out=$(timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$proj" --note "$mem/resume-t.md" --topic t 2>&1); rc=$?
+  has "MEMORY.md — $kind: не проверен" "MEMORY.md: not checked: MEMORY.md is not a regular file" "$out"
+  if [ $rc -eq 0 ] && { [ -p "$memmd" ] || [ -d "$memmd" ]; }; then ok; else bad "MEMORY.md — $kind: код 0, не тронут" "rc=$rc"; fi
+done
+
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/r.md"; out=$(save "$proj" "$own_dir/r.md" "в папке Hats"); rc=$?
+has "записка папки Hats: индекса нет — так и сказано" "index: none (note not in Claude Code's memory)" "$out"
+lacks "записка папки Hats: строки MEMORY.md нет" "MEMORY.md:" "$out"
+if [ $rc -eq 0 ] && [ ! -e "$own_dir/resume-index.md" ] && [ ! -e "$index" ] && [ ! -e "$memmd" ]; then ok; else bad "записка папки Hats: ни индекса, ни MEMORY.md" "rc=$rc $(ls -A "$own_dir" "$mem")"; fi
+reset; rm -rf "$work/vault"; mkdir -p "$work/vault" "$work/.claude/projects/-linked"; ln -s "$work/vault" "$work/.claude/projects/-linked/memory"
+printf '## NOW\n\nx\n' >"$work/vault/n.md"; out=$(save "$proj" "$work/.claude/projects/-linked/memory/n.md" "ссылка")
+has "память-ссылка: индекса нет — так и сказано" "index: none" "$out"
+if [ -z "$(ls -A "$work/vault" | grep -v '^n\.md$')" ]; then ok; else bad "память-ссылка: в её папке ни индекса, ни MEMORY.md" "$(ls -A "$work/vault")"; fi
+rm -rf "$work/vault"
+
+reset; p=$(newnote --slug flow --memory "$mem"); printf '## NOW\n\nflow line\n' >"$p"
+out=$(save "$proj" "$p" "поток"); has "new → save: отметка, индекс, MEMORY.md" "index: updated
+MEMORY.md: created with the index line" "$out"
+has "new → save: после /clear записка отдаётся" "flow line" "$(start clear)"
+has "new → save: в индексе записка" "- [поток](<resume-flow.md>)" "$(cat "$index")"
+
+
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
 plug="$work/plug"
 plugin_at() {  # plugin_at <hooks.json или -> <yes|no — класть ли plugin.json>
@@ -840,14 +1094,14 @@ prefix = rule.group(1)
 spans = re.findall(r"`([^`\n]+)`", body)
 saves = [c for c in spans if " save " in c]
 same = len(saves) == 1 and saves[0].startswith(prefix + " save ")
-wheres = [c for c in spans if c.endswith(" where")]
-where = len(wheres) == 1 and wheres[0] == prefix + " where"
+news = [c for c in spans if " new " in c]
+new = len(news) == 2 and all(c.startswith(prefix + " new --slug <slug>") for c in news) and sum(" --memory " in c for c in news) == 1
 words = shlex.split(prefix)
 wrapped = words[:2] == ["sh", "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh"] and "--quiet" not in words
 files = [w.replace("${CLAUDE_PLUGIN_ROOT}", root) for w in words[1:]]
 spaced = shlex.split(prefix.replace("${CLAUDE_PLUGIN_ROOT}", "/a b")) == ["sh", "/a b/scripts/py.sh", "/a b/scripts/handoff.py"]
-print("name=%s same=%s where=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
-    fields.get("name"), same, where, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
+print("name=%s same=%s new=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
+    fields.get("name"), same, new, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
     bool(files) and all(os.path.isfile(f) for f in files), spaced))
 own = [re.fullmatch(r"Bash\((.+)\)", r) for r in bash if "/scripts/anchor-steps.py" in r]
 own_line = own[0].group(1) if len(own) == 1 and own[0] else ""
@@ -862,8 +1116,8 @@ roots = sorted({m.group(2) for m in folders if m})
 print("rules=%d tools=%s roots=%d root=%s|" % (
     len(rules), ",".join(sorted(m.group(1) for m in folders if m)), len(roots), sys.argv[2] + roots[0] if roots else None))' \
   "$plugin_root" "$work" 2>&1)
-has "SKILL.md anchor: save и where в теле и правило Bash в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
-  "name=anchor same=True where=True wrapped=True handoff=True files=True spaced=True" "$out"
+has "SKILL.md anchor: save и оба new (с --memory и без) в теле и правило Bash в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
+  "name=anchor same=True new=True wrapped=True handoff=True files=True spaced=True" "$out"
 has "SKILL.md anchor: шаг 0 — ровно команда второго правила Bash через py.sh, anchor-steps.py есть, путь с пробелом цел" \
   "steps: same=True wrapped=True file=True spaced=True" "$out"
 reset; hook_root=$(notes_of "$proj"); hook_root=${hook_root%/*}

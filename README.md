@@ -229,7 +229,11 @@ ignores it.
   running sessions a build would break, shared by the build guard and the app so both read a gateway
   address the same way.
 - [`plugin/`](plugin/) — a Claude Code plugin that hands a saved resume note to the next session: the
-  command «анкор» (`anchor`, or `/hats:anchor`) saves it. The notes live in
+  command «анкор» (`anchor`, or `/hats:anchor`) saves it. The note goes into Claude Code's memory
+  folder of the project, beside a `resume-index.md` that lists the saved sessions, and one line at the
+  top of `MEMORY.md` points to that index — so a session finds the note even after the plugin is
+  removed. The plugin alone writes the index; do not edit it. With Claude Code's memory switched off
+  the notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
   them. Your own steps run with it, from two optional files:
   `~/Library/Application Support/Hats/anchor-steps.json` for every project, and
