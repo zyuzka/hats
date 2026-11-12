@@ -1,7 +1,11 @@
 ---
 name: anchor
 description: Save this session's state for the next session — a resume note and a handoff marker — when the user's message is itself the anchor command, in any language («анкор», "anchor", «якорь») or typed as /hats:anchor, or when the user asks whether the session is anchored. Call it again on every later anchor command in the session. A message that only contains the word, such as "anchor the regex", is not the command, and other requests to save the session are not this skill's.
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" *)
+allowed-tools:
+  - Bash(sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" *)
+  - Write(~/Library/Application Support/Hats/notes/**)
+  - Edit(~/Library/Application Support/Hats/notes/**)
+  - Read(~/Library/Application Support/Hats/notes/**)
 ---
 
 # Anchor
@@ -27,10 +31,20 @@ closed sessions. Every step is a command, and its output goes into the summary.
    turn, not from memory. Do not stop them to save. For each one note its id or name, what it is for
    and what it waits for: background commands and subagents outlive `/clear`, and the next session is
    told when one ends but not what it was for. A monitor ends with the session — note what it watched.
-3. **Resume note** — one note per task, `<config>/projects/<project>/memory/resume-<topic-slug>.md`,
-   where `<config>` is `$CLAUDE_CONFIG_DIR` or else `~/.claude`, and `<project>/memory` is the memory
-   folder Claude Code keeps for this working folder. Two sessions in one folder work on different
-   tasks and would overwrite one shared note.
+3. **Resume note** — one note per task: two sessions in one folder work on different tasks and would
+   overwrite one shared note.
+   - Which file: if this task already has a note — the one the start hook gave this session (after
+     `/clear`, or from its list when the user picked it), or one this session already wrote — update
+     that note in place, whether it sits in the notes folder or in the memory folder Claude Code keeps
+     for this working folder (`<config>/projects/<project>/memory/`, where `<config>` is
+     `$CLAUDE_CONFIG_DIR` or else `~/.claude`). Otherwise run exactly this command; it creates the
+     notes folder of this working folder and prints its path:
+
+     `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" where`
+
+     and start a new note `<printed folder>/resume-<topic-slug>.md`. If that file already exists, it is
+     another session's note: add `-2`, `-3` and so on to the name until it is free. Write only to a
+     note this session started or got from the start hook.
    - Contents: what is done (with commits), what is open, the next step, every decision taken without
      the user, and every background task and subagent from step 2 with what it is for. The current
      state goes under a `## NOW` heading — the start hook prints that section.
@@ -38,7 +52,7 @@ closed sessions. Every step is a command, and its output goes into the summary.
      conversation.
    - A number or result from another file goes in only as a quote,
      `(cite: <absolute path>:<line> "exact text")` (quote marks «», "" or “”), with the number inside
-     the quote; the source is a primary file, never this note or another memory note. Your own
+     the quote; the source is a primary file, never a resume note or a memory note. Your own
      arithmetic goes in as `N of M (P%)`; a figure read off a command carries `(cmd: <command>)` in
      the same clause. Your own decisions are retold in your words.
    - Repository state as lines the next session can compare: `- git <absolute repo path> <ref> = <sha>`.
@@ -46,7 +60,8 @@ closed sessions. Every step is a command, and its output goes into the summary.
    - A task moved out of a shared resume note into its own: in the same save, replace its state and
      next step in the shared note with one line naming the new note, and rewrite the shared note's
      line in `MEMORY.md` so it no longer describes the task.
-   - If the memory folder has a `MEMORY.md` index, add or update its one-line pointer to the note.
+   - Add no new line to a `MEMORY.md` index. If it already has a line pointing to this note, keep that
+     line accurate.
    - Then `test -e` the file and read back the lines you wrote.
 4. **Handoff** — run exactly this command, with the note's absolute path and a short topic:
 
@@ -58,7 +73,7 @@ closed sessions. Every step is a command, and its output goes into the summary.
    handoff needs `python3` — on a Mac, the Xcode Command Line Tools (`xcode-select --install`) or
    another Python. If it fails otherwise — exit code 1: no Claude process found, the note cannot be
    read, the marker cannot be written — report its first line in the summary. For a note outside
-   the memory folder, move the note into the memory folder and run the command again.
+   both folders, move the note into the folder `where` printed and run the command again.
 
 ## Summary — one block, nothing else
 

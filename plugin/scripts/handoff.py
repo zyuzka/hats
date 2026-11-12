@@ -6,6 +6,7 @@ of closed sessions when a new session starts in the same folder.
   handoff.py start                      SessionStart hook (matcher startup|clear), stdin = hook input
   handoff.py save --note P --topic T    after a save request: marker + check of the note
   handoff.py check P                    the check alone
+  handoff.py where                      creates and prints the notes folder of the working folder
 
 The marker is keyed to the Claude process (pid + start time read in UTC), not to the folder:
 two sessions run in one folder at once (measured 2026-11-09), and /clear keeps the process (a
@@ -21,19 +22,36 @@ without a usable session id gets the note and records nothing. A process whose s
 cannot tell in time is treated as alive: its note is neither listed nor retired. Every external
 call in the hook shares one time budget, under the hook's 5-second timeout.
 
-The note must be <config>/projects/<folder>/memory/<name>.md, where <config> is $CLAUDE_CONFIG_DIR
-or else ~/.claude: the hook prints its head into the model's context, and any other path would let
-a marker print an arbitrary file. The memory folder (or the project folder above it) may be a link
-to somewhere else; then the note must sit directly in the folder the link points at, `..` is
-resolved before the check, a note that is itself a link out of that folder is refused, and the
-path read is the one the check returned. Known gap: a quote of a file in such a linked memory
-folder is not recognised as a quote of memory.
+The note must sit in one of two folders: the notes folder, or Claude Code's memory. The hook prints
+the note's head into the model's context, and any other path would let a marker print an arbitrary
+file. `save` and the start hook check it with one function, `allowed_note`, against the working
+folder of the save (`save` its own, the hook the marker's).
 
-What the check guards against is a marker whose path points outside memory. It does not guard
-against a process of the same user that writes into the memory folder: swapping the note for a link
-between the check and the read, or a hard link to a file elsewhere, gets past it (verification
-2026-11-11, both already true before the linked-folder change). Such a process can read the file
-itself, so the hook adds nothing it lacks.
+The notes folder is the plugin's own (user, 2026-11-11 and 2026-11-12): ~/Library/Application
+Support/Hats/notes/<project>/<name>.md, where <project> is the first 16 hex digits of the sha256 of
+the real path of the working folder, so /a/b-c and /a-b/c get different folders. It works with
+Claude Code's memory switched off, survives the plugin's removal, and needs no running Hats. `where`
+creates it with mode 700 (a folder that exists is left as it is) and prints it; `where` and `save`
+take the working folder from one function. The root is computed here, the same for `save` and
+`start`, and never taken from the command line or a variable of the plugin: the agent writes the
+command. A note there is accepted only when its real path is exactly
+<real root>/<project of the working folder>/<name>.md and a regular file, and that real path is
+what is read: a subfolder, `..`, a link out, or the folder of another project is refused. Letter
+case is compared as written: a path typed in another case than `where` printed is refused by
+`save`, loudly.
+
+The memory note is <config>/projects/<folder>/memory/<name>.md, where <config> is
+$CLAUDE_CONFIG_DIR or else ~/.claude; old markers and notes written there are still accepted. The
+memory folder (or the project folder above it) may be a link to somewhere else; then the note must
+sit directly in the folder the link points at, `..` is resolved before the check, a note that is
+itself a link out of that folder is refused, and the path read is the one the check returned. Known
+gap: a quote of a file in such a linked memory folder is not recognised as a quote of memory.
+
+What the check guards against is a marker whose path points outside both folders. It does not guard
+against a process of the same user that writes into them: swapping the note for a link between the
+check and the read, a hard link to a file elsewhere (verification 2026-11-11, both already true
+before the linked-folder change), or a root swapped for a link gets past it. Such a process can read
+any file of the user itself, so the hook adds nothing it lacks.
 
 Environment (measured 2026-11-11): Claude Code gives hooks and Bash commands CLAUDE_PID, the pid of
 its own process, so the Claude process is that ancestor whatever its binary is called; without it,
@@ -45,8 +63,8 @@ current (verification 2026-11-11).
 
 The check: a number taken from another file goes into the note only inside a quote
 `(cite: <path>:<line> "exact text")`, with «», "" or “” as the quote marks, compared with that
-line of a regular file at number boundaries; a quote of the note itself or of Claude's memory is
-not a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
+line of a regular file at number boundaries; a quote of the note itself, of Claude's memory or of
+any file in the notes folder is not a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
 `(cmd: <command>)` in the same clause. A percent, "N percent", `N of M` or `N/M` outside all
 three — inline code included, fenced code not — is reported as not verified; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
@@ -89,6 +107,7 @@ HANDOFF_OFF=1 silences the hook. With HANDOFF_TEST=1, HANDOFF_PROCESS=<pid>:<sta
 for the claude process and HANDOFF_TEST_BUDGET for the time budget.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -118,6 +137,8 @@ ANCESTOR_LIMIT = 8
 TRACE_LIMIT = 256_000
 TRACE_FIELD_LIMIT = 500
 TRACE_LOCK_S = 0.5
+NOTES_ROOT = "~/Library/Application Support/Hats/notes"
+PROJECT_FOLDER_LENGTH = 16
 
 CITE = re.compile(
     r"\((?:(?i:cite):|цит\.)\s+(?P<path>[^«»“”\"()\n]{1,300}?):(?P<line>\d{1,7})\s+"
@@ -167,6 +188,19 @@ def state_dir():
 
 def memory_root():
     return os.path.realpath(os.path.join(config_root(), "projects"))
+
+
+def get_notes_root():
+    return os.path.expanduser(NOTES_ROOT)
+
+
+def get_project_folder(cwd):
+    try:
+        real = os.fsencode(os.path.realpath(cwd))
+    except ValueError:
+        return None
+
+    return hashlib.sha256(real).hexdigest()[:PROJECT_FOLDER_LENGTH]
 
 
 def usable(path):
@@ -235,6 +269,14 @@ def claude_process():
     return None
 
 
+def find_work_folder(given, proc):
+    if given:
+        return os.path.realpath(os.path.expanduser(given))
+    found = process_cwd(proc[0]) if proc else None
+
+    return os.path.realpath(found or os.getcwd())
+
+
 def process_cwd(pid):
     proc = os.environ.get("HANDOFF_TEST_PROC", "/proc") if testing() else "/proc"
     try:
@@ -286,12 +328,29 @@ def note_in_memory(path):
     return lexical
 
 
-def allowed_note(path):
+def is_own_note(real, folder):
+    return (
+        os.path.dirname(real) == os.path.join(os.path.realpath(get_notes_root()), folder)
+        and real.endswith(".md")
+        and os.path.isfile(real)
+    )
+
+
+def find_own_note(path, cwd):
+    folder = get_project_folder(cwd)
+    if folder is None:
+        return None
+    real = os.path.realpath(os.path.expanduser(path))
+
+    return real if is_own_note(real, folder) else None
+
+
+def allowed_note(path, cwd):
     if not usable(path):
         return None
     kept = note_in_memory(path)
     if kept is None:
-        return None
+        return find_own_note(path, cwd)
     real = os.path.realpath(kept)
     return kept if kept.endswith(".md") and real.endswith(".md") and os.path.isfile(real) else None
 
@@ -299,7 +358,7 @@ def allowed_note(path):
 def checked_markers():
     out = []
     for marker in load_markers():
-        kept = allowed_note(marker["note"])
+        kept = allowed_note(marker["note"], marker["cwd"])
         if kept is not None:
             marker["note"] = kept
             out.append(marker)
@@ -516,6 +575,8 @@ def verify_cite(match, base_dir, note_real, cache):
         return "quote of the note itself is not a source"
     if in_memory(real):
         return f"quote of Claude's memory is not a source: {raw}"
+    if real.startswith(os.path.realpath(get_notes_root()) + os.sep):
+        return f"quote of the notes folder is not a source: {raw}"
     if real not in cache:
         text = read_regular(real, SOURCE_SIZE_LIMIT)
         cache[real] = None if text is None else text.split("\n")
@@ -800,15 +861,16 @@ def cmd_save(args):
         print("handoff: no Claude process above this command — marker not written")
         return 1
     pid, started = proc
-    cwd = os.path.realpath(os.path.expanduser(args.cwd) if args.cwd else (process_cwd(pid) or os.getcwd()))
+    cwd = find_work_folder(args.cwd, proc)
     if not enabled(cwd):
         print(f"handoff is off for {cwd} — marker not written")
         return 0
     given = os.path.normpath(os.path.abspath(os.path.expanduser(args.note)))
-    note = allowed_note(given)
+    note = allowed_note(given, cwd)
     if note is None:
-        print(f"handoff: the note must be a file <Claude config>/projects/<folder>/memory/<name>.md, and {given} is "
-              "not; marker not written")
+        own = os.path.join(get_notes_root(), get_project_folder(cwd))
+        print(f"handoff: the note must be a file {own}/<name>.md (the folder `where` prints) or "
+              f"<Claude config>/projects/<folder>/memory/<name>.md, and {given} is not; marker not written")
         return 1
     text = read_regular(note, SOURCE_SIZE_LIMIT)
     if text is None:
@@ -862,6 +924,21 @@ def cmd_save(args):
     return 0
 
 
+def cmd_where(args):
+    cwd = find_work_folder(args.cwd, None if args.cwd else claude_process())
+    root = get_notes_root()
+    path = os.path.join(root, get_project_folder(cwd))
+    try:
+        os.makedirs(root, 0o700, exist_ok=True)
+        os.makedirs(path, 0o700, exist_ok=True)
+    except OSError as error:
+        print(f"handoff: could not create the notes folder {path}: {error}")
+        return 1
+    print(path)
+
+    return 0
+
+
 def cmd_check(args):
     note = os.path.realpath(os.path.expanduser(args.note))
     text = read_regular(note, SOURCE_SIZE_LIMIT)
@@ -887,6 +964,8 @@ def main(argv):
     check = commands.add_parser("check")
     check.add_argument("note")
     check.add_argument("--cwd")
+    where = commands.add_parser("where")
+    where.add_argument("--cwd")
     args = parser.parse_args(argv)
     if args.command == "start":
         began = time.monotonic()
@@ -902,6 +981,8 @@ def main(argv):
             write_trace(seen, began)
     if args.command == "save":
         return cmd_save(args)
+    if args.command == "where":
+        return cmd_where(args)
     return cmd_check(args)
 
 
