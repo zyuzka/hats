@@ -90,6 +90,7 @@ struct HatsSnapshot: Equatable {
     var everySession: [Session]?
     var reducesMotion = false
     var autoSwitchWarning: AutoSwitchWarning?
+    var sessionHandoff = SessionHandoffRow()
 
     var wearing: HatRowState? { rows.first(where: \.isWearing) }
 
@@ -170,6 +171,8 @@ protocol HatsActions: AnyObject {
     func toggleStartAtLogin()
     func toggleHatNameInTheMenuBar()
     func toggleTheBlinkingCursor()
+    func installSessionHandoff()
+    func removeSessionHandoff()
     func quit()
 }
 

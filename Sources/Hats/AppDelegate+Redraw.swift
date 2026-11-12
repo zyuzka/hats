@@ -42,6 +42,7 @@ extension AppDelegate {
         snapshot.retiredPort = GatewayProcess.retiredPort
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        snapshot.sessionHandoff = handoff.row
         popover.model.snapshot = snapshot
 
         if let blink {

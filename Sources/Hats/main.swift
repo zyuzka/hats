@@ -26,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var changing: String?
     var lookAtTheProcessTable: [Session]??
     var updater: AppUpdater?
+    let handoffWork = SessionHandoffWork(world: .real)
+    lazy var handoff = SessionHandoffFlow(
+        perform: { [handoffWork] work in handoffWork.perform(work) },
+        onMain: { DispatchQueue.main.async(execute: $0) },
+        ask: { PromptWindow.ask($0) == 0 },
+        inform: { HatDialogs.inform($0, $1) },
+        show: { [weak self] in self?.redraw() }
+    )
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
