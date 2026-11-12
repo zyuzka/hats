@@ -6,7 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -I \"${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py\" start",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" --quiet \"${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py\" start",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/py.sh\" --quiet \"${CLAUDE_PLUGIN_ROOT}/scripts/anchor-nudge.py\"",
             "timeout": 5
           }
         ]
