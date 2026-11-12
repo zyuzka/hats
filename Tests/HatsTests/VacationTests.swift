@@ -893,6 +893,14 @@ final class VacationTests: XCTestCase {
             ],
             readings: [:]
         )
+        let oneMoreAway = createSnapshot(
+            [
+                createHat("a"),
+                createHat("b", away: true),
+                createHat("c", away: true),
+            ],
+            readings: [:]
+        )
 
         for warning in warnings {
             XCTAssertTrue(
@@ -906,6 +914,10 @@ final class VacationTests: XCTestCase {
             XCTAssertFalse(
                 removed.hasOnlyHatsThatAreStillHere(warning),
                 "B was removed, and a sentence naming a hat that is gone is worse than none (\(warning))"
+            )
+            XCTAssertFalse(
+                oneMoreAway.hasOnlyHatsThatAreStillHere(warning),
+                "C went on vacation too, and until the next poll lands \(warning) would leave it out"
             )
         }
         var shown = back
