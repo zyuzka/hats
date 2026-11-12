@@ -71,12 +71,15 @@ jobs:
           python3 --version
           bash plugin/tests/handoff.test.sh
 
-      - name: Save reminder hook
-        run: bash plugin/tests/save-state-nudge.test.sh
+      - name: Anchor reminder hook
+        run: bash plugin/tests/anchor-nudge.test.sh
+
+      - name: Python launcher
+        run: bash plugin/tests/py.test.sh
 
       - name: Both hooks under the system Python
         run: |
           export PATH="/usr/bin:$PATH"
           python3 --version
           bash plugin/tests/handoff.test.sh
-          bash plugin/tests/save-state-nudge.test.sh
+          bash plugin/tests/anchor-nudge.test.sh

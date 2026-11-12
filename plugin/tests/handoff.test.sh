@@ -585,7 +585,7 @@ if [ -n "$fake" ] && [ "$(markerfield "$markers" pid)" = "$fake" ]; then ok; els
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
 plug="$work/plug"
 plugin_at() {  # plugin_at <hooks.json или -> <yes|no — класть ли plugin.json>
-  rm -rf "$plug"; mkdir -p "$plug/scripts" "$plug/hooks"; cp "$HOOK" "$plug/scripts/handoff.py"
+  rm -rf "$plug"; mkdir -p "$plug/scripts" "$plug/hooks"; cp "$HOOK" "$plug/scripts/handoff.py"; cp "$plugin_root/scripts/py.sh" "$plug/scripts/py.sh"
   [ "$1" = "-" ] || cp "$1" "$plug/hooks/hooks.json"
   [ "$2" = "no" ] || { mkdir -p "$plug/.claude-plugin"; cp "$plugin_root/.claude-plugin/plugin.json" "$plug/.claude-plugin/plugin.json"; }
 }
@@ -634,6 +634,70 @@ has "hooks.json: команда называет scripts/handoff.py плагин
 reset; mine; plugin_at "$plugin_root/hooks/hooks.json" yes; command_line=$(shipped command)
 out=$(printf '{"session_id":"sh1","cwd":"%s","source":"clear"}' "$proj" | env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" sh -c "$command_line" 2>&1)
 has "hooks.json: команда как есть через sh -c отдаёт записку после /clear" "continues the note \"задача А\"" "$out"
+mkdir -p "$work/darwin"; printf '#!/bin/sh\necho Darwin\n' >"$work/darwin/uname"; chmod +x "$work/darwin/uname"
+out=$(printf '{"session_id":"sh1","cwd":"%s","source":"clear"}' "$proj" | env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" \
+  PATH="$work/darwin:$PATH" HATS_SYSTEM_PYTHON="$(command -v python3)" HATS_XCODE_SELECT=/usr/bin/false sh -c "$command_line" 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ -z "$out" ]; then ok; else bad "hooks.json: заглушка python3 — команда старта молчит, код 0" "rc=$rc out=${out:0:300}"; fi
+
+# --- поставляемые настройки: обёртка py.sh, напоминание и скилл anchor
+hooked() {  # hooked wrapper|nudge|command — что говорит hooks.json плагина об обёртке и напоминании
+  python3 -I -c 'import json,os,shlex,sys
+what, root = sys.argv[1], sys.argv[2]
+hooks = json.load(open(os.path.join(root, "hooks", "hooks.json"), encoding="utf-8"))["hooks"]
+wrapper = os.path.join(root, "scripts", "py.sh")
+if what == "wrapper":
+    entries = [(event, h["command"]) for event, groups in hooks.items() for g in groups for h in g["hooks"]]
+    problems = []
+    for event, command in entries:
+        words = shlex.split(command.replace("${CLAUDE_PLUGIN_ROOT}", root))
+        if words[:3] != ["sh", wrapper, "--quiet"] or len(words) < 4 or not os.path.isfile(words[3]):
+            problems.append(event + ": " + command)
+    print("; ".join(problems) if problems else "wrapped=%d py.sh=%s" % (len(entries), os.path.isfile(wrapper)))
+    sys.exit(0)
+found = [(g, h) for g in hooks.get("UserPromptSubmit", []) for h in g["hooks"] if "anchor-nudge.py" in h.get("command", "")]
+if len(found) != 1:
+    sys.exit("commands with anchor-nudge.py under UserPromptSubmit: %d" % len(found))
+group, hook = found[0]
+if what == "command":
+    print(hook["command"])
+    sys.exit(0)
+words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
+script = [w for w in words if w.endswith("anchor-nudge.py")][0]
+print("script=%s exists=%s timeout=%s" % (script, os.path.isfile(script), hook.get("timeout")))' "$1" "$plugin_root" 2>&1
+}
+has "hooks.json: оба хука идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=2 py.sh=True" "$(hooked wrapper)"
+has "hooks.json: UserPromptSubmit запускает scripts/anchor-nudge.py плагина, и он есть" \
+  "script=$plugin_root/scripts/anchor-nudge.py exists=True timeout=5" "$(hooked nudge)"
+nudge_line=$(hooked command)
+printf '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Skill","input":{"skill":"hats:anchor"}}]}}\n' >"$work/anchor.jsonl"
+out=$(printf '{"session_id":"sh2","prompt":"анкор","transcript_path":"%s"}' "$work/anchor.jsonl" | env CLAUDE_PLUGIN_ROOT="$plugin_root" HOME="$work" sh -c "$nudge_line" 2>&1)
+has "hooks.json: напоминание как есть через sh -c называет anchor" "The anchor skill (hats:anchor) already ran" "$out"
+out=$(printf '{"session_id":"sh2","prompt":"анкор","transcript_path":"%s"}' "$work/anchor.jsonl" | env CLAUDE_PLUGIN_ROOT="$plugin_root" HOME="$work" \
+  PATH="$work/darwin:$PATH" HATS_SYSTEM_PYTHON="$(command -v python3)" HATS_XCODE_SELECT=/usr/bin/false sh -c "$nudge_line" 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ -z "$out" ]; then ok; else bad "hooks.json: заглушка python3 — напоминание молчит, код 0" "rc=$rc out=${out:0:300}"; fi
+out=$(python3 -I -c 'import os,re,shlex,sys
+root = sys.argv[1]
+text = open(os.path.join(root, "skills", "anchor", "SKILL.md"), encoding="utf-8").read()
+parts = re.match(r"---\n(.*?)\n---\n(.*)", text, re.S)
+if not parts:
+    sys.exit("SKILL.md has no frontmatter")
+head, body = parts.groups()
+fields = dict(line.split(": ", 1) for line in head.splitlines() if ": " in line)
+rule = re.fullmatch(r"Bash\((.+) \*\)", fields.get("allowed-tools", ""))
+if not rule:
+    sys.exit("allowed-tools is not Bash(<prefix> *): " + fields.get("allowed-tools", ""))
+prefix = rule.group(1)
+saves = [c for c in re.findall(r"`([^`\n]+)`", body) if " save " in c]
+same = len(saves) == 1 and saves[0].startswith(prefix + " save ")
+words = shlex.split(prefix)
+wrapped = words[:2] == ["sh", "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh"] and "--quiet" not in words
+files = [w.replace("${CLAUDE_PLUGIN_ROOT}", root) for w in words[1:]]
+spaced = shlex.split(prefix.replace("${CLAUDE_PLUGIN_ROOT}", "/a b")) == ["sh", "/a b/scripts/py.sh", "/a b/scripts/handoff.py"]
+print("name=%s same=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
+    fields.get("name"), same, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
+    bool(files) and all(os.path.isfile(f) for f in files), spaced))' "$plugin_root" 2>&1)
+has "SKILL.md anchor: save в теле и в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
+  "name=anchor same=True wrapped=True handoff=True files=True spaced=True" "$out"
 out=$(python3 -I -c 'import json,os,sys
 root = sys.argv[1]
 plugins = json.load(open(os.path.join(root, ".claude-plugin", "marketplace.json"), encoding="utf-8"))["plugins"]
