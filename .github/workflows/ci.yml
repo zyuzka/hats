@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - name: GNU timeout for the handoff tests
+      - name: GNU timeout for the plugin tests
         run: command -v timeout || brew install coreutils
 
       - name: Handoff hook
@@ -77,9 +77,13 @@ jobs:
       - name: Python launcher
         run: bash plugin/tests/py.test.sh
 
-      - name: Both hooks under the system Python
+      - name: Own anchor steps
+        run: bash plugin/tests/anchor-steps.test.sh
+
+      - name: Plugin tests under the system Python
         run: |
           export PATH="/usr/bin:$PATH"
           python3 --version
           bash plugin/tests/handoff.test.sh
           bash plugin/tests/anchor-nudge.test.sh
+          bash plugin/tests/anchor-steps.test.sh
