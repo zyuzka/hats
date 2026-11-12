@@ -18,12 +18,20 @@ and up to 20 in a list. "skill:<name>" (the prefix in any letter case; the name 
 "skill:hats:anchor", in any letter case, are dropped and named: the skill would call itself. A call
 of anchor through another skill or an instruction is left to the skill's own rule.
 
+Both files may hold "note", who writes the resume note: "anchor", the skill itself, or "steps", an own
+step before the core that prints "resume note: <absolute path>". The value is exactly one of the two,
+letter case and spaces included. The project file's value, when that file counts, wins over the
+general one; with "note" nowhere the owner is anchor.
+
 A file that is not a regular file, cannot be read, is over 16 KB, is not UTF-8 (a leading BOM is
-fine), is not JSON or has another shape is skipped whole, named with the reason; the other file still
-counts, and a skipped general file marks no project. The output is English: "no own steps", or the
-two numbered lists with the source of each step, then one line per skipped file or dropped step, and
-a line naming why project steps were skipped: no general file, a skipped one, or a folder not in its
-projects. Every line is printed with those characters escaped. The exit code is 0 whatever the files
+fine), is not JSON or has another shape, a wrong "note" included, is skipped whole, named with the
+reason; the other file still counts, and a skipped general file marks no project. The output is
+English: "no own steps", or the two numbered lists with the source of each step, then one line per
+skipped file or dropped step, and a line naming why project steps were skipped: no general file, a
+skipped one, or a folder not in its projects. With the owner "steps" the first line is
+"note: written by own steps", "no own steps" is never printed, and when no before step is left after
+the dropped ones the second line is "note: no before step to write it"; with "anchor" there is no
+"note:" line. Every line is printed with those characters escaped. The exit code is 0 whatever the files
 hold, 2 for a wrong argument, and 1 with one line "anchor-steps: <type>: <message>" for an error of
 the script itself.
 
@@ -53,9 +61,21 @@ LISTS = (
     "after",
 )
 PROJECTS = "projects"
+NOTE = "note"
+ANCHOR = "anchor"
+STEPS = "steps"
+OWNERS = (
+    ANCHOR,
+    STEPS,
+)
 GENERAL_KEYS = (
     *LISTS,
+    NOTE,
     PROJECTS,
+)
+PROJECT_KEYS = (
+    *LISTS,
+    NOTE,
 )
 SKILL = "skill:"
 SKILL_NAME = re.compile(r"[A-Za-z0-9._:-]+")
@@ -229,6 +249,16 @@ def get_projects(fields):
     return [get_project(item, f"{PROJECTS}, item {number}") for number, item in enumerate(items, 1)]
 
 
+def find_owner(fields):
+    if NOTE not in fields:
+        return None
+    value = fields[NOTE]
+    if value in OWNERS:
+        return value
+    shown = json.dumps(value, ensure_ascii=False) if isinstance(value, str) else get_type(value)
+    raise Skipped(f'{NOTE} is {shown}, not "{ANCHOR}" or "{STEPS}"')
+
+
 def find_file(
     path,
     keys,
@@ -239,6 +269,7 @@ def find_file(
     try:
         fields = get_fields(get_document(get_bytes(path)), keys)
         found = {key: get_steps(fields, key) for key in LISTS}
+        found[NOTE] = find_owner(fields)
         found[PROJECTS] = get_projects(fields)
     except Skipped as reason:
         notes.append(f"skipped {path}: {reason}")
@@ -283,12 +314,26 @@ def find_kept(
     return kept
 
 
-def get_lines(steps, notes):
-    if not any(steps.values()) and not notes:
+def get_owner(files):
+    owners = [found[NOTE] for _, _, found in files if found and found[NOTE]]
+
+    return owners[-1] if owners else ANCHOR
+
+
+def get_lines(
+    owner,
+    steps,
+    notes,
+):
+    lines = []
+    if owner == STEPS:
+        lines.append("note: written by own steps")
+        if not steps["before"]:
+            lines.append("note: no before step to write it")
+    elif not any(steps.values()) and not notes:
         return [
             "no own steps",
         ]
-    lines = []
     for key in LISTS:
         lines.append(f"{key} anchor:" if steps[key] else f"{key} anchor: none")
         lines.extend(f"{number}. [{label}] {step}" for number, (label, step) in enumerate(steps[key], 1))
@@ -323,7 +368,7 @@ def print_steps(given):
             project,
             find_file(
                 project,
-                LISTS,
+                PROJECT_KEYS,
                 notes,
             ),
         ))
@@ -337,7 +382,11 @@ def print_steps(given):
         )
         for key in LISTS
     }
-    for line in get_lines(steps, notes):
+    for line in get_lines(
+        get_owner(files),
+        steps,
+        notes,
+    ):
         print(get_clean(line))
 
 

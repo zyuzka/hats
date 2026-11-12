@@ -203,6 +203,106 @@ has "Skill: в другом регистре с верным именем — в
 reset; put "$general" '{"before":["Run /hats:anchor again"]}'
 has "текст с anchor — указание, не самовызов" "1. [general] Run /hats:anchor again" "$(steps)"
 
+# --- владелец записки: поле note
+writer="Write the resume note and print resume note: <path>."
+reset; put "$general" '{"note":"steps","before":["'"$writer"'"],"after":["c"]}'
+out=$(steps); rc=$?
+is "note steps в общем — первая строка о владельце, списки как прежде" "note: written by own steps
+before anchor:
+1. [general] $writer
+after anchor:
+1. [general] c" "$out"
+calm "note steps"
+reset; put "$general" '{"note":"anchor","before":["a"]}'
+is "note anchor — вывод прежний, строки note: нет" "before anchor:
+1. [general] a
+after anchor: none" "$(steps)"
+reset; put "$general" '{"note":"anchor"}'
+is "note anchor и шагов нет — «no own steps»" "no own steps" "$(steps)"
+reset; put "$general" '{"before":["a"],'"$(marked)"'}'; put "$project" '{"after":["d"]}'
+lacks "поля note нет нигде — владелец anchor, строки note: нет" "note:" "$(steps)"
+reset; put "$general" '{"note":"anchor","before":["a"],'"$(marked)"'}'; put "$project" '{"note":"steps","before":["b"]}'
+is "проект steps при общем anchor — steps" "note: written by own steps
+before anchor:
+1. [general] a
+2. [project] b
+after anchor: none" "$(steps)"
+reset; put "$general" '{"note":"steps","before":["a"],'"$(marked)"'}'; put "$project" '{"note":"anchor","before":["b"]}'
+lacks "проект anchor при общем steps — anchor" "note:" "$(steps)"
+reset; put "$general" '{"note":"steps","before":["a"],'"$(marked)"'}'; put "$project" '{"after":["d"]}'
+has "в проекте поля нет — действует steps общего" "note: written by own steps" "$(steps)"
+reset; put "$general" '{"before":["a"],"projects":["'"$work/other"'"]}'; put "$project" '{"note":"steps","before":["b"]}'
+out=$(steps)
+lacks "файл проекта не отмечен — его note не действует" "note:" "$out"
+has "файл проекта не отмечен — строка о пропуске есть" "project steps skipped: $proj is not in projects" "$out"
+reset; put "$general" '{"note":"steps","before":["a"],"projects":["'"$work/other"'"]}'; put "$project" '{"note":"anchor"}'
+has "файл проекта не отмечен — действует steps общего" "note: written by own steps" "$(steps)"
+reset; put "$general" '{"note":"steps","before":["a"],'"$(marked)"'}'; put "$project" '{"note":"anchor","before": ["b"'
+out=$(steps)
+has "файл проекта пропущен — действует note общего" "note: written by own steps" "$out"
+has "файл проекта пропущен — причина названа" "skipped $project: not JSON:" "$out"
+reset; put "$general" '{"note":"steps","before":["a"],"projects":"x"}'
+out=$(steps); rc=$?
+lacks "общий файл пропущен — его note не действует" "note:" "$out"
+calm "общий файл с note пропущен"
+reset; put "$general" '{"note":"steps"}'
+out=$(steps); rc=$?
+is "steps без шагов — две строки о владельце, «no own steps» нет" "note: written by own steps
+note: no before step to write it
+before anchor: none
+after anchor: none" "$out"
+calm "steps без шагов"
+reset; put "$general" '{"note":"steps","after":["c"]}'
+is "steps, только «после» — нет шага «до» для записки" "note: written by own steps
+note: no before step to write it
+before anchor: none
+after anchor:
+1. [general] c" "$(steps)"
+reset; put "$general" '{"note":"steps","before":["skill:hats:anchor"]}'
+is "steps, единственный шаг «до» выброшен как вызов anchor — before пуст" "note: written by own steps
+note: no before step to write it
+before anchor: none
+after anchor: none
+dropped before, item 1 of $general: skill:hats:anchor calls anchor itself" "$(steps)"
+reset; put "$general" '{"note":"anchor",'"$(marked)"'}'; put "$project" '{"note":"steps","before":["skill:anchor"]}'
+is "steps в проекте, его единственный шаг «до» выброшен — before пуст" "note: written by own steps
+note: no before step to write it
+before anchor: none
+after anchor: none
+dropped before, item 1 of $project: skill:anchor calls anchor itself" "$(steps)"
+reset; put "$general" '{"note":"steps","before":["a"],'"$(marked)"'}'; put "$project" '{"note":"steps"}'
+lacks "steps, шаг «до» есть только в общем — строки «no before step» нет" "no before step" "$(steps)"
+bad_note() {  # bad_note <имя> <файл> <значение note> <причина>
+  reset; put "$general" '{"before":["a"],'"$(marked)"'}'
+  if [ "$2" = "$project" ]; then put "$project" '{"before":["b"],"note":'"$3"'}'
+  else put "$general" '{"before":["a"],"note":'"$3"','"$(marked)"'}'; put "$project" '{"before":["b"]}'; fi
+  out=$(steps); rc=$?
+  has "note $1: файл пропущен с причиной" "skipped $2: note is $4, not \"anchor\" or \"steps\"" "$out"
+  lacks "note $1: ни одного шага этого файла" "[$( [ "$2" = "$project" ] && echo project || echo general )]" "$out"
+  lacks "note $1: владелец не steps" "note: written" "$out"
+  calm "note $1"
+}
+bad_note "STEPS" "$general" '"STEPS"' '"STEPS"'
+bad_note "Anchor" "$project" '"Anchor"' '"Anchor"'
+bad_note "пробел впереди" "$general" '" steps"' '" steps"'
+bad_note "пробел в конце" "$project" '"steps "' '"steps "'
+bad_note "пустая строка" "$general" '""' '""'
+bad_note "другое слово" "$project" '"own"' '"own"'
+bad_note "число" "$general" '1' 'a number'
+bad_note "true" "$project" 'true' 'a boolean'
+bad_note "null" "$general" 'null' 'null'
+bad_note "список" "$project" '["steps"]' 'an array'
+bad_note "объект" "$general" '{"steps":1}' 'an object'
+reset; put "$general" '{"note":"steps","note":"steps"}'
+has "note повторён — файл пропущен" "skipped $general: key note is repeated" "$(steps)"
+skill_text=$(cat "$plugin_root/skills/anchor/SKILL.md")
+reset; put "$general" '{"note":"steps"}'
+seen=0
+while IFS= read -r line; do
+  case "$line" in note:*) seen=$((seen+1)); has "скилл узнаёт строку «${line}», которую печатает скрипт" "\`$line\`" "$skill_text" ;; esac
+done <<<"$(steps)"
+is "скрипт печатает две строки note: для сверки со скиллом" "2" "$seen"
+
 # --- не JSON: файл пропущен, другой действует
 reset; put "$general" '{"before":["a"],'"$(marked)"'}'; put "$project" '{"before": ["b"'
 out=$(steps); rc=$?
@@ -235,8 +335,8 @@ shape() {  # shape <имя> <файл> <содержимое> <причина>
 shape "верх — список" "$general" '["a"]' "the top level is an array, not an object"
 shape "верх — строка" "$general" '"a"' "the top level is a string, not an object"
 shape "верх — null" "$general" 'null' "the top level is null, not an object"
-shape "лишний ключ в общем" "$general" '{"before":["a"],"befor":["b"]}' 'key "befor" is not one of before, after, projects'
-shape "projects в файле проекта" "$project" '{"before":["b"],"projects":["/x"]}' 'key "projects" is not one of before, after'
+shape "лишний ключ в общем" "$general" '{"before":["a"],"befor":["b"]}' 'key "befor" is not one of before, after, note, projects'
+shape "projects в файле проекта" "$project" '{"before":["b"],"projects":["/x"]}' 'key "projects" is not one of before, after, note'
 shape "повтор ключа" "$general" '{"before":["a"],"before":["b"]}' "key before is repeated"
 shape "повтор ключа в файле проекта" "$project" '{"after":["b"],"after":["c"]}' "key after is repeated"
 shape "значение — строка" "$general" '{"before":"a"}' "before is a string, not an array"
