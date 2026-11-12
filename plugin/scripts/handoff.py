@@ -33,8 +33,10 @@ the real path of the working folder, so /a/b-c and /a-b/c get different folders.
 Claude Code's memory switched off, survives the plugin's removal, and needs no running Hats. `where`
 creates it with mode 700 (a folder that exists is left as it is) and prints it; `where` and `save`
 take the working folder from one function. The root is computed here, the same for `save` and
-`start`, and never taken from the command line or a variable of the plugin: the agent writes the
-command. A note there is accepted only when its real path is exactly
+`start`, and never taken from the command line or a variable of the plugin's own: the agent writes
+the command. Like any `~`, it follows HOME (the tests rely on that), and a `save` run under another
+HOME is checked again by the start hook under its own. A note there is accepted only when its real
+path is exactly
 <real root>/<project of the working folder>/<name>.md and a regular file, and that real path is
 what is read: a subfolder, `..`, a link out, or the folder of another project is refused. Letter
 case is compared as written: a path typed in another case than `where` printed is refused by
@@ -51,7 +53,12 @@ What the check guards against is a marker whose path points outside both folders
 against a process of the same user that writes into them: swapping the note for a link between the
 check and the read, a hard link to a file elsewhere (verification 2026-11-11, both already true
 before the linked-folder change), or a root swapped for a link gets past it. Such a process can read
-any file of the user itself, so the hook adds nothing it lacks.
+any file of the user itself, so the hook adds nothing it lacks. Nor does it stop the anchor skill:
+its Write and Edit rules let the agent, while an anchor runs, write into the notes of any project,
+and the start hook then prints such a note into that project's session. A quote counts as a quote
+of the notes folder when one of the folders above the cited file is the notes root itself (the same
+file system object), so another letter case or another path to the same disk does not make it a
+source.
 
 Environment (measured 2026-11-11): Claude Code gives hooks and Bash commands CLAUDE_PID, the pid of
 its own process, so the Claude process is that ancestor whatever its binary is called; without it,
@@ -563,6 +570,25 @@ def bounded_in(want, have):
     return re.search(left + re.escape(want) + right, have) is not None
 
 
+def is_same_folder(folder, root):
+    try:
+        return os.path.samestat(os.stat(folder), root)
+    except (OSError, ValueError):
+        return False
+
+
+def is_in_notes_folder(real):
+    try:
+        root = os.stat(get_notes_root())
+    except OSError:
+        return False
+    folders = [os.path.dirname(real)]
+    while folders[-1] != os.path.dirname(folders[-1]):
+        folders.append(os.path.dirname(folders[-1]))
+
+    return any(is_same_folder(folder, root) for folder in folders)
+
+
 def verify_cite(match, base_dir, note_real, cache):
     raw = match.group("path").strip().strip("`")
     if not usable(raw):
@@ -575,7 +601,7 @@ def verify_cite(match, base_dir, note_real, cache):
         return "quote of the note itself is not a source"
     if in_memory(real):
         return f"quote of Claude's memory is not a source: {raw}"
-    if real.startswith(os.path.realpath(get_notes_root()) + os.sep):
+    if is_in_notes_folder(real):
         return f"quote of the notes folder is not a source: {raw}"
     if real not in cache:
         text = read_regular(real, SOURCE_SIZE_LIMIT)

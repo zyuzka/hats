@@ -697,6 +697,29 @@ printf '## NOW\n\nx 73%% (cite: %s:1 "share 73%%")\n' "$own_dir/x.md" >"$own_dir
 out=$(save "$proj" "$own_dir/r.md" "цитата"); has "цитата своей папки в записке: save пишет отметку" "marker:" "$out"
 has "цитата своей папки в записке: строка в «not verified»" "not verified in the note:
 - line 3: quote of the notes folder is not a source" "$out"
+shouty=$(printf '%s' "$own_dir" | sed 's|/Hats/notes/|/HATS/NOTES/|')
+lacks "цитата своей папки в другом регистре — не «all verified»" "all verified" "$(checkline "x (cite: $shouty/x.md:1 \"share 73%\")")"
+
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/r.md"
+marker dead "$dead_pid" "$dead_started" "$proj" "$own_dir/r.md" "та же"
+marker live "$me_pid" "$me_started" "$proj" "$own_dir/r.md" "та же, живая"
+out=$(save "$proj" "$own_dir/r.md" "своя")
+has "save: снимает одну закрытую с той же запиской своей папки" "removed markers of closed sessions with the same note: 1" "$out"
+if [ ! -f "$markers/dead.json" ]; then ok; else bad "save: закрытая с той же запиской своей папки снята" "осталась"; fi
+if [ -f "$markers/live.json" ]; then ok; else bad "save: живую с той же запиской своей папки не трогает" "пропала"; fi
+
+reset; rm -rf "$work/hatsdata"; mkdir -p "$work/hatsdata" "$work/Library/Application Support"
+ln -s "$work/hatsdata" "$work/Library/Application Support/Hats"
+own_dir=$(notes_of "$proj"); printf '## NOW\n\nlinked root line\n' >"$own_dir/r.md"; printf 'share 73%%\n' >"$own_dir/x.md"
+out=$(save "$proj" "$own_dir/r.md" "корень-ссылка"); rc=$?
+has "корень записок — ссылка: save пишет отметку" "marker:" "$out"
+want="$(realp "$work/hatsdata")/notes/${own_dir##*/}/r.md"
+if [ $rc -eq 0 ] && [ "$(markerfield "$markers" note)" = "$want" ]; then ok; else bad "корень записок — ссылка: в отметке путь за ссылкой" "rc=$rc $(markerfield "$markers" note)"; fi
+has "корень записок — ссылка: после /clear записка отдаётся" "linked root line" "$(start clear)"
+has "корень записок — ссылка: цитата через ссылку — не источник" "quote of the notes folder is not a source" "$(checkline "x (cite: $own_dir/x.md:1 \"share 73%\")")"
+has "корень записок — ссылка: цитата по пути за ссылкой — не источник" "quote of the notes folder is not a source" \
+  "$(checkline "x (cite: $work/hatsdata/notes/${own_dir##*/}/x.md:1 \"share 73%\")")"
+rm -rf "$work/hatsdata"
 
 
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
