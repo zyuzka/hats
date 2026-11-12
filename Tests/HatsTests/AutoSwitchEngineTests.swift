@@ -35,7 +35,7 @@ final class AutoSwitchEngineTests: XCTestCase {
         AutoSwitchEngine.outcome(
             policy: policy,
             world: AutoSwitchWorld(readings: readings, wearing: wearing,
-                                   eligible: eligible, blindness: blindness),
+                                   eligible: eligible, onVacation: [], blindness: blindness),
             now: when ?? now
         )
     }
@@ -185,30 +185,31 @@ final class AutoSwitchEngineTests: XCTestCase {
     func testTheWarningIsRaisedOnceAnEpisodeAndNeverAwayFromAThreshold() {
         let near = outcome(armed, readings: ["work": reading(89)], blindness: blind(1))
         XCTAssertEqual(AutoSwitchWarning.of(decision: near.decision, holding: .blindAndNear,
-                                            blindness: blind(1)),
+                                            blindness: blind(1), onVacation: []),
                        .willSwitchWhenItCan)
         XCTAssertEqual(AutoSwitchWarning.of(decision: .hold, holding: .blindTargetSpent,
-                                            blindness: blind(2, fresh: ["personal"])),
+                                            blindness: blind(2, fresh: ["personal"]), onVacation: []),
                        .everyOtherHatIsSpent,
                        "the step was reached and nothing had room, so this is a dead end - but not "
                            + "the same dead end: here the other hats were read and are full, so "
                            + "saying they have no fresh reading would be false, and promising \"it "
                            + "will switch as soon as it can\" would be a promise already broken")
         XCTAssertNil(AutoSwitchWarning.of(decision: near.decision, holding: .blindAndFar,
-                                          blindness: blind(3)),
+                                          blindness: blind(3), onVacation: []),
                      "429 lands six to ten times a day; a dot for every one of them would stop "
                          + "meaning anything")
         XCTAssertNil(AutoSwitchWarning.of(decision: near.decision, holding: .underTheThresholds,
-                                          blindness: blind(0)))
+                                          blindness: blind(0), onVacation: []))
         XCTAssertEqual(AutoSwitchWarning.of(decision: .nowhereToGo(.noFreshReading),
-                                            holding: nil, blindness: blind(2)),
+                                            holding: nil, blindness: blind(2), onVacation: []),
                        .nowhereFreshToGo,
                        "without this line the warning above is a promise the app then quietly "
                            + "fails to keep")
         XCTAssertEqual(AutoSwitchWarning.of(
             decision: .nowhereToGo(.atALimit(.session, .othersAreSpent(freesUpAt: resetsAt))),
             holding: nil,
-            blindness: blind(2)
+            blindness: blind(2),
+            onVacation: []
         ),
                        .nowhereToGoAtALimit(.session, .othersAreSpent(freesUpAt: resetsAt)),
                        "this used to be the quiet answer, and quiet is what it cost: measured on "
@@ -216,12 +217,12 @@ final class AutoSwitchEngineTests: XCTestCase {
                            + "the journal, no dot, no notification, and the person found out by "
                            + "hitting the limit")
         XCTAssertNil(AutoSwitchWarning.of(decision: near.decision, holding: .blindAndNear,
-                                          blindness: blind(1, landed: false)),
+                                          blindness: blind(1, landed: false), onVacation: []),
                      "the warning is an event of a poll landing, not a state a redraw can raise")
-        XCTAssertNil(AutoSwitchWarning.of(decision: .hold, holding: .off, blindness: blind(2)),
+        XCTAssertNil(AutoSwitchWarning.of(decision: .hold, holding: .off, blindness: blind(2), onVacation: []),
                      "with auto-switching off the person gets nothing at all - no dot, no "
                          + "notification, no move")
-        XCTAssertNil(AutoSwitchWarning.of(decision: .hold, holding: .noReading, blindness: blind(2)),
+        XCTAssertNil(AutoSwitchWarning.of(decision: .hold, holding: .noReading, blindness: blind(2), onVacation: []),
                      "a hat with no number at all is its own older problem and keeps its own answer")
     }
 
@@ -233,32 +234,36 @@ final class AutoSwitchEngineTests: XCTestCase {
             world: AutoSwitchWorld(readings: ["work": reading(89), "personal": reading(0)],
                                    wearing: "work",
                                    eligible: ["work", "personal", "team"],
+                                   onVacation: [],
                                    blindness: blind(2, fresh: ["personal"]))
         )
         XCTAssertNil(holding, "nothing is being held; the hat is moving")
         XCTAssertNil(AutoSwitchWarning.of(decision: fired.decision, holding: holding,
-                                          blindness: blind(2, fresh: ["personal"])),
+                                          blindness: blind(2, fresh: ["personal"]), onVacation: []),
                      "this is the pair the app actually produces on a switching poll, and it is "
                          + "the pair no test fed in before: a reason invented next to a firing "
                          + "decision reached the warning, so the person got \"Can't read usage\" "
                          + "and \"Switched to Personal\" in the same instant")
         XCTAssertNil(AutoSwitchWarning.of(decision: fired.decision, holding: .blindTargetSpent,
-                                          blindness: blind(2, fresh: ["personal"])),
+                                          blindness: blind(2, fresh: ["personal"]), onVacation: []),
                      "and even handed a reason that disagrees with it, a decision that moves a hat "
                          + "warns about nothing - two guards, because one of them is the one that "
                          + "already failed")
         XCTAssertNil(AutoSwitchWarning.of(decision: .fire(to: "personal", limit: .session, resetsAt: nil),
-                                          holding: .blindAndNear, blindness: blind(2)),
+                                          holding: .blindAndNear, blindness: blind(2), onVacation: []),
                      "the same holds for the older path, where the limit decides")
     }
 
     func testTheWorldIsBuiltTheSameWayEverywhereAndOnlyAPollCarriesTheBlindness() {
+        var away = hat("spare", "Spare")
+        away.vacationSince = now
         var snapshot = HatsSnapshot()
         snapshot.rows = [
             HatRowState(hat: hat("work", "Work"), isWearing: true, usage: nil, usageTrouble: nil),
             HatRowState(hat: hat("personal", "Personal"), isWearing: false, usage: nil, usageTrouble: nil),
             HatRowState(hat: hat("team", "Team", switchable: false), isWearing: false,
                         usage: nil, usageTrouble: nil),
+            HatRowState(hat: away, isWearing: false, usage: nil, usageTrouble: nil),
         ]
         var missed = MissedPolls()
         missed = missed.settled(wearing: "work", fresh: ["work"], from: .timer, every: 300, at: now)
@@ -295,6 +300,7 @@ final class AutoSwitchEngineTests: XCTestCase {
             eligible: ["work", "personal"],
             blocked: [ShutOutHat(id: "team", title: "Team", blocker: "needs login",
                                  loginAction: "Log in…")],
+            onVacation: [HatOnVacation(id: "spare", title: "Spare")],
             blindness: UsageBlindness(missedPolls: 2, hasReadTheWornHatSinceItWentOn: true,
                                       fresh: ["personal"], landedAPoll: true)
         ),
@@ -306,7 +312,8 @@ final class AutoSwitchEngineTests: XCTestCase {
                            + "value cannot, because a field added tomorrow joins it by itself. "
                            + "That only works while EVERY field here is set to something other "
                            + "than its default, so a dropped field shows up as a difference - "
-                           + "which is why this fixture carries a hat that cannot be worn")
+                           + "which is why this fixture carries a hat that cannot be worn and a "
+                           + "hat on vacation")
 
         for quiet in [AutoSwitchCall.thePopoverOpened, .theToggleChanged] {
             let world = AutoSwitchWorld.of(snapshot: snapshot, readings: ["work": reading(89)],

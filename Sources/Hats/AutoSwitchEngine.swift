@@ -21,6 +21,7 @@ struct AutoSwitchWorld: Equatable {
     var wearing: String?
     var eligible: [String] = []
     var blocked: [ShutOutHat] = []
+    var onVacation: [HatOnVacation]
     var blindness = UsageBlindness()
 }
 
@@ -37,6 +38,7 @@ enum AutoSwitchEngine {
             eligible: world.eligible,
             readings: world.readings,
             blocked: world.blocked,
+            onVacation: world.onVacation,
             blindness: world.blindness,
             at: now
         )
@@ -81,6 +83,12 @@ enum AutoSwitchEngine {
         guard policy.crossedLimits(in: reading).isEmpty else { return nil }
         guard world.blindness.isBlind else { return .underTheThresholds }
         guard policy.isNearAThreshold(reading, at: now) else { return .blindAndFar }
+        guard policy.findEveryOtherHatOnVacation(
+            after: wearing,
+            among: world.eligible,
+            blocked: world.blocked,
+            onVacation: world.onVacation
+        ) == nil else { return .blindAndOthersAreOnVacation }
         guard world.blindness.isBlindEnoughToSwitch else { return .blindAndNear }
         guard policy.blindTarget(
             after: wearing,
@@ -94,15 +102,19 @@ enum AutoSwitchEngine {
     }
 
     static func eligible(in rows: [HatRowState]) -> [String] {
-        rows.filter(\.isSwitchable).map(\.id)
+        rows.filter { $0.isSwitchable && !$0.isSkippedByTheSwitch }.map(\.id)
     }
 
     static func blocked(in rows: [HatRowState]) -> [ShutOutHat] {
-        rows.compactMap { row in
+        rows.filter { !$0.isSkippedByTheSwitch }.compactMap { row in
             row.blocker.map {
                 ShutOutHat(id: row.id, title: row.title, blocker: $0, loginAction: row.loginAction)
             }
         }
+    }
+
+    static func findOnVacation(in rows: [HatRowState]) -> [HatOnVacation] {
+        rows.filter(\.isSkippedByTheSwitch).map { HatOnVacation(id: $0.id, title: $0.title) }
     }
 
     static func notice(

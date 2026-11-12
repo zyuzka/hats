@@ -29,11 +29,33 @@ extension HatsSnapshot {
     }
 
     func hasOnlyHatsThatAreStillHere(_ warning: AutoSwitchWarning?) -> Bool {
+        if let warning, let away = findHatsNamedOnVacation(in: warning) {
+            return away.allSatisfy { named in rows.contains { $0.id == named.id && $0.isSkippedByTheSwitch } }
+        }
         guard case .nowhereToGoAtALimit(_, .othersNeedSigningIn(let first, let also)) = warning else {
             return true
         }
 
-        return ([first] + also).allSatisfy { named in rows.contains { $0.id == named.id } }
+        return ([first] + also).allSatisfy { named in
+            rows.contains { $0.id == named.id && !$0.isSkippedByTheSwitch }
+        }
+    }
+
+    private func findHatsNamedOnVacation(in warning: AutoSwitchWarning) -> [HatOnVacation]? {
+        switch warning {
+        case .unreadableAndOthersAreOnVacation(let away),
+             .everyOtherHatIsSpentOrOnVacation(let away),
+             .nowhereToGoAtALimit(_, .othersAreOnVacation(let away)),
+             .nowhereToGoAtALimit(_, .othersAreSpentOrOnVacation(_, let away)):
+            return away
+        case .willSwitchWhenItCan,
+             .nowhereFreshToGo,
+             .everyOtherHatIsSpent,
+             .nowhereToGoAtALimit(_, .noOtherHat),
+             .nowhereToGoAtALimit(_, .othersNeedSigningIn),
+             .nowhereToGoAtALimit(_, .othersAreSpent):
+            return nil
+        }
     }
 
     private func theOneHatToSignInTo(_ by: AutoSwitchDeadEnd.StrandedBy) -> ShutOutHat? {

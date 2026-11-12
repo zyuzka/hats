@@ -40,17 +40,12 @@ struct HatListView: View {
                 HatRowView(
                     row: row,
                     isChanging: snapshot.changing == row.id,
-                    handover: handover(for: row),
+                    handover: snapshot.getHandover(for: row),
                     onWear: { model.actions?.wear(row.id) },
                     onRelogin: { model.actions?.relogin(row.id) }
                 )
             }
         }
-    }
-
-    private func handover(for row: HatRowState) -> String? {
-        guard row.isWearing, snapshot.settings.autoSwitch.isOn, let next = snapshot.nextInLine else { return nil }
-        return HatsCopy.handover(to: snapshot.title(of: next))
     }
 
     private var empty: some View {

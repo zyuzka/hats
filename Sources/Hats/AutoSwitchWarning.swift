@@ -4,20 +4,22 @@ enum AutoSwitchWarning: Equatable {
     case willSwitchWhenItCan
     case nowhereFreshToGo
     case everyOtherHatIsSpent
+    case everyOtherHatIsSpentOrOnVacation([HatOnVacation])
+    case unreadableAndOthersAreOnVacation([HatOnVacation])
     case nowhereToGoAtALimit(UsageLimit, AutoSwitchDeadEnd.StrandedBy)
 
     static func of(
         decision: AutoSwitchDecision,
         holding: AutoSwitchHold?,
-        blindness: UsageBlindness
+        blindness: UsageBlindness,
+        onVacation: [HatOnVacation]
     ) -> AutoSwitchWarning? {
         guard blindness.landedAPoll else { return nil }
         switch decision {
         case .fire, .fireBlind:
             return nil
         case .nowhereToGo(let deadEnd):
-            guard case .atALimit(let limit, let by) = deadEnd else { return .nowhereFreshToGo }
-            return .nowhereToGoAtALimit(limit, by)
+            return createWarning(at: deadEnd)
         case .hold:
             break
         }
@@ -25,13 +27,27 @@ enum AutoSwitchWarning: Equatable {
         case .blindAndNear:
             return .willSwitchWhenItCan
         case .blindTargetSpent:
-            return .everyOtherHatIsSpent
+            return onVacation.isEmpty ? .everyOtherHatIsSpent : .everyOtherHatIsSpentOrOnVacation(onVacation)
+        case .blindAndOthersAreOnVacation:
+            return .unreadableAndOthersAreOnVacation(onVacation)
         case .off, .noHatOn, .noReading, .underTheThresholds, .blindAndFar, .none:
             return nil
         }
     }
 
+    private static func createWarning(at deadEnd: AutoSwitchDeadEnd) -> AutoSwitchWarning {
+        switch deadEnd {
+        case .noFreshReading: return .nowhereFreshToGo
+        case .unreadableAndOthersAreOnVacation(let away): return .unreadableAndOthersAreOnVacation(away)
+        case .atALimit(let limit, let by): return .nowhereToGoAtALimit(limit, by)
+        }
+    }
+
     static func isTheSameEpisode(_ one: AutoSwitchWarning?, as two: AutoSwitchWarning?) -> Bool {
+        if case .unreadableAndOthersAreOnVacation(let first) = one,
+           case .unreadableAndOthersAreOnVacation(let second) = two {
+            return HatsCopy.getOthersOnVacation(first) == HatsCopy.getOthersOnVacation(second)
+        }
         guard case .nowhereToGoAtALimit(let first, let firstBy) = one,
               case .nowhereToGoAtALimit(let second, let secondBy) = two
         else { return one == two }
@@ -41,7 +57,11 @@ enum AutoSwitchWarning: Equatable {
 
     var menuBarLabel: String {
         switch self {
-        case .willSwitchWhenItCan, .nowhereFreshToGo, .everyOtherHatIsSpent:
+        case .willSwitchWhenItCan,
+             .nowhereFreshToGo,
+             .everyOtherHatIsSpent,
+             .everyOtherHatIsSpentOrOnVacation,
+             .unreadableAndOthersAreOnVacation:
             return HatsCopy.theWornUsageCannotBeReadAloud
         case .nowhereToGoAtALimit(let limit, _):
             return HatsCopy.nowhereToGoAloud(limit: limit)
@@ -53,6 +73,10 @@ enum AutoSwitchWarning: Equatable {
         case .willSwitchWhenItCan: return HatsCopy.cannotReadTheUsage(of: hat)
         case .nowhereFreshToGo: return HatsCopy.cannotReadTheUsageAndHasNowhereToGo(of: hat)
         case .everyOtherHatIsSpent: return HatsCopy.cannotReadTheUsageAndTheOthersAreSpent(of: hat)
+        case .everyOtherHatIsSpentOrOnVacation(let away):
+            return HatsCopy.getUnreadableAndSpentOrOnVacation(of: hat, onVacation: away)
+        case .unreadableAndOthersAreOnVacation(let away):
+            return HatsCopy.getCannotReadTheUsageAndTheOthersAreOnVacation(of: hat, onVacation: away)
         case .nowhereToGoAtALimit(let limit, let by):
             return HatsCopy.nowhereToGo(
                 of: hat,

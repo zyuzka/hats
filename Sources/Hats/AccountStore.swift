@@ -355,6 +355,27 @@ final class AccountStore {
         try persist(orRestore: before)
     }
 
+    func setVacation(
+        _ id: String,
+        on: Bool,
+        at now: Date
+    ) throws {
+        try requireReadableIndex()
+        guard let index = accounts.firstIndex(where: { $0.id == id }) else {
+            throw SwitchError.unknownAccount(id)
+        }
+        let was = accounts[index].vacationSince
+        guard (was != nil) != on else { return }
+        let before = snapshot
+        accounts[index].vacationSince = on ? now : nil
+        try persist(orRestore: before)
+        Journal.log("hat.vacation", [
+            "hat": String(id.prefix(8)),
+            "on": String(on),
+            "since": (on ? now : was).map { ISO8601DateFormatter().string(from: $0) } ?? "-",
+        ])
+    }
+
     private(set) var indexUnusable: SwitchError?
 
     private func load() {

@@ -12,7 +12,7 @@ struct AutoSwitchPanel: View {
             Toggle(isOn: binding(\.isOn)) {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Change hat when a limit is reached").font(.system(size: 13))
-                    Text("puts on the next hat that still has room, in the order below")
+                    Text("puts on the next hat that still has room, in the order below, skipping hats on vacation")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -91,7 +91,11 @@ struct AutoSwitchPanel: View {
                 HStack {
                     Text(row.isWearing ? "—" : "\(index + 1)").frame(width: 16).foregroundStyle(.secondary)
                     Text(row.title).font(.system(size: 12))
+                        .foregroundStyle(row.isOnVacation ? Color.secondary : Color.primary)
                     if row.isWearing { Text("worn now").font(.system(size: 11)).foregroundStyle(.secondary) }
+                    if row.isOnVacation {
+                        Text(HatsCopy.vacationMark).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                     Spacer()
                     if !row.isWearing {
                         Button("↑") { move(row.id, by: -1) }.disabled(index == 0)
