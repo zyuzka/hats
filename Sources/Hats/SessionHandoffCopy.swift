@@ -41,8 +41,8 @@ enum SessionHandoffCopy {
         case .brokenSettings(let file, let reason):
             return "\(file) could not be read as JSON: \(reason). Claude Code records the plugin in that file and "
                 + "would fail too. Fix the file, then try again. Hats does not edit it."
-        case .cliTooOld(let path):
-            return "The Claude Code at \(path) is too old: its claude plugin install has no --marketplace option. "
+        case .cliTooOld(let path, let command, let option):
+            return "The Claude Code at \(path) is too old: its \(command) has no \(option) option. "
                 + "Update Claude Code (claude update), then try again."
         case .cliDidNotAnswer(let command, let reason):
             return "\(command) did not answer: \(reason). Nothing was changed."
@@ -92,6 +92,29 @@ enum SessionHandoffCopy {
         case .unknown(let reason):
             return reason
         }
+    }
+
+    static func getUpdateLine(_ row: SessionHandoffRow) -> (text: String, spoken: String)? {
+        if row.isUpdating { return ("Updating\u{2026}", "Updating the plugin") }
+        guard let offer = row.offer else { return nil }
+
+        return (
+            "Update available: \(offer.installed) \u{2192} \(offer.own)",
+            "Update available: version \(offer.installed) is installed, and this Hats comes with version \(offer.own)"
+        )
+    }
+
+    static func getRowStatus(_ row: SessionHandoffRow) -> String {
+        guard row.offer != nil, case .installed(_, let folder, let isEnabled, let elsewhere) = row.face else {
+            return getStatus(row.face)
+        }
+
+        return getStatus(.installed(
+            version: nil,
+            folder: folder,
+            isEnabled: isEnabled,
+            elsewhere: elsewhere
+        ))
     }
 
     static func getElsewhere(_ records: [PluginRecord]) -> String {

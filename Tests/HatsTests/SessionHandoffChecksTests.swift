@@ -164,8 +164,13 @@ final class SessionHandoffChecksTests: XCTestCase {
         let fake = FakePluginWorld()
         fake.answer(FakePluginWorld.claude(SessionHandoffSteps.helpArguments), PluginCLISamples.installHelp153)
 
-        XCTAssertEqual(refusal(fake), .cliTooOld(FakePluginWorld.cli))
-        XCTAssertTrue(SessionHandoffCopy.getText(.cliTooOld(FakePluginWorld.cli)).contains("too old"))
+        let tooOld = SessionHandoffRefusal.cliTooOld(
+            path: FakePluginWorld.cli,
+            command: "claude plugin install",
+            option: "--marketplace"
+        )
+        XCTAssertEqual(refusal(fake), tooOld)
+        XCTAssertTrue(SessionHandoffCopy.getText(tooOld).contains("its claude plugin install has no --marketplace"))
     }
 
     func testTheOldHookInSettingsIsShownWithItsFileAndCommand() {

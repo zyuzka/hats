@@ -92,7 +92,11 @@ enum SessionHandoffSteps {
         }
         let text = (outcome.stdoutText ?? "") + (String(bytes: outcome.stderr, encoding: .utf8) ?? "")
 
-        return text.contains("--marketplace") ? nil : .cliTooOld(target.cli)
+        return text.contains("--marketplace") ? nil : .cliTooOld(
+            path: target.cli,
+            command: "claude plugin install",
+            option: "--marketplace"
+        )
     }
 
     static func getInstallChange(_ plan: SessionHandoffPlan, in world: PluginWorld) -> SessionHandoffChange {

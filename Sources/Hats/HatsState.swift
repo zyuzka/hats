@@ -172,6 +172,7 @@ protocol HatsActions: AnyObject {
     func toggleHatNameInTheMenuBar()
     func toggleTheBlinkingCursor()
     func installSessionHandoff()
+    func updateSessionHandoff()
     func removeSessionHandoff()
     func quit()
 }

@@ -12,7 +12,7 @@ enum SessionHandoffRefusal: Error, Equatable {
     case pythonUnchecked(String)
     case oldHook(file: String, commands: [String])
     case brokenSettings(file: String, reason: String)
-    case cliTooOld(String)
+    case cliTooOld(path: String, command: String, option: String)
     case cliDidNotAnswer(command: String, reason: String)
     case notOurs(String)
 }

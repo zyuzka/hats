@@ -23,6 +23,7 @@ final class SessionHandoffFlowTests: XCTestCase {
 
     private func createFlow(_ fake: FakePluginWorld) -> SessionHandoffFlow {
         SessionHandoffFlow(
+            own: SessionHandoffProvenance.bundledVersion,
             perform: { work in work(fake.world()) },
             onMain: { $0() },
             ask: { [unowned self] prompt in
@@ -47,9 +48,10 @@ final class SessionHandoffFlowTests: XCTestCase {
         let fake = installedFake()
         let flow = createFlow(fake)
 
-        flow.refresh()
+        flow.refresh(then: nil)
 
         XCTAssertTrue(fake.commands.contains(list))
+        XCTAssertEqual(fake.changingRuns, [])
         XCTAssertEqual(flow.row, SessionHandoffRow(
             face: .installed(version: "0.1.0", folder: "/market", isEnabled: true, elsewhere: []),
             isBusy: false
@@ -110,7 +112,7 @@ final class SessionHandoffFlowTests: XCTestCase {
     func testCancelInTheRemoveWindowChangesNothing() {
         let fake = installedFake()
         let flow = createFlow(fake)
-        flow.refresh()
+        flow.refresh(then: nil)
         answers = [false]
 
         flow.remove()
@@ -123,7 +125,7 @@ final class SessionHandoffFlowTests: XCTestCase {
     func testRemoveInTheWindowRemovesExactlyOnce() {
         let fake = installedFake()
         let flow = createFlow(fake)
-        flow.refresh()
+        flow.refresh(then: nil)
         fake.queue(list, [
             PluginCLISamples.listUserFromFolder.outcome,
             PluginCLISamples.listEmpty.outcome,
@@ -140,7 +142,7 @@ final class SessionHandoffFlowTests: XCTestCase {
     func testRemoveIsNotAskedWhenNothingOfOursIsInstalled() {
         let fake = FakePluginWorld()
         let flow = createFlow(fake)
-        flow.refresh()
+        flow.refresh(then: nil)
         answers = [true]
 
         flow.remove()
