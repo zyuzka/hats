@@ -228,7 +228,9 @@ ignores it.
   running sessions a build would break, shared by the build guard and the app so both read a gateway
   address the same way.
 - [`plugin/`](plugin/) — a Claude Code plugin that hands a saved resume note to the next session: the
-  command «анкор» (`anchor`, or `/hats:anchor`) saves it. Its tests sit beside it, and
+  command «анкор» (`anchor`, or `/hats:anchor`) saves it. The notes live in
+  `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
+  them. Its tests sit beside it, and
   [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) lists it.
 
 The source carries no comments — a SwiftLint rule enforces it, and what a name cannot say goes into a

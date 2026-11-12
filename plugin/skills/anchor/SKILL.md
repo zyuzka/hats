@@ -44,7 +44,9 @@ closed sessions. Every step is a command, and its output goes into the summary.
 
      and start a new note `<printed folder>/resume-<topic-slug>.md`. If that file already exists, it is
      another session's note: add `-2`, `-3` and so on to the name until it is free. Write only to a
-     note this session started or got from the start hook.
+     note this session started or got from the start hook. If `where` fails, write no note, skip
+     step 4, and report its first line in the summary: `needs python3` on the handoff line when it
+     says `python3` is required, otherwise under "Not saved".
    - Contents: what is done (with commits), what is open, the next step, every decision taken without
      the user, and every background task and subagent from step 2 with what it is for. The current
      state goes under a `## NOW` heading — the start hook prints that section.
@@ -62,7 +64,7 @@ closed sessions. Every step is a command, and its output goes into the summary.
      line in `MEMORY.md` so it no longer describes the task.
    - Add no new line to a `MEMORY.md` index. If it already has a line pointing to this note, keep that
      line accurate.
-   - Then `test -e` the file and read back the lines you wrote.
+   - Then read the note back with the Read tool and check the lines you wrote.
 4. **Handoff** — run exactly this command, with the note's absolute path and a short topic:
 
    `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" save --note "<note path>" --topic "<task topic>"`
