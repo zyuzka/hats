@@ -128,7 +128,8 @@ Off by default. Turn it on and the app puts the next hat on when the worn one cr
 90% of its 5-hour window or 95% of its weekly one, both adjustable in the panel. A hat comes off only
 when its own limit is reached. The one put on is the first in the order you set that has room; if
 none has room, the first whose usage could not be read. When every hat is spent the app says so in
-its log rather than holding in silence.
+its log rather than holding in silence. A hat marked "On vacation" in Settings → Hats is never put on
+by the switch until you clear the mark; you can still put it on yourself from the menu.
 
 <details>
 <summary><strong>Troubleshooting:</strong> <code>claude</code> reports a connection error, and <code>echo $ANTHROPIC_BASE_URL</code> prints <code>http://127.0.0.1:8787</code></summary>

@@ -23,6 +23,7 @@ struct Account: Codable, Identifiable, Equatable {
     var lastActivatedAt: Date?
     var lastLoginAt: Date?
     var authRefusedAt: Date?
+    var vacationSince: Date?
 
     var display: String { email }
 

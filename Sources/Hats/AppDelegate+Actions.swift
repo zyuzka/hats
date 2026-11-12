@@ -108,6 +108,21 @@ extension AppDelegate: HatsActions {
         }
     }
 
+    func setVacation(_ id: String, on: Bool) {
+        do {
+            try store.setVacation(
+                id,
+                on: on,
+                at: Date()
+            )
+            redraw()
+            usage.poll(hatsForUsage())
+        } catch {
+            redraw()
+            HatDialogs.present(error, title: "Could not save that change")
+        }
+    }
+
     func remove(_ id: String) {
         popover.close()
         afterThePopoverSettles { [weak self] in

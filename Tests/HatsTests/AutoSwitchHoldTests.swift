@@ -14,7 +14,7 @@ final class AutoSwitchHoldTests: XCTestCase {
         blindness: UsageBlindness = UsageBlindness()
     ) -> AutoSwitchWorld {
         AutoSwitchWorld(readings: readings, wearing: wearing,
-                        eligible: ["work", "personal"], blindness: blindness)
+                        eligible: ["work", "personal"], onVacation: [], blindness: blindness)
     }
 
     private func blind(

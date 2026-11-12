@@ -59,7 +59,7 @@ extension AppDelegate {
 
     private func markState(_ snapshot: HatsSnapshot) -> MarkState {
         MarkState.decide(
-            anyHatBlocked: snapshot.rows.contains { $0.blocker != nil },
+            anyHatBlocked: snapshot.hasABlockedHatInPlay,
             gatewayEnabled: settings.isGatewayEnabled,
             gatewayServing: snapshot.gateway.isServing,
             wearing: snapshot.wearing != nil,
