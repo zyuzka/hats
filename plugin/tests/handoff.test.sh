@@ -31,7 +31,7 @@ own_started="Mon Nov  9 10:00:00 2026"
 
 reset() {
   sid=s
-  rm -rf "$work/.claude" "$proj" "$other" "$work/repo" "$work/bin" "$work/PWNED" "$work/fakepid"
+  rm -rf "$work/.claude" "$proj" "$other" "$work/repo" "$work/bin" "$work/PWNED" "$work/fakepid" "$work/Library"
   mkdir -p "$markers" "$mem" "$proj/.claude" "$other/.claude"
   printf '{"hooks":{"SessionStart":[{"matcher":"startup|clear","hooks":[{"type":"command","command":"python3 handoff.py start"}]}]}}' >"$proj/.claude/settings.local.json"
   printf '# Записка\n\n## СЕЙЧАС\n\nстрока сейчас\n\n## Прошлое\n\nстрока прошлого\n' >"$note"
@@ -582,6 +582,123 @@ reset; mkdir -p "$work/bin"; ln -s /bin/bash "$work/bin/claude"; sleep 60 & bg=$
 if [ -n "$fake" ] && [ "$(markerfield "$markers" pid)" = "$fake" ]; then ok; else bad "CLAUDE_PID живого процесса не из предков — не берётся" "ждали $fake, получили $(markerfield "$markers" pid)"; fi
 
 
+# --- своя папка записок: ~/Library/Application Support/Hats/notes/<папка проекта>/<имя>.md
+notes="$work/Library/Application Support/Hats/notes"
+notes_of() { env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" where --cwd "$1" 2>&1; }
+mode_of() { python3 -I -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777))' "$1" 2>&1; }
+realp() { python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"; }
+markers_n() { ls "$markers" | grep -c '\.json$'; }
+reset; own_dir=$(notes_of "$proj"); rc=$?
+case "${own_dir##*/}" in *[!0-9a-f]*) hex=no ;; *) hex=yes ;; esac
+if [ $rc -eq 0 ] && [ -d "$own_dir" ] && [ "${own_dir%/*}" = "$notes" ] && [ "$hex" = yes ] && [ ${#own_dir} -eq $((${#notes} + 17)) ]; then ok
+else bad "where: создаёт и печатает <корень>/<16 знаков hex>" "rc=$rc «${own_dir}»"; fi
+has "where: корень записок — права 700" "0o700" "$(mode_of "$notes")"
+has "where: папка проекта — права 700" "0o700" "$(mode_of "$own_dir")"
+again=$(notes_of "$proj"); if [ "$again" = "$own_dir" ]; then ok; else bad "where: второй вызов — та же папка" "«${again}»"; fi
+ln -s "$proj" "$work/projlink"; linked_dir=$(notes_of "$work/projlink"); rm -f "$work/projlink"
+if [ "$linked_dir" = "$own_dir" ]; then ok; else bad "where: папка через ссылку — та же, что по настоящему пути" "«${linked_dir}»"; fi
+reset; mkdir -p "$notes"; chmod 755 "$notes"; own_dir=$(notes_of "$proj")
+has "where: существующий корень не трогает" "0o755" "$(mode_of "$notes")"
+has "where: новая папка проекта в прежнем корне — 700" "0o700" "$(mode_of "$own_dir")"
+reset; mkdir -p "$work/a/b-c" "$work/a-b/c"; one=$(notes_of "$work/a/b-c"); two=$(notes_of "$work/a-b/c")
+if [ -d "$one" ] && [ -d "$two" ] && [ "$one" != "$two" ]; then ok; else bad "where: /a/b-c и /a-b/c — разные папки" "«${one}» «${two}»"; fi
+long="$work/long/$(printf 'd%.0s' $(seq 1 100))/$(printf 'e%.0s' $(seq 1 100))/$(printf 'f%.0s' $(seq 1 100))"; mkdir -p "$long"
+out=$(notes_of "$long"); rc=$?
+if [ ${#long} -ge 300 ] && [ $rc -eq 0 ] && [ -d "$out" ]; then ok; else bad "where: путь проекта длиннее 300 знаков — папка создана" "длина ${#long}, rc=$rc «${out:0:200}»"; fi
+rm -rf "$work/a" "$work/a-b" "$work/long"
+reset; mkdir -p "${notes%/*}"; printf 'x' >"$notes"; out=$(notes_of "$proj"); rc=$?
+has "where: папку не создать — так и сказано" "could not create the notes folder" "$out"; lacks "where: папку не создать — без трассировки" "Traceback" "$out"
+if [ $rc -eq 1 ]; then ok; else bad "where: папку не создать — код 1" "rc=$rc"; fi
+
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nown line\n' >"$own_dir/r.md"
+out=$(save "$proj" "$own_dir/r.md" "своя"); rc=$?
+has "своя папка: save пишет отметку" "marker:" "$out"
+if [ $rc -eq 0 ] && [ "$(markerfield "$markers" note)" = "$(realp "$own_dir/r.md")" ]; then ok; else bad "своя папка: код 0, в отметке настоящий путь записки" "rc=$rc $(markerfield "$markers" note)"; fi
+has "своя папка: после /clear записка отдаётся" "own line" "$(start clear)"
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nown line\n' >"$own_dir/r.md"
+marker a "$dead_pid" "$dead_started" "$proj" "$own_dir/r.md" "своя закрытая"
+has "своя папка: закрытая записка в списке новой сессии" "\"своя закрытая\"" "$(start startup)"
+reset; own_dir=$(notes_of "$proj"); mkdir "$own_dir/dir.md"
+has "своя папка: записки нет — отказ" "the note must be a file" "$(save "$proj" "$own_dir/gone.md" "без файла")"
+has "своя папка: папка вместо записки — отказ" "the note must be a file" "$(save "$proj" "$own_dir/dir.md" "папка")"
+printf 'x\n' >"$own_dir/note.txt"; has "своя папка: записка не .md — отказ" "the note must be a file" "$(save "$proj" "$own_dir/note.txt" "txt")"
+marker a "$dead_pid" "$dead_started" "$proj" "$own_dir/gone.md" "без файла"
+empty "своя папка: записки нет на диске — список молчит" "$(start startup)"
+reset; rm -rf "$work/.claude/projects"; own_dir=$(notes_of "$proj"); printf '## NOW\n\nno memory line\n' >"$own_dir/r.md"
+out=$(save "$proj" "$own_dir/r.md" "без памяти"); rc=$?
+has "памяти нет: save пишет отметку" "marker:" "$out"
+has "памяти нет: после /clear записка отдаётся" "no memory line" "$(start clear)"
+if [ $rc -eq 0 ] && [ ! -e "$work/.claude/projects" ]; then ok; else bad "памяти нет: код 0, папка памяти не появилась" "rc=$rc"; fi
+
+escapes() {  # своя записка x.md и пути мимо своей папки; заполняет own_dir, other_dir, bad_cases
+  rm -rf "$work/elsewhere" "$work/outside.md"
+  own_dir=$(notes_of "$proj"); other_dir=$(notes_of "$other")
+  mkdir -p "$own_dir/sub" "$work/elsewhere/dir"; printf '## NOW\n\nlegit line\n' >"$own_dir/x.md"
+  printf '## NOW\n\nSECRET-NESTED\n' >"$own_dir/sub/x.md"
+  printf '## NOW\n\nSECRET-OUTSIDE\n' >"$work/outside.md"; ln -s "$work/outside.md" "$own_dir/escape.md"
+  ln -s "$work/elsewhere/dir" "$own_dir/hop"; printf '## NOW\n\nSECRET-DOTDOT\n' >"$work/elsewhere/x.md"
+  printf '## NOW\n\nSECRET-UP\n' >"$notes/up.md"; printf '## NOW\n\nSECRET-FOREIGN\n' >"$other_dir/x.md"
+  bad_cases=("вложенная папка|$own_dir/sub/x.md" "файл-ссылка наружу|$own_dir/escape.md" "выход через ..|$own_dir/../up.md"
+    "папка чужого проекта|$other_dir/x.md" "вне обеих папок|$work/outside.md")
+}
+reset; escapes
+for case_ in "${bad_cases[@]}"; do
+  rm -f "$markers"/*; label=${case_%%|*}; out=$(save "$proj" "${case_#*|}" "мимо"); rc=$?
+  has "save: $label — отказ" "the note must be a file" "$out"
+  if [ $rc -eq 1 ] && [ "$(markers_n)" -eq 0 ]; then ok; else bad "save: $label — код 1 и без отметки" "rc=$rc $(ls "$markers")"; fi
+done
+out=$(save "$proj" "$work/outside.md" "мимо")
+has "save: отказ называет свою папку" "$own_dir/<name>.md" "$out"; has "save: отказ называет память" "/memory/<name>.md" "$out"
+bad_cases+=("папка-ссылка и ..|$own_dir/hop/../x.md")
+for case_ in "${bad_cases[@]}"; do
+  rm -f "$markers"/*; mine a "$proj" "${case_#*|}" "мимо"
+  empty "/clear: отметка руками, ${case_%%|*} — молчит" "$(start clear)"
+done
+rm -f "$markers"/*; mine a "$proj" "$own_dir/x.md" "своя"
+has "/clear: рядом своя записка своей папки отдаётся" "legit line" "$(start clear)"
+rm -f "$markers"/*; marker good "$dead_pid" "$dead_started" "$proj" "$own_dir/x.md" "своя"
+i=0; for case_ in "${bad_cases[@]}"; do i=$((i + 1)); marker "b$i" $((99970 + i)) "$dead_started" "$proj" "${case_#*|}" "мимо: ${case_%%|*}"; done
+out=$(start startup); has "новая сессия: своя записка в списке" "\"своя\"" "$out"
+lacks "новая сессия: отметки руками мимо своей папки не в списке" "мимо" "$out"
+
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/r.md"
+shouty=$(printf '%s' "$own_dir" | sed 's|/Hats/notes/|/HATS/notes/|'); out=$(save "$proj" "$shouty/r.md" "регистр"); rc=$?
+has "регистр букв не тот, что напечатал where: отказ" "the note must be a file" "$out"
+if [ "$shouty" != "$own_dir" ] && [ $rc -eq 1 ] && [ "$(markers_n)" -eq 0 ]; then ok; else bad "регистр букв: код 1 и без отметки" "rc=$rc $(ls "$markers")"; fi
+
+reset; own_dir=$(notes_of "$proj")
+for i in 1 2 3; do
+  printf '## NOW\n\nline of task %s\n' "$i" >"$own_dir/resume-t$i.md"
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="424$i:$own_started" python3 -I "$HOOK" save --cwd "$proj" --note "$own_dir/resume-t$i.md" --topic "задача $i" >/dev/null 2>&1
+done
+n=$(ls "$own_dir" | grep -c '\.md$')
+if [ "$(markers_n)" -eq 3 ] && [ "$n" -eq 3 ]; then ok; else bad "три сессии: три отметки, три записки в одной папке проекта" "отметок $(markers_n), записок $n"; fi
+for i in 1 2 3; do
+  out=$(start clear "$proj" HANDOFF_PROCESS="424$i:$own_started"); has "три сессии: процесс $i после /clear получает свою" "line of task $i" "$out"
+  for j in 1 2 3; do [ "$j" = "$i" ] || lacks "три сессии: процесс $i не получает записку $j" "line of task $j" "$out"; done
+done
+out=$(start startup); for i in 1 2 3; do has "три сессии: новая сессия видит закрытую $i" "\"задача $i\"" "$out"; done
+
+reset; rm -rf "$work/proc"; mkdir -p "$work/proc/4242"; ln -s "$other" "$work/proc/4242/cwd"
+printf '{"hooks":{"SessionStart":[{"matcher":"startup|clear","hooks":[{"type":"command","command":"python3 handoff.py start"}]}]}}' >"$other/.claude/settings.local.json"
+dir=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" python3 -I "$HOOK" where 2>&1)
+if [ "$dir" = "$(notes_of "$other")" ]; then ok; else bad "where без --cwd: папка процесса Claude (/proc)" "«${dir}»"; fi
+printf '## NOW\n\nproc line\n' >"$dir/r.md"
+out=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" python3 -I "$HOOK" save --note "$dir/r.md" --topic proc 2>&1)
+has "where и save без --cwd — одна папка: отметка записана" "marker:" "$out"
+if [ "$(markerfield "$markers" cwd)" = "$(realp "$other")" ]; then ok; else bad "where и save без --cwd: папка в отметке — из /proc" "$(markerfield "$markers" cwd)"; fi
+
+reset; own_dir=$(notes_of "$proj"); other_dir=$(notes_of "$other")
+printf 'share 73%%\n' >"$own_dir/x.md"; printf 'share 73%%\n' >"$other_dir/y.md"; printf 'share 73%%\n' >"$proj/src.md"
+has "цитата обычного файла — источник" "all verified" "$(checkline "x (cite: $proj/src.md:1 \"share 73%\")")"
+has "цитата своей папки — не источник" "quote of the notes folder is not a source" "$(checkline "x (cite: $own_dir/x.md:1 \"share 73%\")")"
+has "цитата записки чужого проекта — не источник" "quote of the notes folder is not a source" "$(checkline "x (cite: $other_dir/y.md:1 \"share 73%\")")"
+printf '## NOW\n\nx 73%% (cite: %s:1 "share 73%%")\n' "$own_dir/x.md" >"$own_dir/r.md"
+out=$(save "$proj" "$own_dir/r.md" "цитата"); has "цитата своей папки в записке: save пишет отметку" "marker:" "$out"
+has "цитата своей папки в записке: строка в «not verified»" "not verified in the note:
+- line 3: quote of the notes folder is not a source" "$out"
+
+
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
 plug="$work/plug"
 plugin_at() {  # plugin_at <hooks.json или -> <yes|no — класть ли plugin.json>
@@ -682,22 +799,42 @@ parts = re.match(r"---\n(.*?)\n---\n(.*)", text, re.S)
 if not parts:
     sys.exit("SKILL.md has no frontmatter")
 head, body = parts.groups()
-fields = dict(line.split(": ", 1) for line in head.splitlines() if ": " in line)
-rule = re.fullmatch(r"Bash\((.+) \*\)", fields.get("allowed-tools", ""))
+lines = head.splitlines()
+fields = dict(line.split(": ", 1) for line in lines if ": " in line and not line.startswith(" "))
+if "allowed-tools:" not in lines:
+    sys.exit("allowed-tools is not a YAML list: " + fields.get("allowed-tools", ""))
+rules = []
+for line in lines[lines.index("allowed-tools:") + 1:]:
+    if not line.startswith("  - "):
+        break
+    rules.append(line[4:])
+bash = [r for r in rules if r.startswith("Bash(")]
+rule = re.fullmatch(r"Bash\((.+) \*\)", bash[0]) if len(bash) == 1 else None
 if not rule:
-    sys.exit("allowed-tools is not Bash(<prefix> *): " + fields.get("allowed-tools", ""))
+    sys.exit("allowed-tools has no single Bash(<prefix> *): %r" % rules)
 prefix = rule.group(1)
-saves = [c for c in re.findall(r"`([^`\n]+)`", body) if " save " in c]
+spans = re.findall(r"`([^`\n]+)`", body)
+saves = [c for c in spans if " save " in c]
 same = len(saves) == 1 and saves[0].startswith(prefix + " save ")
+wheres = [c for c in spans if c.endswith(" where")]
+where = len(wheres) == 1 and wheres[0] == prefix + " where"
 words = shlex.split(prefix)
 wrapped = words[:2] == ["sh", "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh"] and "--quiet" not in words
 files = [w.replace("${CLAUDE_PLUGIN_ROOT}", root) for w in words[1:]]
 spaced = shlex.split(prefix.replace("${CLAUDE_PLUGIN_ROOT}", "/a b")) == ["sh", "/a b/scripts/py.sh", "/a b/scripts/handoff.py"]
-print("name=%s same=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
-    fields.get("name"), same, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
-    bool(files) and all(os.path.isfile(f) for f in files), spaced))' "$plugin_root" 2>&1)
-has "SKILL.md anchor: save в теле и в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
-  "name=anchor same=True wrapped=True handoff=True files=True spaced=True" "$out"
+print("name=%s same=%s where=%s wrapped=%s handoff=%s files=%s spaced=%s" % (
+    fields.get("name"), same, where, wrapped, "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" in words,
+    bool(files) and all(os.path.isfile(f) for f in files), spaced))
+folders = [re.fullmatch(r"(Write|Edit|Read)\(~(/.+)/\*\*\)", r) for r in rules if r not in bash]
+roots = sorted({m.group(2) for m in folders if m})
+print("rules=%d tools=%s roots=%d root=%s|" % (
+    len(rules), ",".join(sorted(m.group(1) for m in folders if m)), len(roots), sys.argv[2] + roots[0] if roots else None))' \
+  "$plugin_root" "$work" 2>&1)
+has "SKILL.md anchor: save и where в теле и правило Bash в allowed-tools — одна команда через py.sh, файлы есть, путь с пробелом цел" \
+  "name=anchor same=True where=True wrapped=True handoff=True files=True spaced=True" "$out"
+reset; hook_root=$(notes_of "$proj"); hook_root=${hook_root%/*}
+has "SKILL.md anchor: allowed-tools — YAML-список из четырёх правил, Write/Edit/Read на корень записок handoff.py" \
+  "rules=4 tools=Edit,Read,Write roots=1 root=$hook_root|" "$out"
 out=$(python3 -I -c 'import json,os,sys
 root = sys.argv[1]
 plugins = json.load(open(os.path.join(root, ".claude-plugin", "marketplace.json"), encoding="utf-8"))["plugins"]
