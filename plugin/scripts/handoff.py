@@ -53,7 +53,8 @@ it when a session starts, measured 2026-11-12); without D the note goes into the
 `where` prints. The name is resume-S.md, then resume-S-2.md up to -99 while the name is taken, and
 the file is created with O_CREAT|O_EXCL|O_NOFOLLOW, mode 600. The path is joined without normpath
 and printed through D as the session gave it, so it matches the memory folder in its instructions;
-the created path must pass `allowed_note`. `where` stays: a copy of the skill loaded before an update
+the created path must pass `allowed_note` as the very file created (its answer equals the real path),
+else the file is removed and refused. `where` stays: a copy of the skill loaded before an update
 still calls it.
 
 The index: `save` rewrites `resume-index.md` only for a note whose real path sits directly in a
@@ -80,8 +81,10 @@ letter case. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE also widens the window betw
 in `new` and creating the file and the one between reading the index and replacing it, and
 HANDOFF_TEST_INDEX_WAIT=<s> shortens the wait for the lock.
 
-Known gaps of the index: memory of any project under <config>/projects is accepted, as before; a
-memory folder that is a link gets no index, and a quote of it is not caught (below); two config
+Known gaps of the index: memory of any project under <config>/projects is accepted, as before, and
+`save` now writes resume-index.md there and may create its MEMORY.md; a memory folder that is a link
+gets no index (`save` says so: "index: none (the memory folder is a link)"), a quote of it is not
+caught (below), and `new` refuses such a folder, so a new note goes into the notes folder; two config
 folders that share one memory take different locks; two sessions that continue one note both edit
 it — races are closed only for new files and the index; a failure between `new` and `save` leaves an
 empty note, and the next `new` takes -2.
@@ -1107,6 +1110,13 @@ def get_index_text(path):
     return text, None
 
 
+def is_same_file(a, b):
+    try:
+        return os.path.samestat(os.stat(a), os.stat(b))
+    except (OSError, ValueError):
+        return False
+
+
 def is_kept_entry(
     match,
     folder,
@@ -1121,7 +1131,7 @@ def is_kept_entry(
 
     return (
         other.endswith(".md")
-        and other != name
+        and not is_same_file(os.path.join(folder, other), os.path.join(folder, name))
         and is_indexable(other)
         and not is_service_name(other)
         and now - saved <= MAX_AGE
@@ -1267,11 +1277,12 @@ def set_memory_line(folder):
     return find_memory_line(path)
 
 
-def set_memory_index(
-    folder,
-    name,
-    marker,
-):
+def set_index(note, marker):
+    real = os.path.realpath(note)
+    if not in_memory(real):
+        reason = "the memory folder is a link" if note_in_memory(note) is not None else "note not in Claude Code's memory"
+        return [f"index: none ({reason})"]
+    folder, name = os.path.dirname(real), os.path.basename(real)
     if not is_indexable(name):
         return ["index not updated: note name cannot be indexed", MEMORY_SKIPPED]
     lock, error = get_index_lock(folder)
@@ -1288,18 +1299,6 @@ def set_memory_index(
         return ["index: updated", f"MEMORY.md: {set_memory_line(folder)}"]
     finally:
         os.close(lock)
-
-
-def set_index(note, marker):
-    real = os.path.realpath(note)
-    if not in_memory(real):
-        return ["index: none (note not in Claude Code's memory)"]
-
-    return set_memory_index(
-        os.path.dirname(real),
-        os.path.basename(real),
-        marker,
-    )
 
 
 def cmd_save(args):
@@ -1396,10 +1395,13 @@ def cmd_where(args):
 
 
 def find_memory_folder(given):
-    folder = os.path.expanduser(given) if usable(given) else None
-    if folder is None or not is_memory_folder(folder):
-        return None, (f"handoff: {given!r} is not an existing memory folder "
-                      f"{memory_root()}/<project>/memory — no note created")
+    if not usable(given):
+        return None, f"handoff: {given!r} is not an existing memory folder — no note created"
+    folder = os.path.expanduser(given)
+    if not is_memory_folder(folder):
+        return None, (f"handoff: {given!r} is not an existing memory folder: its real path "
+                      f"{os.path.realpath(folder)} is not an existing folder {memory_root()}/<project>/memory "
+                      f"— no note created")
 
     return folder, None
 
@@ -1452,12 +1454,13 @@ def cmd_new(args):
     if error:
         print(error)
         return 1
-    if allowed_note(path, cwd) is None:
+    if allowed_note(path, cwd) != os.path.realpath(path):
         try:
             os.remove(path)
-        except OSError:
-            pass
-        print(f"handoff: the created note {path} did not pass the note check — removed, no note created")
+            removed = "removed"
+        except OSError as error:
+            removed = f"not removed: {error.strerror or error}"
+        print(f"handoff: the created note {path} did not pass the note check — {removed}; no note created")
         return 1
     print(path)
 

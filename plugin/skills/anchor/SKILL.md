@@ -64,20 +64,18 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
 
         `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" new --slug <slug> --memory "<memory folder>"`
 
-        If your instructions name no memory folder, or the command refuses it, run it without the
-        folder and keep the refusal's first line for the summary:
+        Output that starts with `handoff: the slug must be` refuses the slug: correct the slug and run
+        the same command again, with the folder. Only when the command refuses the folder itself, or
+        your instructions name no memory folder, run it without the folder and keep the refusal's
+        first line for the summary:
 
         `sh "${CLAUDE_PLUGIN_ROOT}/scripts/py.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/handoff.py" new --slug <slug>`
 
         It creates an empty note under a free name — never pick or create the file name yourself —
         and prints its path. Read that file with the Read tool, then write the note into it with
-        Write. A refused slug: correct it and run the command again. If the command fails otherwise,
-        write no note, skip step 4, and report its first line in the summary: `needs python3` on the
-        handoff line when it says `python3` is required, otherwise under "Not saved".
-     3. If step 4 prints `MEMORY.md: add the index line`, insert the line it gives with the Edit
-        tool before the current first line of `MEMORY.md`, then read the first line back with the
-        Read tool and check it is that line. Never write `MEMORY.md` with Write, and never edit
-        `resume-index.md`: the plugin alone writes it.
+        Write. If the command fails otherwise, write no note, skip step 4, and report its first line
+        in the summary: `needs python3` on the handoff line when it says `python3` is required,
+        otherwise under "Not saved".
    - Contents: what is done (with commits), what is open, the next step, every decision taken without
      the user, and every background task and subagent from step 2 with what it is for. The current
      state goes under a `## NOW` heading — the start hook prints that section.
@@ -101,8 +99,14 @@ if they have any, run before steps 1–4 and after them, on the anchor command o
 
    It records a marker for this Claude process and checks the note. For a note in the memory folder
    it also rewrites `resume-index.md` and checks `MEMORY.md`: its `index` line and, after it, its
-   `MEMORY.md` line go into the summary as printed, and when it asks for the line, do item 3 of
-   step 3. Fix every line it lists as not verified and run
+   `MEMORY.md` line go into the summary as printed. When it prints `MEMORY.md: add the index line`,
+   read `MEMORY.md` with the Read tool — Edit refuses a file not read — then insert the line it gives
+   at the very start of the file with the Edit tool: replace the start of the file, taken long enough
+   to occur only once (the first line can be empty or repeat further down), with the index line, a
+   newline and that same start. Read the first line back with Read and check it is the index line;
+   if the line could not be inserted, say so in the summary. Never write `MEMORY.md` with Write, and
+   never edit `resume-index.md`: the plugin alone writes it. Fix every line it lists as not verified
+   and run
    it again, or leave them — the next session gets them marked "not verified". If it says the handoff
    is off, nothing was written. If it says `python3` is required, nothing ran: tell the user the
    handoff needs `python3` — on a Mac, the Xcode Command Line Tools (`xcode-select --install`) or
@@ -127,14 +131,17 @@ line, for example:
 
 `own steps: before 1, after 0; failed: skill:daily-journal — Unknown skill: daily-journal; skipped /work/app/.claude/anchor-steps.json: not JSON: Expecting value: line 1 column 1 (char 0)`
 
+The `index` and `MEMORY.md` lines are `not run` when step 4 was skipped or failed; `MEMORY.md` is
+`none` when `save` printed no `MEMORY.md` line, as for a note outside the memory folder.
+
 ```
 Saved:
 - <repo>: clean | uncommitted: <files> | unpushed: <n> (<why>) | no upstream: <n> not on <base> | detached HEAD
 - background: none | <task> — <what it is for>, waits for <what>
 - resume note: <path> (read back)[; not in memory: <first line of the refusal> | no memory folder]
 - handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output>
-- index: updated | not updated: <reason> | none (note not in Claude Code's memory)
-- MEMORY.md: <save's MEMORY.md line, as printed> | index line added first, checked
+- index: updated | not updated: <reason> | none (<reason as printed>) | not run
+- MEMORY.md: <as save printed it> | index line added first, checked | index line not added: <reason> | none | not run
 - own steps: not run | none | before <n>, after <n>[; failed: <step> — <first line>]…[; <line of step 0>]…
 Not saved: <what and why> | nothing
 ```
