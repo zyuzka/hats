@@ -30,7 +30,7 @@ extension HatsSnapshot {
 
     func hasOnlyHatsThatAreStillHere(_ warning: AutoSwitchWarning?) -> Bool {
         if let warning, let away = findHatsNamedOnVacation(in: warning) {
-            return away.allSatisfy { named in rows.contains { $0.id == named.id && $0.isSkippedByTheSwitch } }
+            return Set(away.map(\.id)) == Set(rows.filter(\.isSkippedByTheSwitch).map(\.id))
         }
         guard case .nowhereToGoAtALimit(_, .othersNeedSigningIn(let first, let also)) = warning else {
             return true
