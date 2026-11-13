@@ -151,10 +151,38 @@ all 771 memory notes the printed section is now the same as before. `cite` and `
 case, and a `(cmd: …)` span is kept whole when a clause is split, so " and " inside a command does
 not cut it.
 
+What `start` prints is one JSON object or nothing (user, 2026-11-13: after a start or /clear the hook
+says that it ran and which anchor it took). `systemMessage` is a line for the user: Claude Code shows it
+under its logo as `SessionStart:startup says: …` (`SessionStart:clear says: …` after /clear) and never
+gives it to the model. `hookSpecificOutput` carries `hookEventName` SessionStart and `additionalContext`,
+the model's text — character for character what the hook printed before, without the last newline
+(measured on Claude Code 2.1.323 in tmux). A run that gives the model a note or a list prints both. A
+run with nothing for the model prints `systemMessage` alone: no anchor saved in this Claude process, an
+anchor already given to another session, no Claude process found, no notes of closed sessions, notes
+that could not be checked in time, and an error raised before anything was printed. A note that could
+not be checked is one of this folder, saved within 30 days, whose process `ps` could not tell in time
+or that the loop never reached because the budget ran out: it is counted, never reported as absent;
+once the budget is out, a marker's folder is compared with the session's as written, without resolving
+links, as the loop did not resolve them before it stopped there. Off, a start without a person,
+another event, a bad input and a bad folder print nothing; after /clear without a person the model's
+text goes out with no line for the user. The line is English and starts with "Hats handoff:"; the
+topic, the note path and the session id lose control characters, line and paragraph separators, unpaired
+surrogates and the bidirectional embedding and isolate controls (U+202A–U+202E, U+2066–U+2069) — a
+set of its own, so zero-width joiners of Persian, Devanagari and emoji stay; the topic is cut to 120
+characters, a session id shows only when it is a whole id (else "another session"), and the line stays
+within 2,000 UTF-16 units. The first line of a list counts every closed note found; notes beyond the
+five listed and notes that do not fit are counted together as "and N more", a note never cut in the
+middle. An error line points to `runs.log`, which holds the error's type and text. The object is
+written as UTF-8 bytes, so Cyrillic is not escaped into six-character sequences and the output does
+not depend on the encoding of stdout. After /clear it is written and flushed before the hand-over is
+recorded, as before.
+
 Every `start` run appends one JSON line to `runs.log` beside the markers: time, how long it took,
 source, session, folder, Claude process and the decision — `off`, `bad-input`, `skipped`,
-`no-process`, `no-own-marker`, `handed-elsewhere`, `gave-note` (receiver `new`, `same` or `none`),
-`no-closed`, `listed`, `error`. A run that prints nothing leaves nothing in the transcript
+`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `gave-note` (receiver `new`, `same`
+or `none`), `no-closed`, `unchecked`, `listed`, `error` (with `error`, the exception's type, and
+`message`, its text); a start in a new session also records `unchecked`, the number of notes it could
+not check. A run that prints nothing leaves nothing in the transcript
 (measured 2026-11-11: 11 Bash calls with five hooks each, and only the one run that printed was
 recorded), so this line is the only proof that the hook ran and why it stayed silent. It is
 written on the way out, whatever the exit; a run killed by the timeout writes nothing, and a log
@@ -204,6 +232,8 @@ CALL_TIMEOUT_S = 2.0
 SOURCE_SIZE_LIMIT = 2_000_000
 LINE_LENGTH_LIMIT = 5000
 TOPIC_LIMIT = 120
+USER_LINE_LIMIT = 2000
+USER_LINE_START = "Hats handoff:"
 ANCESTOR_LIMIT = 8
 TRACE_LIMIT = 256_000
 TRACE_FIELD_LIMIT = 500
@@ -247,6 +277,12 @@ CONTROL = {
     "Zl",
     "Zp",
 }
+USER_LINE_CONTROL = {
+    "Cc",
+    "Cs",
+    "Zl",
+    "Zp",
+}
 
 CITE = re.compile(
     r"\((?:(?i:cite):|цит\.)\s+(?P<path>[^«»“”\"()\n]{1,300}?):(?P<line>\d{1,7})\s+"
@@ -271,6 +307,8 @@ SESSION_ID = re.compile(r"[0-9A-Za-z_-]{1,128}")
 
 _deadline = None
 _check_errors = []
+_tell = False
+_printed = False
 
 
 def time_left(default):
@@ -917,6 +955,80 @@ def cap_utf16(text, limit):
     return encoded[:limit * 2].decode("utf-16-le", errors="ignore")
 
 
+def say(user, model):
+    global _printed
+    payload = {}
+    if user is not None and _tell:
+        payload["systemMessage"] = cap_utf16(user, USER_LINE_LIMIT)
+    if model is not None:
+        payload["hookSpecificOutput"] = {
+            "hookEventName": "SessionStart",
+            "additionalContext": model,
+        }
+    if not payload:
+        return
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
+    _printed = True
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+
+def tell_failure(kind):
+    if _printed:
+        return
+    try:
+        say(f"{USER_LINE_START} failed ({kind}), see {get_shown(trace_file())}", None)
+    except Exception:
+        pass
+
+
+def is_hidden_char(ch):
+    code = ord(ch)
+    return (
+        unicodedata.category(ch) in USER_LINE_CONTROL
+        or 0x202A <= code <= 0x202E
+        or 0x2066 <= code <= 0x2069
+    )
+
+
+def get_shown(text):
+    return "".join(ch for ch in text if not is_hidden_char(ch))
+
+
+def get_topic(marker):
+    return get_shown(marker["topic"])[:TOPIC_LIMIT]
+
+
+def get_receiver(session):
+    return f"session {session}" if SESSION_ID.fullmatch(session) else "another session"
+
+
+def get_note_noun(count):
+    return "note" if count == 1 else "notes"
+
+
+def get_unlisted_line(unchecked):
+    if unchecked:
+        return f"{USER_LINE_START} could not check {unchecked} {get_note_noun(unchecked)} in time, none listed"
+
+    return f"{USER_LINE_START} no notes from closed sessions in this folder"
+
+
+def get_list_line(markers, hidden, unchecked):
+    found = len(markers) + hidden
+    head = f"{USER_LINE_START} {found} {get_note_noun(found)} from closed sessions in this folder:"
+    items = [f"{index}. \"{get_topic(marker)}\" — {get_shown(marker['note'])}" for index, marker in enumerate(markers, 1)]
+    tail = f"\ncould not check {unchecked} more {get_note_noun(unchecked)} in time" if unchecked else ""
+    for kept in range(len(items), -1, -1):
+        dropped = len(items) - kept + hidden
+        more = f"\nand {dropped} more" if dropped else ""
+        text = head + "".join("\n" + item for item in items[:kept]) + more + tail
+        if len(text.encode("utf-16-le")) // 2 <= USER_LINE_LIMIT:
+            return text
+
+    return text
+
+
 def time_budget():
     if testing() and os.environ.get("HANDOFF_TEST_BUDGET"):
         return float(os.environ["HANDOFF_TEST_BUDGET"])
@@ -936,7 +1048,7 @@ def unattended():
 
 
 def cmd_start(seen):
-    global _deadline
+    global _deadline, _tell
     if os.environ.get("HANDOFF_OFF") == "1":
         seen["outcome"] = "off"
         return 0
@@ -957,24 +1069,30 @@ def cmd_start(seen):
     if source == "startup" and unattended():
         seen["outcome"] = "unattended"
         return 0
+    _tell = not unattended()
     _deadline = time.monotonic() + time_budget()
     markers = checked_markers()
     if source == "clear":
         proc = claude_process()
         if not proc:
             seen["outcome"] = "no-process"
+            say(f"{USER_LINE_START} could not identify this Claude process, no anchor given", None)
             return 0
         seen["pid"] = proc[0]
         own = [m for m in markers if m["pid"] == proc[0] and m["started"] == proc[1]]
         if not own:
             seen["outcome"] = "no-own-marker"
+            say(f"{USER_LINE_START} no anchor saved in this Claude process", None)
             return 0
         given = handed_session(own[0]) if session else None
         if given is not None and given != session:
             seen.update(outcome="handed-elsewhere", handed_to=clip(given))
+            say(f"{USER_LINE_START} anchor \"{get_topic(own[0])}\" was already given to {get_receiver(given)}", None)
             return 0
-        sys.stdout.write(cap_utf16(render_own(own[0]), OUTPUT_LIMIT) + "\n")
-        sys.stdout.flush()
+        say(
+            f"{USER_LINE_START} continuing anchor \"{get_topic(own[0])}\" — {get_shown(own[0]['note'])}",
+            cap_utf16(render_own(own[0]), OUTPUT_LIMIT),
+        )
         if session and given is None:
             record_handed(own[0], session)
         receiver = "none" if not session else ("new" if given is None else "same")
@@ -983,24 +1101,30 @@ def cmd_start(seen):
     else:
         now = datetime.now(timezone.utc)
         closed = []
+        unchecked = 0
         for marker in markers:
-            if out_of_time():
-                break
-            if not same_path(marker["cwd"], cwd):
+            late = out_of_time()
+            here = marker["cwd"] == cwd if late else same_path(marker["cwd"], cwd)
+            if not here:
                 continue
             when = saved_time(marker)
             if when is None or now - when > MAX_AGE:
                 continue
-            if liveness(marker) != "closed":
+            state = "unknown" if late else liveness(marker)
+            if state == "unknown":
+                unchecked += 1
+            if state != "closed":
                 continue
             closed.append((when, marker))
+        seen["unchecked"] = unchecked
         if not closed:
-            seen["outcome"] = "no-closed"
+            seen["outcome"] = "unchecked" if unchecked else "no-closed"
+            say(get_unlisted_line(unchecked), None)
             return 0
         closed.sort(key=lambda pair: pair[0], reverse=True)
         shown = [marker for _, marker in closed[:LIST_LIMIT]]
         text = render_list(shown)
-    sys.stdout.write(cap_utf16(text, OUTPUT_LIMIT) + "\n")
+    say(get_list_line(shown, len(closed) - len(shown), unchecked), cap_utf16(text, OUTPUT_LIMIT))
     seen.update(outcome="listed", listed=len(shown))
     return 0
 
@@ -1505,7 +1629,8 @@ def main(argv):
         try:
             return cmd_start(seen)
         except Exception as error:
-            seen.update(outcome="error", error=type(error).__name__)
+            seen.update(outcome="error", error=type(error).__name__, message=clip(str(error)))
+            tell_failure(type(error).__name__)
             return 0
         finally:
             if _check_errors:
