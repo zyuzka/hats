@@ -1087,7 +1087,7 @@ words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
 script = [w for w in words if w.endswith("anchor-nudge.py")][0]
 print("script=%s exists=%s timeout=%s" % (script, os.path.isfile(script), hook.get("timeout")))' "$1" "$plugin_root" 2>&1
 }
-has "hooks.json: оба хука идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=2 py.sh=True" "$(hooked wrapper)"
+has "hooks.json: все семь хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=7 py.sh=True" "$(hooked wrapper)"
 has "hooks.json: UserPromptSubmit запускает scripts/anchor-nudge.py плагина, и он есть" \
   "script=$plugin_root/scripts/anchor-nudge.py exists=True timeout=5" "$(hooked nudge)"
 nudge_line=$(hooked command)

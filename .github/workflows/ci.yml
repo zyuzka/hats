@@ -80,6 +80,9 @@ jobs:
       - name: Own anchor steps
         run: bash plugin/tests/anchor-steps.test.sh
 
+      - name: Session window fill hook
+        run: bash plugin/tests/window-fill.test.sh
+
       - name: Plugin tests under the system Python
         run: |
           export PATH="/usr/bin:$PATH"
@@ -87,3 +90,4 @@ jobs:
           bash plugin/tests/handoff.test.sh
           bash plugin/tests/anchor-nudge.test.sh
           bash plugin/tests/anchor-steps.test.sh
+          bash plugin/tests/window-fill.test.sh

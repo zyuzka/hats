@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var settings = AppSettings.loaded()
     var weekly = WeeklyRecord()
     var lastWeeklyFailure = NoteOnChange()
+    var hatUsage = HatUsageFile()
+    var lastHatUsageFailure = NoteOnChange()
+    let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -92,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.redrawAndDecide()
         }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
+        sessionWindows.onChange = { [weak self] in self?.showTheContextRows() }
+        sessionWindows.start()
         startTheUpdater()
         DockPresence.watch()
 
