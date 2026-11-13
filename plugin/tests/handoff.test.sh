@@ -7,6 +7,23 @@
 #
 # Хук гоняется из копии вне плагина: на своём месте он видит hooks/hooks.json плагина и
 # включён в любой папке. Плагин собирается во временной папке только в случаях подключения.
+#
+# Сверка с образцом. Каждый вызов через помощники start и nobody и вызов команды из hooks.json
+# через sh -c проверяются одинаково: stdout — один объект JSON байтами UTF-8 с переводом строки
+# или пусто, код 0, stderr пуст. На том же вводе и состоянии прогоняется образец —
+# fixtures/handoff-reference.py, handoff.py коммита d5a8185 байт в байт, последний хук, что
+# печатал модели простой текст; его записи (runs.log и файл передачи) выключены, чтобы
+# состояние осталось тем же для нового. additionalContext нового обязан совпасть со stdout
+# образца без последнего перевода строки, а где образец молчал, у нового нет hookSpecificOutput.
+# Без сверки (CMP=0) — вызовы, где текст или замер зависит от времени (HANDOFF_TEST_BUDGET,
+# медленные ps и git, ожидание блокировки, одновременные запуски), и два, где образец падает по
+# замыслу (stdout в Latin-1, одинокий суррогат в теме). Прямые запуски хука мимо помощников
+# (битый ввод, exec-обвязки, нет fcntl, поиск настоящего процесса) не сверяются. В конце число
+# строк сверки обязано равняться числу вызовов, начавших сверку.
+#
+# Срок образца: он держит «текст модели не изменился». Задача, которая меняет текст модели
+# намеренно (8c и дальше), в том же коммите заменяет образец копией своего handoff.py и пишет
+# здесь, с какого коммита образец; правка текста модели без замены образца красит набор.
 set -uo pipefail
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,11 +33,134 @@ pass=0; fail=0; failures=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/loose"; HOOK="$work/loose/handoff.py"; cp "$HOOK_SOURCE" "$HOOK"
+mkdir -p "$work/before"; OLD_HOOK="$plugin_root/tests/fixtures/handoff-reference.py"
+cat >"$work/before/run.py" <<'EOF'
+import sys
+path = sys.argv[1]
+scope = {
+    "__name__": "handoff_reference",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+scope["record_handed"] = lambda *args: None
+scope["write_trace"] = lambda *args: None
+sys.exit(scope["main"](["start"]))
+EOF
+cat >"$work/shape.py" <<'EOF'
+import json
+import sys
+import unicodedata
+
+call, label, compare, code, box = sys.argv[1:6]
+raw = open(call + "/out", "rb").read()
+err = open(call + "/err", "rb").read()
+problems = []
+model = None
+user = None
+HOOK_FIELDS = {
+    "hookEventName",
+    "additionalContext",
+}
+TOP_FIELDS = {
+    "systemMessage",
+    "hookSpecificOutput",
+}
+CONTROL = {
+    "Cc",
+    "Cs",
+    "Zl",
+    "Zp",
+}
+
+
+def check_hook(hook):
+    if not isinstance(hook, dict) or set(hook) != HOOK_FIELDS:
+        return None, "hookSpecificOutput не из двух полей: %r" % (hook,)
+    if hook["hookEventName"] != "SessionStart":
+        return None, "hookEventName не SessionStart: %r" % (hook["hookEventName"],)
+    if not isinstance(hook["additionalContext"], str) or not hook["additionalContext"]:
+        return None, "additionalContext пуст или не строка"
+    return hook["additionalContext"], None
+
+
+def is_hidden(ch):
+    return (
+        unicodedata.category(ch) in CONTROL
+        or 0x202A <= ord(ch) <= 0x202E
+        or 0x2066 <= ord(ch) <= 0x2069
+    )
+
+
+def check_user(line):
+    if not isinstance(line, str) or not line.startswith("Hats handoff: "):
+        return "systemMessage не начинается с «Hats handoff: »: %r" % (line,)
+    odd = [ch for ch in line if ch != "\n" and is_hidden(ch)]
+    if odd:
+        return "в systemMessage управляющие знаки: %r" % (odd[:5],)
+    if len(line.encode("utf-16-le")) // 2 > 2000:
+        return "systemMessage длиннее 2000 единиц UTF-16"
+    return None
+
+
+def check_output():
+    global model, user
+    if not raw:
+        return
+    data = json.loads(raw.decode("utf-8"))
+    if not isinstance(data, dict) or not data or not set(data) <= TOP_FIELDS:
+        problems.append("в stdout не тот объект: %r" % (sorted(data) if isinstance(data, dict) else data,))
+        return
+    if raw != json.dumps(data, ensure_ascii=False).encode("utf-8") + b"\n":
+        problems.append("stdout — не один объект JSON байтами UTF-8 с переводом строки")
+    if "hookSpecificOutput" in data:
+        model, problem = check_hook(data["hookSpecificOutput"])
+        if problem:
+            problems.append(problem)
+    if "systemMessage" in data:
+        problem = check_user(data["systemMessage"])
+        if problem:
+            problems.append(problem)
+        user = data["systemMessage"]
+
+
+def compare_with_old():
+    old = open(call + "/old", "rb").read()
+    if model is None and old:
+        problems.append("образец напечатал %d байт, у нового нет hookSpecificOutput" % len(old))
+        return
+    if model is None:
+        return
+    want = (model + "\n").encode("utf-8")
+    if old != want:
+        at = next((i for i, pair in enumerate(zip(old, want)) if pair[0] != pair[1]), min(len(old), len(want)))
+        problems.append("additionalContext не равен выводу образца: с байта %d, %d байт против %d" % (at, len(want), len(old)))
+
+
+if code != "0":
+    problems.append("код выхода " + code)
+if err:
+    problems.append("stderr: " + err.decode("utf-8", "replace")[:200])
+try:
+    check_output()
+    if compare == "1":
+        compare_with_old()
+except Exception as error:
+    problems.append("вывод не разобран: %s: %s" % (type(error).__name__, error))
+with open(box + "/told", "w", encoding="utf-8", errors="replace") as f:
+    f.write(user or "")
+with open(box + "/heard", "wb") as f:
+    f.write(raw)
+with open(box + "/checks.log", "a", encoding="utf-8", errors="replace") as f:
+    note = "; ".join(problems).replace("\n", " ").replace("\t", " ")
+    f.write("%s\t%s\t%s\t%s\n" % ("bad" if problems else "ok", compare, label, note[:400]))
+sys.stdout.buffer.write((model or "").encode("utf-8", "replace"))
+EOF
 
 proj="$work/proj"
 other="$work/other"
 mem="$work/.claude/projects/-proj/memory"
 note="$mem/note.md"
+real_mem="$(python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$mem")"; real_note="$real_mem/note.md"
 markers="$work/.claude/state/handoff"
 me_pid=$$
 me_started=$(TZ=UTC LC_ALL=C ps -o lstart= -p $$ | xargs)
@@ -42,17 +182,56 @@ marker() {  # marker <файл> <pid> <started> <cwd> <note> <topic> [saved_at]
     "$markers/$1.json" "$2" "$3" "$4" "$5" "$6" "${7:-$(now)}"
 }
 mine() { marker "${1:-a}" 4242 "$own_started" "${2:-$proj}" "${3:-$note}" "${4:-задача А}"; }
-start() {  # start <source> [cwd] [env...]
-  local src="$1" cwd="${2:-$proj}"; shift; shift || true
-  printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$sid" "$cwd" "$src" |
-    env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@" python3 -I "$HOOK" start 2>&1
+open_call() {  # open_call <ввод> — печатает новую папку вызова с вводом; told и heard прошлого вызова убраны
+  local call
+  rm -f "$work/told" "$work/heard"; call=$(mktemp -d "$work/call.XXXXXX"); printf '%s' "$1" >"$call/in"; printf '%s' "$call"
 }
+run_reference() {  # run_reference <папка вызова> <env...> — образец на том же вводе; код 0 — сверка начата и посчитана
+  local call="$1"; shift
+  if [ "${CMP:-1}" != 1 ] || [ ! -s "$OLD_HOOK" ]; then return 1; fi
+  printf 'begun\n' >>"$work/compares.log"
+  env "$@" python3 -I "$work/before/run.py" "$OLD_HOOK" <"$call/in" >"$call/old" 2>/dev/null
+  return 0
+}
+judge() {  # judge <папка вызова> <подпись> <сверка 0|1> <код хука> — форма и сверка; печатает текст модели
+  python3 -I "$work/shape.py" "$1" "$2" "$3" "$4" "$work" ||
+    printf 'bad\t%s\t%s\tпроверка формы вышла с кодом %s\n' "$3" "$2" "$?" >>"$work/checks.log"
+}
+start() {  # start <source> [cwd] [env...] — печатает текст модели; строка пользователю — told, весь stdout — heard; CMP=0 — без сверки
+  local src="$1" cwd="${2:-$proj}" call rc compare=0; shift; shift || true
+  call=$(open_call "$(printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$sid" "$cwd" "$src")")
+  run_reference "$call" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@" && compare=1
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@" python3 -I "$HOOK" start <"$call/in" >"$call/out" 2>"$call/err"; rc=$?
+  judge "$call" "start $src, строка ${BASH_LINENO[0]} ${BASH_LINENO[1]:-}" "$compare" "$rc"
+  rm -rf "$call"
+  return $rc
+}
+told()  { cat "$work/told" 2>/dev/null; }
+heard() { cat "$work/heard" 2>/dev/null; }
+model_of() { python3 -I -c 'import json,sys
+raw = sys.stdin.read()
+try:
+    data = json.loads(raw)
+except ValueError:
+    data = None
+    print(raw, end="")
+hook = data.get("hookSpecificOutput") if isinstance(data, dict) else None
+print(hook.get("additionalContext", "") if isinstance(hook, dict) else "", end="")'; }
+shape_of() { python3 -I -c 'import json,sys
+try:
+    data = json.loads(sys.stdin.read())
+    print("model=%d user=%d" % ("hookSpecificOutput" in data, "systemMessage" in data))
+except Exception as error:
+    print("не JSON: %s" % error)'; }
+told_no_anchor='Hats handoff: no anchor saved in this Claude process'
+told_no_closed='Hats handoff: no notes from closed sessions in this folder'
 save() { env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$1" --note "$2" --topic "$3" 2>&1; }
 check() { env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$1" 2>&1; }
 checkline() { printf '%s\n' "$1" >"$proj/n.md"; check "$proj/n.md"; }
 has()   { case "$3" in *"$2"*) ok ;; *) bad "$1" "ждали «$2», получили: ${3:0:300}" ;; esac; }
 lacks() { case "$3" in *"$2"*) bad "$1" "не ждали «$2», получили: ${3:0:300}" ;; *) ok ;; esac; }
 empty() { if [ -z "$2" ]; then ok; else bad "$1" "ждали тишину, получили: ${2:0:300}"; fi; }
+same()  { if [ "$2" = "$3" ]; then ok; else bad "$1" "ждали «$2», получили «${3:0:400}»"; fi; }
 ok()  { pass=$((pass+1)); }
 bad() { fail=$((fail+1)); failures="$failures
   $1: $2"; }
@@ -61,16 +240,17 @@ count() { printf '%s\n' "$2" | grep -c -- "$1"; }
 # --- хук старта: после /clear
 reset; mine
 out=$(start clear); has "clear: своя отметка подгружает записку" "continues the note \"задача А\"" "$out"
+same "clear: пользователю — какой якорь взят и где его записка" "Hats handoff: continuing anchor \"задача А\" — $real_note" "$(told)"
 has "clear: печатается «СЕЙЧАС»" "строка сейчас" "$out"
 lacks "clear: следующий раздел не печатается" "строка прошлого" "$out"
 reset; printf '# T\n\n## Контекст\n\nстрока контекста\n\n## СЕЙЧАС\n\nстрока сейчас\n\n## Старое\n\nстарое\n' >"$note"; mine
 out=$(start clear); has "clear: «СЕЙЧАС» ищется по имени" "строка сейчас" "$out"
 lacks "clear: «Контекст» не печатается" "строка контекста" "$out"; lacks "clear: раздел после «СЕЙЧАС» не печатается" "старое" "$out"
 reset; marker a 4242 "Tue Nov 10 10:00:00 2026" "$proj" "$note" "задача А"
-empty "clear: тот же номер, другое время запуска — молчит" "$(start clear)"
+empty "clear: тот же номер, другое время запуска — модели ничего" "$(start clear)"; same "clear: тот же номер, другое время запуска — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
 reset; marker a "$me_pid" "$me_started" "$proj" "$note" "чужая живая"
-empty "clear: отметка другой живой сессии в той же папке — молчит" "$(start clear)"
-reset; empty "clear: отметок нет — молчит" "$(start clear)"
+empty "clear: отметка другой живой сессии в той же папке — модели ничего" "$(start clear)"; same "clear: отметка другой живой сессии — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
+reset; empty "clear: отметок нет — модели ничего" "$(start clear)"; same "clear: отметок нет — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
 reset; mine
 has "clear: своя отметка находится и после смены папки сессией" "continues the note" "$(start clear "$other")"
 reset; mine; printf '{"pid":1,"started":"x","cwd":null,"note":"%s","topic":"t","saved_at":"%s"}' "$note" "$(now)" >"$markers/bad.json"
@@ -82,11 +262,13 @@ reset; marker a 4242 "$own_started" "$proj" "$note" "задача А" "$t1"; bef
 sid=n1; has "передача: первая сессия после сохранения получает записку" "continues the note" "$(start clear)"
 has "передача: повторный хук той же сессии снова получает" "continues the note" "$(start clear)"
 if [ "$(cat "$markers/a.json")" = "$before" ]; then ok; else bad "передача: хук не переписывает отметку" "изменилась"; fi
-sid=n2; empty "передача: следующая сессия без нового сохранения — молчит" "$(start clear)"
+sid=n2; empty "передача: следующая сессия без нового сохранения — модели ничего" "$(start clear)"
+same "передача: следующая сессия — пользователю, кому отдан якорь" "Hats handoff: anchor \"задача А\" was already given to session n1" "$(told)"
 if [ -f "$markers/a.json" ]; then ok; else bad "передача: после молчания отметка цела" "пропала"; fi
 marker a 4242 "$own_started" "$proj" "$note" "задача Б" "$t2"
 sid=n2; has "передача: новое сохранение снова отдаёт записку" "continues the note \"задача Б\"" "$(start clear)"
-sid=n3; empty "передача: и после него следующая сессия молчит" "$(start clear)"
+sid=n3; empty "передача: и после него следующая сессия — модели ничего" "$(start clear)"
+same "передача: и после него — пользователю, кому отдан новый якорь" "Hats handoff: anchor \"задача Б\" was already given to session n2" "$(told)"
 reset; marker a 4242 "$own_started" "$proj" "$note" "задача А" "$t1"
 out=$(printf '{"cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1)
 has "передача: без номера сессии записка отдаётся" "continues the note" "$out"
@@ -103,53 +285,60 @@ reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 printf '{"key":"x","session":"n1"}' >"$markers/a.handed"
 has "передача: файл передачи не трогает список новой сессии" "\"закрытая\"" "$(start startup)"
 reset; save "$proj" "$note" "задача А" >/dev/null
-sid=n1; start clear >/dev/null; sid=n2; empty "передача через save: вторая сессия молчит" "$(start clear)"
+sid=n1; start clear >/dev/null; sid=n2; empty "передача через save: вторая сессия — модели ничего" "$(start clear)"
+same "передача через save: вторая сессия — пользователю, кому отдан якорь" "Hats handoff: anchor \"задача А\" was already given to session n1" "$(told)"
 sleep 1; save "$proj" "$note" "задача Б" >/dev/null
 has "передача через save: новое сохранение отдаёт снова" "continues the note \"задача Б\"" "$(start clear)"
 
 # --- хук старта: новая сессия
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 out=$(start startup); has "startup: закрытая сессия в списке" "\"закрытая\"" "$out"
+same "startup: пользователю — сколько записок и какие" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note" "$(told)"
 has "startup: не задерживает просьбу пользователя" "Do not hold up the user's request" "$out"
 has "startup: упомянуть записки одной строкой на языке пользователя" "in one short line, in the user's language" "$out"
 has "startup: продолжать записку — только по выбору пользователя" "Continue a note only if the user picks it" "$out"
 lacks "startup: больше не велит сначала спрашивать" "не начинай работу" "$out"
 reset; marker a "$me_pid" "$me_started" "$proj" "$note" "живая"
-empty "startup: живая сессия в той же папке не предлагается" "$(start startup)"
+empty "startup: живая сессия в той же папке не предлагается — модели ничего" "$(start startup)"; same "startup: живая сессия — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; marker a "$dead_pid" "$dead_started" "$other" "$note" "закрытая"
-empty "startup: закрытая сессия другой папки — молчит" "$(start startup)"
+empty "startup: закрытая сессия другой папки — модели ничего" "$(start startup)"; same "startup: закрытая другой папки — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$mem/gone.md" "без файла"
-empty "startup: записки нет на диске — молчит" "$(start startup)"
+empty "startup: записки нет на диске — модели ничего" "$(start startup)"; same "startup: записки нет на диске — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "старая" "2020-01-01T00:00:00Z"
-empty "startup: отметка старше 30 дней — молчит" "$(start startup)"
+empty "startup: отметка старше 30 дней — модели ничего" "$(start startup)"; same "startup: старше 30 дней — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "первая" "2026-11-01T10:00:00Z"
 marker b 99989 "$dead_started" "$proj" "$note" "вторая"
 out=$(start startup); has "startup: две закрытые — обе в списке (1)" "\"первая\"" "$out"; has "startup: две закрытые — обе в списке (2)" "\"вторая\"" "$out"
 reset; for i in 1 2 3 4 5 6 7; do marker "m$i" $((99980 + i)) "$dead_started" "$proj" "$note" "тема $i"; done
 out=$(start startup); n=$(count '^[0-9]\. "' "$out")
 if [ "$n" -eq 5 ]; then ok; else bad "startup: в списке не больше пяти" "строк $n"; fi
+seven=$(told | python3 -I -c 'import re,sys
+lines = sys.stdin.read().split("\n")
+print("head=%s items=%d tail=%s" % (lines[0], sum(bool(re.fullmatch(r"[1-5]\. \"тема \d\" — /.+", line)) for line in lines), lines[-1]))')
+same "startup: пользователю — найдено семь, показаны пять, две счётом" "head=Hats handoff: 7 notes from closed sessions in this folder: items=5 tail=and 2 more" "$seven"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 start startup >/dev/null
 if [ -f "$markers/a.json" ]; then ok; else bad "хук не стирает отметку" "файл пропал"; fi
 
 # --- путь записки
 reset; printf 'API_TOKEN=secret\n' >"$proj/.env"; marker a "$dead_pid" "$dead_started" "$proj" "$proj/.env" "секрет"
-empty "startup: записка вне памяти Claude не показывается" "$(start startup)"
+empty "startup: записка вне памяти Claude не показывается — модели ничего" "$(start startup)"; same "startup: записка вне памяти — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; mine a "$proj" "$proj/.env"; printf 'API_TOKEN=secret\n' >"$proj/.env"
-empty "clear: записка вне памяти Claude не печатается" "$(start clear)"
+empty "clear: записка вне памяти Claude не печатается — модели ничего" "$(start clear)"; same "clear: записка вне памяти — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
 reset; printf 'x\n' >"$proj/note.md"; out=$(save "$proj" "$proj/note.md" "задача А"); rc=$?
 has "save: записка вне памяти — отказ" "the note must be a file" "$out"
 if [ $rc -ne 0 ] && [ -z "$(ls "$markers")" ]; then ok; else bad "save: вне памяти — код не 0 и без отметки" "rc=$rc $(ls "$markers")"; fi
 
 # --- хук старта: прочие причины и ввод
 reset; mine
-empty "compact — молчит" "$(start compact)"
-empty "resume — молчит" "$(start resume)"
-empty "выключатель HANDOFF_OFF=1" "$(start clear "$proj" HANDOFF_OFF=1)"
+start compact >/dev/null; empty "compact — молчит" "$(heard)"
+start resume >/dev/null; empty "resume — молчит" "$(heard)"
+start clear "$proj" HANDOFF_OFF=1 >/dev/null; empty "выключатель HANDOFF_OFF=1" "$(heard)"
 out=$(printf 'not json' | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1); rc=$?
 empty "битый ввод — тишина" "$out"
 if [ $rc -eq 0 ]; then ok; else bad "битый ввод — код 0" "код $rc"; fi
-empty "подмена процесса без HANDOFF_TEST не действует" "$(printf '{"cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1)"
+empty "подмена процесса без HANDOFF_TEST не действует — модели ничего" "$(printf '{"cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1 | model_of)"
 
 # --- проверка записки
 reset; printf 'строка один\n| 2 слова или решения | 22 | 73%% |\n' >"$proj/src.md"
@@ -207,7 +396,7 @@ if [ ! -e "$work/PWNED" ]; then ok; else bad "хук не запускает к�
 printf '## СЕЙЧАС\n\n- git %s -x = %s\n' "$work/repo" "$second" >"$note"
 lacks "ссылка с минусом не разбирается как факт" "matches" "$(start clear)"
 printf '## СЕЙЧАС\n\n- git %s %s = %s\n' "$work/repo" "$branch" "$second" >"$note"
-has "срок вышел — факт состояния «не успел проверить»" "no time to check" "$(start clear "$proj" HANDOFF_TEST_BUDGET=0)"
+has "срок вышел — факт состояния «не успел проверить»" "no time to check" "$(CMP=0 start clear "$proj" HANDOFF_TEST_BUDGET=0)"
 { printf '## СЕЙЧАС\n\n'; for i in 1 2 3 4 5 6; do printf -- '- git %s %s = %s\n' "$work/repo" "$branch" "$second"; done; } >"$note"
 has "фактов не больше четырёх" "more than four" "$(start clear)"
 printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
@@ -289,8 +478,9 @@ lacks "тридцать цитат в большой файл — быстро" 
 reset; mkdir -p "$work/fakebin" "$work/repo"
 printf '#!/bin/bash\nsleep 10\n' >"$work/fakebin/ps"; chmod +x "$work/fakebin/ps"
 marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"; marker b 99989 "$dead_started" "$proj" "$note" "вторая"; marker c 99988 "$dead_started" "$proj" "$note" "третья"
-s=$(date +%s); out=$(start startup "$proj" PATH="$work/fakebin:$PATH"); e=$(date +%s)
-empty "ps молчит — закрытые не показываются" "$out"
+s=$(date +%s); out=$(CMP=0 start startup "$proj" PATH="$work/fakebin:$PATH"); e=$(date +%s)
+empty "ps молчит — закрытые не показываются модели" "$out"
+same "ps молчит — пользователю «не успел проверить», а не «записок нет»" "Hats handoff: could not check 3 notes in time, none listed" "$(told)"
 if [ $((e - s)) -le 5 ]; then ok; else bad "ps молчит — хук укладывается в 5 с" "$((e - s)) с"; fi
 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" PATH="$work/fakebin:$PATH" python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic t >/dev/null 2>&1
 if [ -f "$markers/a.json" ]; then ok; else bad "ps молчит — save не снимает отметку" "снята"; fi
@@ -303,7 +493,7 @@ has "отметка с нулевым байтом в папке не глуши
 reset; mkdir -p "$work/fakebin" "$work/repo"
 printf '#!/bin/bash\nsh -c '"'"'echo $$ >"%s/childpid"; exec sleep 30'"'"' &\nsleep 30\n' "$work" >"$work/fakebin/git"; chmod +x "$work/fakebin/git"
 printf '## СЕЙЧАС\n\n- git %s main = abcdef1\n' "$work/repo" >"$note"; mine
-out=$(start clear "$proj" PATH="$work/fakebin:$PATH" HANDOFF_TEST_BUDGET=2)
+out=$(CMP=0 start clear "$proj" PATH="$work/fakebin:$PATH" HANDOFF_TEST_BUDGET=2)
 has "медленный git — «не успел проверить»" "no time to check" "$out"
 sleep 0.5; child=$(cat "$work/childpid" 2>/dev/null)
 if [ -n "$child" ] && ! kill -0 "$child" 2>/dev/null; then ok; else bad "после срока дочерних процессов git не остаётся" "pid ${child:-нет} жив"; kill "$child" 2>/dev/null; fi
@@ -317,7 +507,7 @@ if [ "$units" -le 9501 ]; then ok; else bad "вывод не длиннее 9 50
 reset; mkdir -p "$work/bin"; ln -s /bin/bash "$work/bin/claude"
 printf '{"session_id":"s","cwd":"%s","source":"clear"}' "$other" >"$work/in.json"
 out=$( (cd "$proj" && env HOME="$work" "$work/bin/claude" -c 'echo $$ >"$1/fakepid"; bash -c "python3 -I \"\$0\" save --note \"\$1\" --topic реальный >/dev/null; true" "$2" "$3"; python3 -I "$2" start <"$1/in.json"; true' _ "$work" "$HOOK" "$note") 2>&1)
-has "настоящий поиск: после /clear своя записка" "continues the note \"реальный\"" "$out"
+has "настоящий поиск: после /clear своя записка" "continues the note \"реальный\"" "$(printf '%s' "$out" | model_of)"
 fake=$(cat "$work/fakepid" 2>/dev/null)
 fields=$(python3 -I -c 'import json,glob,sys; m=json.load(open(glob.glob(sys.argv[1]+"/*.json")[0])); print(m["pid"], m["cwd"], "|", m["started"])' "$markers" 2>/dev/null)
 real_proj=$(python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$proj")
@@ -331,7 +521,8 @@ reset; mine; sid=n1; start clear >/dev/null
 has "журнал: отдал записку новой сессии" "outcome=gave-note receiver=new session=n1 source=clear pid=4242" "$(tl outcome receiver session source pid)"
 start clear >/dev/null
 has "журнал: та же сессия получила снова" "outcome=gave-note receiver=same" "$(tl outcome receiver)"
-sid=n2; empty "журнал: случай «отдано другой» молчит в выводе" "$(start clear)"
+sid=n2; empty "журнал: случай «отдано другой» — модели ничего" "$(start clear)"
+same "журнал: случай «отдано другой» — пользователю, кому" "Hats handoff: anchor \"задача А\" was already given to session n1" "$(told)"
 has "журнал: отдано другой сессии" "outcome=handed-elsewhere handed_to=n1 session=n2" "$(tl outcome handed_to session)"
 if [ "$(tlines)" -eq 3 ]; then ok; else bad "журнал: одна строка на запуск" "строк $(tlines)"; fi
 reset; mine
@@ -342,8 +533,11 @@ has "журнал: своей отметки нет" "outcome=no-own-marker pid=
 reset; mkdir -p "$work/fakebin"; printf '#!/bin/bash\nexit 1\n' >"$work/fakebin/ps"; chmod +x "$work/fakebin/ps"; mine
 start clear "$proj" HANDOFF_TEST=0 PATH="$work/fakebin:$PATH" >/dev/null
 has "журнал: процесс claude не найден" "outcome=no-process" "$(tl outcome)"
+same "процесс claude не найден — пользователю так и сказано" "Hats handoff: could not identify this Claude process, no anchor given" "$(told)"
 reset; mine; start clear "$proj" HANDOFF_PROCESS="x:y" >/dev/null; rc=$?
 has "журнал: падение записано с типом" "outcome=error error=ValueError" "$(tl outcome error)"
+same "падение до печати — пользователю тип и путь журнала" "Hats handoff: failed (ValueError), see $markers/runs.log" "$(told)"
+has "журнал: у падения есть его текст" "message=invalid literal for int() with base 10: 'x'" "$(tl message)"
 if [ $rc -eq 0 ]; then ok; else bad "журнал: падение — код 0" "код $rc"; fi
 reset; mine; start clear "$proj" HANDOFF_OFF=1 >/dev/null
 has "журнал: выключатель" "outcome=off" "$(tl outcome)"
@@ -379,14 +573,14 @@ for p in sys.argv[1:]:
         try: seen.append(json.loads(l)["session"])
         except Exception: bad+=1
 print(f"distinct={len(set(seen))} total={len(seen)} bad={bad} old={old}")' "$trace" "$trace.1"; }
-reset; for i in $(seq 1 30); do (sid=p$i; start startup >/dev/null) & done; wait
+reset; for i in $(seq 1 30); do (sid=p$i; CMP=0 start startup >/dev/null) & done; wait
 has "одновременно: 30 запусков — 30 целых строк" "distinct=30 total=30 bad=0" "$(sessions_in)"
 reset; python3 -I -c 'import sys; open(sys.argv[1],"w").write("OLDTAG " + "x" * 300000 + "\n")' "$trace"
-for i in 1 2; do (sid=r$i; start startup "$proj" HANDOFF_TEST_PAUSE=0.2 >/dev/null) & done; wait
+for i in 1 2; do (sid=r$i; CMP=0 start startup "$proj" HANDOFF_TEST_PAUSE=0.2 >/dev/null) & done; wait
 has "одновременно: двойная перекладка не стирает историю и строки" "distinct=2 total=2 bad=0 old=1" "$(sessions_in)"
 reset; python3 -I -c 'import fcntl,os,sys,time; fd=os.open(sys.argv[1],os.O_RDWR|os.O_CREAT); fcntl.flock(fd,fcntl.LOCK_EX); open(sys.argv[2],"w").close(); time.sleep(4)' "$markers/runs.lock" "$work/locked" &
 holder=$!; for _ in $(seq 1 100); do [ -f "$work/locked" ] && break; sleep 0.05; done
-s=$(date +%s); sid=w1; start startup >/dev/null; e=$(date +%s); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+s=$(date +%s); sid=w1; CMP=0 start startup >/dev/null; e=$(date +%s); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 has "занятая блокировка: строка всё равно записана" "distinct=1 total=1" "$(sessions_in)"
 if [ $((e - s)) -le 2 ]; then ok; else bad "занятая блокировка: хук не ждёт дольше срока" "$((e - s)) с"; fi
 reset; python3 -I -c 'import sys; open(sys.argv[1],"w").write("OLDTAG " + "x" * 300000 + "\n")' "$trace"
@@ -458,11 +652,15 @@ out=$(save "$proj" "$note" "задача А"); rc=$?
 if [ $rc -eq 0 ] && [ -f "$markers/4242-Mon-Nov-9-10-00-00-2026.json" ]; then ok; else bad "первое сохранение: каталога состояния нет — создаётся, отметка записана" "rc=$rc ${out:0:200}"; fi
 
 # --- запуск без человека (claude -p): списка нет, своя записка после /clear — как раньше
-nobody() {  # nobody <source> <ATTENDED или -> <ENTRYPOINT или ->
-  local a=() ; [ "$2" = "-" ] && a+=(-u CLAUDE_CODE_SESSION_ATTENDED) || a+=(CLAUDE_CODE_SESSION_ATTENDED="$2")
+nobody() {  # nobody <source> <ATTENDED или -> <ENTRYPOINT или -> — stdout, за ним stderr, как есть; сверка — как у start
+  local a=() call rc compare=0; [ "$2" = "-" ] && a+=(-u CLAUDE_CODE_SESSION_ATTENDED) || a+=(CLAUDE_CODE_SESSION_ATTENDED="$2")
   [ "$3" = "-" ] || a+=(CLAUDE_CODE_ENTRYPOINT="$3")
-  printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$sid" "$proj" "$1" |
-    env "${a[@]}" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1
+  call=$(open_call "$(printf '{"session_id":"%s","cwd":"%s","source":"%s"}' "$sid" "$proj" "$1")")
+  run_reference "$call" "${a[@]}" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" && compare=1
+  env "${a[@]}" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start <"$call/in" >"$call/out" 2>"$call/err"; rc=$?
+  judge "$call" "nobody $1 $2 $3, строка ${BASH_LINENO[0]}" "$compare" "$rc" >/dev/null
+  cat "$call/out" "$call/err"; rm -rf "$call"
+  return $rc
 }
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 empty "без человека: ATTENDED=0 — списка нет" "$(nobody startup 0 sdk-cli)"
@@ -470,12 +668,17 @@ has "без человека: в журнале unattended" "outcome=unattended 
 empty "без человека: ATTENDED=0 при entrypoint cli — списка нет" "$(nobody startup 0 cli)"
 empty "без человека: ATTENDED нет, entrypoint sdk-cli — списка нет" "$(nobody startup - sdk-cli)"
 empty "без человека: ATTENDED нет, entrypoint sdk-py — списка нет" "$(nobody startup - sdk-py)"
-has "с человеком: ATTENDED нет, entrypoint cli — список есть" "\"закрытая\"" "$(nobody startup - cli)"
-has "с человеком: ATTENDED и entrypoint нет — список есть" "\"закрытая\"" "$(nobody startup - -)"
-has "с человеком: ATTENDED=1 при entrypoint sdk-ts — список есть" "\"закрытая\"" "$(nobody startup 1 sdk-ts)"
-has "незнакомое значение ATTENDED — список показывается" "\"закрытая\"" "$(nobody startup true sdk-cli)"
+has "с человеком: ATTENDED нет, entrypoint cli — список есть" "\"закрытая\"" "$(nobody startup - cli | model_of)"
+has "с человеком: ATTENDED и entrypoint нет — список есть" "\"закрытая\"" "$(nobody startup - - | model_of)"
+has "с человеком: ATTENDED=1 при entrypoint sdk-ts — список есть" "\"закрытая\"" "$(nobody startup 1 sdk-ts | model_of)"
+has "незнакомое значение ATTENDED — список показывается" "\"закрытая\"" "$(nobody startup true sdk-cli | model_of)"
+has "с человеком: список — и строка пользователю" "model=1 user=1" "$(nobody startup - cli | shape_of)"
 reset; mine
 has "без человека: своя записка после /clear по-прежнему отдаётся" "continues the note" "$(nobody clear 0 sdk-cli)"
+has "без человека: после /clear модели записка, пользователю ничего" "model=1 user=0" "$(nobody clear 0 sdk-cli | shape_of)"
+reset; empty "без человека: /clear без своего якоря — тишина" "$(nobody clear 0 sdk-cli)"
+reset; mine; out=$(printf '{"session_id":"s","cwd":"%s","source":"clear"}' "$proj" | env CLAUDE_CODE_SESSION_ATTENDED=0 HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="x:y" python3 -I "$HOOK" start 2>&1)
+empty "без человека: падение после /clear — тишина" "$out"; has "без человека: падение после /clear — в журнале" "outcome=error error=ValueError" "$(tl outcome error)"
 reset; printf '## СЕЙЧАС\n\nправила — %s из 3 (5%%)\n' "$big" >"$note"
 out=$(save "$proj" "$note" "задача А"); rc=$?
 has "проверка упала: save пишет отметку" "marker:" "$out"; lacks "проверка упала: save без трассировки" "Traceback" "$out"
@@ -558,7 +761,7 @@ if [ "$(markerfield "$markers" cwd)" = "$real_other" ]; then ok; else bad "/proc
 
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "без fcntl"
 out=$(printf '{"session_id":"nofcntl","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, "start"]; exec(compile(open(path).read(), path, "exec"))' "$HOOK" 2>&1)
-has "нет fcntl (Windows): хук грузится и даёт список" "\"без fcntl\"" "$out"
+has "нет fcntl (Windows): хук грузится и даёт список" "\"без fcntl\"" "$(printf '%s' "$out" | model_of)"
 has "нет fcntl: строка журнала записана" "outcome=listed session=nofcntl" "$(tl outcome session)"
 
 
@@ -623,7 +826,7 @@ has "своя папка: записки нет — отказ" "the note must b
 has "своя папка: папка вместо записки — отказ" "the note must be a file" "$(save "$proj" "$own_dir/dir.md" "папка")"
 printf 'x\n' >"$own_dir/note.txt"; has "своя папка: записка не .md — отказ" "the note must be a file" "$(save "$proj" "$own_dir/note.txt" "txt")"
 marker a "$dead_pid" "$dead_started" "$proj" "$own_dir/gone.md" "без файла"
-empty "своя папка: записки нет на диске — список молчит" "$(start startup)"
+empty "своя папка: записки нет на диске — модели ничего" "$(start startup)"; same "своя папка: записки нет на диске — пользователю «закрытых нет»" "$told_no_closed" "$(told)"
 reset; rm -rf "$work/.claude/projects"; own_dir=$(notes_of "$proj"); printf '## NOW\n\nno memory line\n' >"$own_dir/r.md"
 out=$(save "$proj" "$own_dir/r.md" "без памяти"); rc=$?
 has "памяти нет: save пишет отметку" "marker:" "$out"
@@ -652,14 +855,14 @@ has "save: отказ называет свою папку" "$own_dir/<name>.md"
 bad_cases+=("папка-ссылка и ..|$own_dir/hop/../x.md")
 for case_ in "${bad_cases[@]}"; do
   rm -f "$markers"/*; mine a "$proj" "${case_#*|}" "мимо"
-  empty "/clear: отметка руками, ${case_%%|*} — молчит" "$(start clear)"
+  empty "/clear: отметка руками, ${case_%%|*} — модели ничего" "$(start clear)"; same "/clear: отметка руками, ${case_%%|*} — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
 done
 rm -f "$markers"/*; mine a "$proj" "$own_dir/x.md" "своя"
 has "/clear: рядом своя записка своей папки отдаётся" "legit line" "$(start clear)"
 rm -f "$markers"/*; marker good "$dead_pid" "$dead_started" "$proj" "$own_dir/x.md" "своя"
 i=0; for case_ in "${bad_cases[@]}"; do i=$((i + 1)); marker "b$i" $((99970 + i)) "$dead_started" "$proj" "${case_#*|}" "мимо: ${case_%%|*}"; done
 out=$(start startup); has "новая сессия: своя записка в списке" "\"своя\"" "$out"
-lacks "новая сессия: отметки руками мимо своей папки не в списке" "мимо" "$out"
+lacks "новая сессия: отметки руками мимо своей папки не в списке" "мимо" "$out"; lacks "новая сессия: мимо своей папки — и не в строке пользователю" "мимо" "$(told)"
 
 reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/r.md"
 shouty=$(printf '%s' "$own_dir" | sed 's|/Hats/notes/|/HATS/notes/|'); out=$(save "$proj" "$shouty/r.md" "регистр"); rc=$?
@@ -831,7 +1034,7 @@ marker good "$dead_pid" "$dead_started" "$proj" "$mem/r.md" "обычная"
 marker svc 99989 "$dead_started" "$proj" "$memmd" "служебная"
 out=$(start startup); has "новая сессия: обычная записка памяти в списке" "\"обычная\"" "$out"; lacks "новая сессия: отметка на MEMORY.md не в списке" "служебная" "$out"
 rm -f "$markers"/*.json; printf '%s\n\n- SERVICE-LINE\n' "$header_line" >"$index"; mine a "$proj" "$index" "индекс"
-empty "/clear: отметка на resume-index.md — молчит" "$(start clear)"
+empty "/clear: отметка на resume-index.md — модели ничего" "$(start clear)"; same "/clear: отметка на resume-index.md — пользователю «нет якоря»" "$told_no_anchor" "$(told)"
 
 reset; for n in a b c; do printf '## NOW\n\n%s\n' "$n" >"$mem/resume-$n.md"; done
 mkdir "$mem/resume-dir.md" "$mem/sub"; printf 'x\n' >"$mem/sub/x.md"; printf 'x\n' >"$mem/notes.txt"; ln -s "$mem/resume-b.md" "$mem/resume-link.md"
@@ -1004,6 +1207,107 @@ has "new → save: после /clear записка отдаётся" "flow line
 has "new → save: в индексе записка" "- [поток](<resume-flow.md>)" "$(cat "$index")"
 
 
+# --- строка пользователю: после /clear — какой якорь взят, в новой сессии — какие записки
+reset; mine; start clear >/dev/null
+has "строка: кириллица в выводе — байты UTF-8" "задача А" "$(heard)"; lacks "строка: кириллица не экранирована" "$(printf '\\%s' u0437)" "$(heard)"
+t3="2026-11-12T10:00:00Z"
+reset; marker a 4242 "$own_started" "$proj" "$note" "задача А" "$t3"
+printf '{"key":"%s|%s","session":"a/b"}' "$t3" "$real_note" >"$markers/a.handed"
+sid=u2; empty "строка: якорь отдан сессии с негодным номером — модели ничего" "$(start clear)"
+same "строка: негодный номер сессии не показан" "Hats handoff: anchor \"задача А\" was already given to another session" "$(told)"
+printf '{"key":"%s|%s","session":"x\\u0007y"}' "$t3" "$real_note" >"$markers/a.handed"; start clear >/dev/null
+same "строка: номер сессии с управляющим знаком не показан" "Hats handoff: anchor \"задача А\" was already given to another session" "$(told)"
+reset; mine a "$proj" "$note" "$(printf 'a\001b\tc\nd\342\200\256e'; printf 'я%.0s' $(seq 1 200))"
+sid=u3; out=$(start clear); want_topic="abcde$(printf 'я%.0s' $(seq 1 115))"
+same "строка: из темы убраны управляющие знаки, тема не длиннее 120" "Hats handoff: continuing anchor \"$want_topic\" — $real_note" "$(told)"
+has "строка: модели тема — как прежде" "$(printf 'a\001b\tc\nd')" "$out"
+reset; mine a "$proj" "$note" "$(printf 'می\342\200\214خواهم \360\237\221\251\342\200\215\360\237\222\273 \342\201\246x\342\201\251')"
+sid=u5; start clear >/dev/null
+same "строка: соединители (ZWNJ, ZWJ) остаются, управление направлением убрано" "Hats handoff: continuing anchor \"$(printf 'می\342\200\214خواهم \360\237\221\251\342\200\215\360\237\222\273 x')\" — $real_note" "$(told)"
+reset; tabbed="$mem/a"$'\t'"b.md"; printf '## NOW\n\nx\n' >"$tabbed"; mine a "$proj" "$tabbed" "таб"
+sid=u4; out=$(start clear)
+same "строка: из пути записки убраны управляющие знаки" "Hats handoff: continuing anchor \"таб\" — $real_mem/ab.md" "$(told)"
+has "строка: модели путь — как прежде" "$real_mem/a"$'\t'"b.md" "$out"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "старшая" "2026-11-01T10:00:00Z"; marker b 99989 "$dead_started" "$proj" "$note" "свежая"
+start startup >/dev/null
+same "строка: две записки — по строке, новая сверху" "Hats handoff: 2 notes from closed sessions in this folder:
+1. \"свежая\" — $real_note
+2. \"старшая\" — $real_note" "$(told)"
+reset; long=$(printf 'n%.0s' $(seq 1 240)); ttt=$(printf 't%.0s' $(seq 1 130))
+for i in 1 2 3 4 5; do printf 'x\n' >"$mem/$i$long.md"; marker "m$i" $((99980 + i)) "$dead_started" "$proj" "$mem/$i$long.md" "$ttt" "2026-11-0${i}T10:00:00Z"; done
+out=$(start startup); same "строка: модели — все пять записок, как прежде" "5" "$(count '^[0-9]\. "' "$out")"
+fit=$(told | python3 -I -c 'import re,sys
+text = sys.stdin.read()
+lines = text.split("\n")
+items = [line for line in lines[1:] if re.fullmatch(r"[1-5]\. \"t{120}\" — /.+\.md", line)]
+more = re.fullmatch(r"and (\d+) more", lines[-1])
+print("units=%s whole=%s all=%s" % (len(text.encode("utf-16-le")) // 2 <= 2000, len(items) == len(lines) - 2, len(items) + int(more.group(1)) if more else None))')
+same "строка: не длиннее 2000 единиц UTF-16, лишние записки — целиком и счётом" "units=True whole=True all=5" "$fit"
+reset; mkdir -p "$work/fakebin"; printf '#!/bin/bash\ncase "$*" in *" %s") exit 1 ;; esac\nsleep 10\n' "$dead_pid" >"$work/fakebin/ps"; chmod +x "$work/fakebin/ps"
+marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"; marker b 99989 "$dead_started" "$proj" "$note" "вторая"; marker c 99988 "$dead_started" "$proj" "$note" "третья"
+out=$(CMP=0 start startup "$proj" PATH="$work/fakebin:$PATH" HANDOFF_TEST_BUDGET=1)
+has "строка: часть не проверена — модели закрытая" "\"закрытая\"" "$out"; lacks "строка: часть не проверена — непроверенной у модели нет" "\"вторая\"" "$out"
+same "строка: список и сколько не успел проверить" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note
+could not check 2 more notes in time" "$(told)"
+has "журнал: в списке одна, не проверены две" "outcome=listed listed=1 unchecked=2" "$(tl outcome listed unchecked)"
+printf '#!/bin/bash\nsleep 10\n' >"$work/fakebin/ps"
+out=$(CMP=0 start startup "$proj" PATH="$work/fakebin:$PATH" HANDOFF_TEST_BUDGET=1)
+empty "строка: не проверена ни одна — модели ничего" "$out"
+same "строка: не проверена ни одна — «не успел», а не «записок нет»" "Hats handoff: could not check 3 notes in time, none listed" "$(told)"
+has "журнал: не проверены все" "outcome=unchecked unchecked=3" "$(tl outcome unchecked)"
+reset; start startup >/dev/null
+has "журнал: закрытых нет, всё проверено" "outcome=no-closed unchecked=0" "$(tl outcome unchecked)"
+reset; ln -s "$proj" "$work/projlink"; marker a "$dead_pid" "$dead_started" "$proj" "$note" "та же строка"; marker b 99989 "$dead_started" "$work/projlink" "$note" "через ссылку"
+CMP=0 start startup "$proj" HANDOFF_TEST_BUDGET=0 >/dev/null; rm -f "$work/projlink"
+same "строка: после срока папка сравнивается как написана, ссылка не раскрывается" "Hats handoff: could not check 1 note in time, none listed" "$(told)"
+reset; printf '{"pid":4242,"started":"%s","cwd":"%s","note":"%s","topic":"x\\udc80","saved_at":"%s"}' "Mon Nov 9 10:00:00 2026" "$proj" "$note" "$(now)" >"$markers/a.json"
+out=$(CMP=0 start clear)
+empty "строка: текст модели не записать в UTF-8 — модели ничего" "$out"
+same "строка: текст модели не записать — пользователю, что упало" "Hats handoff: failed (UnicodeEncodeError), see $markers/runs.log" "$(told)"
+reset; mine; start clear "$proj" CLAUDE_CONFIG_DIR="$work/$(printf 'c%.0s' $(seq 1 3000))" HANDOFF_PROCESS="x:y" >/dev/null
+has "строка: путь журнала длиннее предела — строка об ошибке всё равно есть" "Hats handoff: failed (ValueError), see $work/ccc" "$(told)"
+same "строка: путь журнала длиннее предела — строка ровно 2000 единиц UTF-16" "2000" "$(told | python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')"
+reset; mine; out=$(CMP=0 start clear "$proj" LC_ALL=en_US.ISO8859-1)
+has "строка: stdout в Latin-1 — записка модели всё равно отдаётся" "continues the note \"задача А\"" "$out"
+same "строка: stdout в Latin-1 — и строка пользователю" "Hats handoff: continuing anchor \"задача А\" — $real_note" "$(told)"
+harness() {  # harness <сессия> <код на Python, правит scope до запуска> — хук через exec, stdout и stderr вместе
+  printf '{"session_id":"%s","cwd":"%s","source":"clear"}' "$1" "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
+path = sys.argv[1]
+scope = {
+    "__name__": "hook",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+exec(sys.argv[2], {
+    "scope": scope,
+    "os": os,
+})
+sys.exit(scope["main"](["start"]))' "$HOOK" "$2" 2>&1
+}
+reset; mine; out=$(harness e1 'def broken(*args):
+    raise RuntimeError("after the print")
+scope["record_handed"] = broken')
+same "строка: падение после печати — в выводе один объект" "1" "$(printf '%s\n' "$out" | grep -c .)"
+has "строка: падение после печати — это записка" "continues the note" "$(printf '%s' "$out" | model_of)"
+lacks "строка: падение после печати — строки об ошибке нет" "failed (" "$out"
+has "журнал: падение после печати" "outcome=error error=RuntimeError" "$(tl outcome error)"
+reset; mine; out=$(harness o1 'record = scope["record_handed"]
+def noted(*args):
+    os.write(2, b"RECORDED\n")
+    record(*args)
+scope["record_handed"] = noted')
+has "после /clear сначала вывод и сброс буфера" "continues the note" "$(printf '%s\n' "$out" | sed -n 1p | model_of)"
+same "после /clear «отдано» записано после вывода" "RECORDED" "$(printf '%s\n' "$out" | sed -n 2p)"
+if [ -f "$markers/a.handed" ]; then ok; else bad "после /clear «отдано» записано" "a.handed нет"; fi
+for cwd_json in null '""' 5; do
+  reset; out=$(printf '{"session_id":"s","cwd":%s,"source":"clear"}' "$cwd_json" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1)
+  empty "негодная папка ($cwd_json) — тишина" "$out"; has "негодная папка ($cwd_json) — в журнале skipped" "outcome=skipped" "$(tl outcome)"
+done
+reset; empty "ввод не словарь — тишина" "$(printf '[]' | env HOME="$work" python3 -I "$HOOK" start 2>&1)"
+reset; empty "ввод с глубокой вложенностью — тишина" "$(python3 -I -c 'print("[" * 100000 + "]" * 100000)' | env HOME="$work" python3 -I "$HOOK" start 2>&1)"
+
+
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
 plug="$work/plug"
 plugin_at() {  # plugin_at <hooks.json или -> <yes|no — класть ли plugin.json>
@@ -1054,8 +1358,12 @@ else:
 has "hooks.json: matcher хука старта покрывает startup и clear" "startup=True clear=True" "$(shipped matcher)"
 has "hooks.json: команда называет scripts/handoff.py плагина, и он есть" "script=$plugin_root/scripts/handoff.py exists=True start=True" "$(shipped script)"
 reset; mine; plugin_at "$plugin_root/hooks/hooks.json" yes; command_line=$(shipped command)
-out=$(printf '{"session_id":"sh1","cwd":"%s","source":"clear"}' "$proj" | env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" sh -c "$command_line" 2>&1)
+call=$(open_call "$(printf '{"session_id":"sh1","cwd":"%s","source":"clear"}' "$proj")"); compare=0
+run_reference "$call" CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" && compare=1
+env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" sh -c "$command_line" <"$call/in" >"$call/out" 2>"$call/err"; rc=$?
+out=$(judge "$call" "hooks.json через sh -c, строка $LINENO" "$compare" "$rc"); rm -rf "$call"
 has "hooks.json: команда как есть через sh -c отдаёт записку после /clear" "continues the note \"задача А\"" "$out"
+has "hooks.json: команда как есть через sh -c — и строка пользователю" "Hats handoff: continuing anchor \"задача А\"" "$(told)"
 mkdir -p "$work/darwin"; printf '#!/bin/sh\necho Darwin\n' >"$work/darwin/uname"; chmod +x "$work/darwin/uname"
 out=$(printf '{"session_id":"sh1","cwd":"%s","source":"clear"}' "$proj" | env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" \
   PATH="$work/darwin:$PATH" HATS_SYSTEM_PYTHON="$(command -v python3)" HATS_XCODE_SELECT=/usr/bin/false sh -c "$command_line" 2>&1); rc=$?
@@ -1169,6 +1477,15 @@ for p in plugins:
         problems.append(f"{label}: plugin.json names {name!r}")
 print("; ".join(problems) if problems or not plugins else f"catalog ok: {len(plugins)}")' "$(cd "$plugin_root/.." && pwd)" 2>&1)
 has "marketplace.json: каждый источник — папка с plugin.json того же имени" "catalog ok:" "$out"
+
+# --- сверка: форма вывода каждого вызова через помощники и совпадение с образцом
+if [ -s "$OLD_HOOK" ]; then ok; else bad "сверка: образец" "нет файла $OLD_HOOK"; fi
+begun=0; [ -f "$work/compares.log" ] && begun=$(wc -l <"$work/compares.log" | tr -d ' ')
+compared=$(awk -F'\t' '$2 == 1' "$work/checks.log" | wc -l | tr -d ' ')
+if [ "$begun" -gt 0 ] && [ "$begun" -eq "$compared" ]; then ok; else bad "сверка: строк сверки столько, сколько вызовов её начало" "начали $begun, строк $compared"; fi
+while IFS=$'\t' read -r verdict _ label problem; do
+  if [ "$verdict" = ok ]; then ok; else bad "$label" "$problem"; fi
+done <"$work/checks.log"
 
 total=$((pass+fail))
 if [ $fail -eq 0 ]; then echo "handoff: $pass/$total прошли"; exit 0; fi

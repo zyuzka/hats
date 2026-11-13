@@ -170,6 +170,14 @@ A Claude Code plugin that ships with Hats: the command «анкор» (`anchor`,
 resume note, and the next session in the same folder is offered it. What it writes and where is under
 [`plugin/`](#what-else-is-here) below.
 
+When a session starts, and after `/clear`, Claude Code shows one line from the plugin under its logo:
+`SessionStart:startup says: Hats handoff: …` (`SessionStart:clear says: …` after `/clear`). After
+`/clear` it names the anchor the session continues and its note, or says that the anchor already went
+to another session or that this Claude process has none; in a new session it lists the notes that
+closed sessions left in this folder, or says there are none or that some could not be checked in
+time. The line is for you only: what the model receives is unchanged (checked with Claude Code
+2.1.323).
+
 Hats never installs it on its own. Open **Settings › General › Session handoff**: the row says whether
 the plugin is installed, from where, and whether it is switched off in Claude Code. **Install…** first
 checks what the plugin needs, then shows what it will install and into which Claude Code settings
