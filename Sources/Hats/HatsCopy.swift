@@ -262,4 +262,31 @@ enum HatsCopy {
         let minutes = (Int(seconds) % 3600) / 60
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
+
+    static let contextHeader = "Context"
+
+    static func getContextLabel(
+        title: String?,
+        cwd: String?,
+        session: String
+    ) -> String {
+        let named = Journal.onOneLine(title ?? "").trimmingCharacters(in: .whitespaces)
+        if !named.isEmpty { return named }
+        let folder = (Journal.onOneLine(cwd ?? "") as NSString).lastPathComponent
+        if !folder.isEmpty, folder != "/" { return folder }
+
+        return String(session.prefix(8))
+    }
+
+    static func getContextLabel(_ label: String, telling session: String) -> String {
+        "\(label) · \(session.prefix(4))"
+    }
+
+    static func getContextValue(_ window: SessionWindow) -> String {
+        if window.state == .compacted { return "compacted" }
+        if let percent = window.percent { return "\(percent)%" }
+        guard let tokens = window.tokens else { return "" }
+
+        return "\(tokens / 1000 + (tokens % 1000 >= 500 ? 1 : 0))k"
+    }
 }

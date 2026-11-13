@@ -209,6 +209,20 @@ sessions get the new version after `/reload-plugins`, new ones when they start.
 
 Without Hats, the same commands work in a terminal.
 
+The plugin also tells Hats how full each session's context window is. After every prompt, every tool
+call, the end of every turn and a compaction it reads the end of the session's transcript and writes
+the number Claude Code's status line shows into
+`~/Library/Application Support/Hats/session-windows/<session>.json`; when the session ends (`/exit`,
+`/clear`, logout) its file is removed. It writes only where Hats has run — the plugin never creates
+`~/Library/Application Support/Hats` — and subagents and sessions without a person (`claude -p`, the
+SDK) write nothing; files older than 30 days are removed. The menu then shows, under **Context**, up
+to five sessions measured in the last hour, the fullest first: the percent, the token count when the
+model's window size is not known, or `compacted` right after a compaction. A session is named by the
+title you gave it with `/rename`, else by its folder; two rows with the same name get the first four
+characters of their session id. Hats writes back `hat-usage.json` beside that folder — the usage of
+the hat you wear and whether another hat could take over — for the plugin's later window and limit
+thresholds; nothing reads it yet.
+
 ## Supported CLIs
 
 | Tool | Status |
@@ -279,7 +293,9 @@ ignores it.
   top of `MEMORY.md` points to that index — so a session finds the note even after the plugin is
   removed. The plugin alone writes the index; do not edit it. So the plugin writes into Claude Code's
   memory folder: it creates `MEMORY.md` with that line when there is none, and asks the session to add
-  the line at the top of an existing one. With Claude Code's memory switched off
+  the line at the top of an existing one. It also keeps one small file per session in
+  `~/Library/Application Support/Hats/session-windows/` (see [Session handoff](#session-handoff)).
+  With Claude Code's memory switched off
   the notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
   them. Your own steps run with it, from two optional files:

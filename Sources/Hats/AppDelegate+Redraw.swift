@@ -43,7 +43,9 @@ extension AppDelegate {
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         snapshot.sessionHandoff = handoff.row
+        snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
         popover.model.snapshot = snapshot
+        writeTheHatUsage()
 
         if let blink {
             blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)
@@ -56,6 +58,10 @@ extension AppDelegate {
                                          popoverClosing: popover.isClosing,
                                          hasBanner: snapshot.banner != nil)
         if sighting == .seen { markBannerSeen() }
+    }
+
+    func showTheContextRows() {
+        popover.model.snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
     }
 
     private func markState(_ snapshot: HatsSnapshot) -> MarkState {

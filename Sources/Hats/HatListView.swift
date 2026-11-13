@@ -12,6 +12,7 @@ struct HatListView: View {
             if let banner = snapshot.banner { bannerView(banner) }
             if let stranded = snapshot.deadEndBanner(now: Date()) { strandedView(stranded) }
             if snapshot.rows.isEmpty { empty } else { list }
+            if !snapshot.contextRows.isEmpty { context }
             Divider().padding(.vertical, 4)
             footer
         }
@@ -46,6 +47,22 @@ struct HatListView: View {
                 )
             }
         }
+    }
+
+    private var context: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(HatsCopy.contextHeader).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary).padding(.bottom, 2)
+            ForEach(snapshot.contextRows) { row in
+                HStack {
+                    Text(row.label).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Text(row.value).monospacedDigit()
+                }
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 14).padding(.top, 6)
     }
 
     private func handover(for row: HatRowState) -> String? {
