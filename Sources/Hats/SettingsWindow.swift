@@ -12,6 +12,8 @@ struct SettingsTabs: View {
                 .tabItem { Text("Hats") }
             AutoSwitchPanel(model: model)
                 .tabItem { Text("Auto-switch") }
+            ContextThresholdsPanel(model: model)
+                .tabItem { Text("Context") }
             GatewayPanel(model: model)
                 .tabItem { Text("Gateway") }
         }

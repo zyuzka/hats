@@ -51,7 +51,7 @@ enum SessionWindowFile {
         return getRecord(parsing: data, name: name)
     }
 
-    private static func getBytesUpToTheCap(_ descriptor: Int32) -> Data? {
+    static func getBytesUpToTheCap(_ descriptor: Int32) -> Data? {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 16 * 1024)
         while data.count <= sizeCap {

@@ -141,6 +141,7 @@ protocol HatsActions: AnyObject {
     func copyVariables()
     func openLog()
     func updateAutoSwitch(_ policy: AutoSwitchPolicy)
+    func updateContextThresholds(_ thresholds: ContextThresholds)
     func switchBack()
     func openSessions()
     func showSettings()
