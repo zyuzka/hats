@@ -25,6 +25,13 @@ for everyone; the session still answers in the user's language.
 Cost, measured on save-state: of 48 sessions that called the skill by 2026-11-11, 45 had no prompt
 after it and three had 2, 3 and 5 — 10 extra lines in all.
 
+A prompt that is itself the command /hats:anchor, after any leading spaces and with or without
+arguments, gets no reminder: the command has already loaded the skill's current text. The plugin's
+own mod runs that command at its threshold, and Claude Code hands this hook exactly "/hats:anchor"
+then; with the reminder there, the session would call the skill again through the Skill tool, which
+in the default permission mode asks the user first (measured 2026-11-14, Claude Code 2.1.325: three
+automatic anchors with the reminder silent called no Skill and asked nothing about it).
+
 Every reminder leaves one row in <config>/state/anchor-nudge.tsv, where <config> is $CLAUDE_CONFIG_DIR
 or else ~/.claude: UTC time, session id, "reminded". Never the prompt text. Past 256 000 bytes the log
 moves to anchor-nudge.tsv.1 before the next row. A failed write does not stop the reminder.
@@ -48,6 +55,7 @@ REMINDER = (
     "text, not the copy loaded earlier: that copy may be outdated and miss a step. A request to save "
     "in other words is not this command. Otherwise ignore this note."
 )
+COMMAND = re.compile(r"\s*/hats:anchor(?:\s.*)?", re.S)
 LOG = "anchor-nudge.tsv"
 LOG_LIMIT = 256_000
 
@@ -92,6 +100,9 @@ def main():
     except ValueError:
         return 0
     if not isinstance(data, dict):
+        return 0
+    prompt = data.get("prompt")
+    if isinstance(prompt, str) and COMMAND.fullmatch(prompt):
         return 0
     transcript = data.get("transcript_path")
     if not isinstance(transcript, str) or not transcript or not saved_before(transcript):

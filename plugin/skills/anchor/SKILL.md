@@ -41,13 +41,16 @@ let one of them write the resume note instead of this skill.
    `no own steps` means there are none.
 1. **Each repository this session touched** — the working folder, if it is a repository, and any
    other repository you wrote to. In the working folder run the plain commands, each as its own call
-   and written exactly so — Claude Code asks for approval of an unquoted `@{u}..`:
-   - `git status --short` — uncommitted files.
-   - `git log --oneline '@{u}..'` — commits not pushed.
+   and written exactly so — Claude Code asks for approval of `@{u}`, quoted or not, and of `git cherry`:
+   - `git status -sb` — uncommitted files, and on its first line the branch and its upstream,
+     `## <branch>...<upstream> [ahead <n>]`.
+   - `git log --oneline <upstream>..` — commits not pushed, `<upstream>` as that line names it (for
+     example `origin/main`); only when the line says `ahead`.
    - `git stash list` — a stash you made is named, never left silent.
 
-   If `git log` says the branch has no upstream, report "no upstream" and the branch's commits not on
-   its base branch (`git log --oneline <base>..`); on a detached HEAD, say so. For another repository run the same three as `git -C <its literal absolute path> …`, one
+   If the first line names no upstream (`## <branch>` alone) or ends in `[gone]`, report "no upstream"
+   and the branch's commits not on its base branch (`git log --oneline <base>..`); `## HEAD (no branch)`
+   is a detached HEAD, say so. For another repository run the same three as `git -C <its literal absolute path> …`, one
    repository per command. Commit or push only what this session's work already called for and the
    project's rules allow; name everything else in the summary.
 2. **Background work** — list the background tasks, monitors and subagents still running, in this

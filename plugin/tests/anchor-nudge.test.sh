@@ -52,6 +52,19 @@ reminded "набранная команда /hats:anchor" "anchor"
 printf "$typed" "anchor" "anchor" >"$tr"
 reminded "набранная команда без приставки" "anchor"
 
+{ line "x"; printf "$call" "hats:anchor"; } >"$tr"
+silent "подсказка — сама команда /hats:anchor (её запускает мод)" "/hats:anchor"
+silent "команда /hats:anchor после пробелов" "  /hats:anchor"
+silent "команда /hats:anchor с аргументами" "/hats:anchor сейчас"
+silent "команда /hats:anchor, дальше новая строка с текстом" $'/hats:anchor\nи ещё'
+reminded "/hats:anchored — не эта команда" "/hats:anchored"
+reminded "/anchor без приставки — не эта команда" "/anchor"
+reminded "команда внутри текста — напоминание" "запусти /hats:anchor"
+reminded "команда в другом регистре — напоминание" "/HATS:ANCHOR"
+rm -rf "$work/.claude"; run "/hats:anchor" >/dev/null
+if [ ! -e "$work/.claude/state/anchor-nudge.tsv" ]; then ok
+else bad "команда /hats:anchor — строки журнала нет" "$(cat "$work/.claude/state/anchor-nudge.tsv")"; fi
+
 { line "сохранись"; printf "$call" "save-state"; } >"$tr"
 silent "вызывался только save-state" "сохранись"
 printf "$typed" "save-state" "save-state" >"$tr"

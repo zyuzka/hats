@@ -242,6 +242,23 @@ characters of their session id. Hats writes back `hat-usage.json` beside that fo
 the hat you wear and whether another hat could take over — for the plugin's later window and limit
 thresholds; nothing reads it yet.
 
+The plugin also acts on the window, through a part that runs inside Claude Code (a mod; Claude Code
+2.1.323 or newer). When a session's window passes 45%, the model is asked to tell you so in one line.
+When a turn ends past 55%, the plugin shows `● hats: context 56% (anchor threshold 55%) — anchoring
+this session.` and runs `/hats:anchor` itself, your own steps included. It says `anchored at …` and
+offers `/clear` (the note comes back after it) only once it has checked the save: a marker written in
+that turn, and the note rewritten in it and not changed by anyone since. Otherwise it says why the
+session was not anchored, and nothing else happens. A threshold fires once, and again only after the
+window has been below it; a session never seen below 45% — on a model with a 200 thousand token
+window that can be one already fuller at its first answer — gets neither. «анкор» said by you in a
+turn that ends past 55% counts as that save. If the session wrote to another repository, Claude Code
+may ask your permission to check it, and the save waits for your answer. Subagents and sessions
+without a person (`claude -p`, the SDK) are left alone; a teammate of an agent team that runs in its
+own tmux pane is a session of its own to the plugin, and is warned and anchored like any other. The thresholds and the action come from `window-thresholds.json` in
+`~/Library/Application Support/Hats`, which Hats will write from its settings; without it the plugin
+takes 45%, 55% and the `/clear` offer. Each session's stage goes to `session-thresholds/<session>.json`
+beside it, but only into a folder Hats made.
+
 ## Supported CLIs
 
 | Tool | Status |

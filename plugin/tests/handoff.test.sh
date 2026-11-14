@@ -419,6 +419,31 @@ if [ "$len" -le 9501 ]; then ok; else bad "вывод не длиннее 9 500 
 # --- сохранение
 reset; out=$(save "$proj" "$note" "задача А")
 has "save: отметка записана" "marker:" "$out"
+if printf '%s\n' "$out" | python3 -I -c 'import re,sys; m=re.escape(sys.argv[1]); lines=sys.stdin.read().splitlines()
+sys.exit(0 if lines and re.fullmatch("marker: " + m + r"/[0-9]+-[^/]+\.json", lines[0]) else 1)' "$markers"; then ok
+else bad "save: первая строка — ровно «marker: <config>/state/handoff/<pid>-<время>.json», её читает мод" "${out:0:300}"; fi
+if python3 -I -c 'import json,re,sys; m=json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", m["saved_at"]) else 1)' \
+  "$markers/4242-Mon-Nov-9-10-00-00-2026.json" 2>/dev/null; then ok
+else bad "save: saved_at отметки — YYYY-MM-DDTHH:MM:SSZ, его читает мод" "$(cat "$markers"/*.json 2>&1 | head -5)"; fi
+out=$(python3 -I - "$HOOK_SOURCE" "$plugin_root/tests/mod/thresholds.test.ts" <<'PYEOF' 2>&1
+import importlib.util
+import re
+import sys
+
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("handoff_under_test", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+source = open(sys.argv[2], encoding="utf-8").read()
+table = re.findall(r"\{ line: '((?:[^'\\]|\\.)*)', isHeading: (true|false) \}", source)
+if len(table) < 20:
+    sys.exit(f"the heading table of the mod has {len(table)} rows")
+wrong = [line for line, flag in table if bool(module.NOW_HEADING.match(line.replace("\\r", "\r"))) != (flag == "true")]
+print("disagree: " + repr(wrong) if wrong else f"agree: {len(table)}")
+PYEOF
+)
+case "$out" in "agree: "*) ok ;; *) bad "NOW_HEADING handoff.py и таблица заголовков мода совпадают" "${out:0:300}" ;; esac
 if [ -f "$markers/4242-Mon-Nov-9-10-00-00-2026.json" ]; then ok; else bad "save: файл отметки по процессу" "$(ls "$markers")"; fi
 reset; out=$(save "$other" "$note" "задача А")
 has "save: папка без хука — выключено" "handoff is off" "$out"
