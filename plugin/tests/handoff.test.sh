@@ -22,8 +22,14 @@
 # строк сверки обязано равняться числу вызовов, начавших сверку.
 #
 # Срок образца: он держит «текст модели не изменился». Задача, которая меняет текст модели
-# намеренно (8c и дальше), в том же коммите заменяет образец копией своего handoff.py и пишет
-# здесь, с какого коммита образец; правка текста модели без замены образца красит набор.
+# намеренно, в том же коммите заменяет образец копией своего handoff.py и пишет здесь, с какого
+# коммита образец; правка текста модели без замены образца красит набор. Задача 8c образец не
+# заменила: её строки модели появляются только при файлах пометки (taken/), а без них текст —
+# символ в символ прежний; вызовы с файлами пометки, где текст меняется, идут с CMP=0.
+#
+# Задача 8c: хук took (после Read) гоняется помощниками took и took_raw со входом из замера
+# 2026-11-13; его вывод проверяется той же формой с hookEventName PostToolUse, без сверки.
+# Читатели — живые процессы: оболочка теста ($$) и фоновые sleep (live), гасятся при выходе.
 set -uo pipefail
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,7 +37,7 @@ HOOK_SOURCE="${HOOK_UNDER_TEST:-$plugin_root/scripts/handoff.py}"
 export CLAUDE_CODE_SESSION_ATTENDED=1; unset CLAUDE_CODE_ENTRYPOINT CLAUDE_PID CLAUDE_CONFIG_DIR
 pass=0; fail=0; failures=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
-trap 'rm -rf "$work"' EXIT
+trap 'kill $(cat "$work/sleepers" 2>/dev/null) 2>/dev/null; rm -rf "$work"' EXIT
 mkdir -p "$work/loose"; HOOK="$work/loose/handoff.py"; cp "$HOOK_SOURCE" "$HOOK"
 mkdir -p "$work/before"; OLD_HOOK="$plugin_root/tests/fixtures/handoff-reference.py"
 cat >"$work/before/run.py" <<'EOF'
@@ -52,6 +58,7 @@ import sys
 import unicodedata
 
 call, label, compare, code, box = sys.argv[1:6]
+event = sys.argv[6] if len(sys.argv) > 6 else "SessionStart"
 raw = open(call + "/out", "rb").read()
 err = open(call + "/err", "rb").read()
 problems = []
@@ -76,8 +83,8 @@ CONTROL = {
 def check_hook(hook):
     if not isinstance(hook, dict) or set(hook) != HOOK_FIELDS:
         return None, "hookSpecificOutput не из двух полей: %r" % (hook,)
-    if hook["hookEventName"] != "SessionStart":
-        return None, "hookEventName не SessionStart: %r" % (hook["hookEventName"],)
+    if hook["hookEventName"] != event:
+        return None, "hookEventName не %s: %r" % (event, hook["hookEventName"])
     if not isinstance(hook["additionalContext"], str) or not hook["additionalContext"]:
         return None, "additionalContext пуст или не строка"
     return hook["additionalContext"], None
@@ -193,8 +200,8 @@ run_reference() {  # run_reference <папка вызова> <env...> — обр
   env "$@" python3 -I "$work/before/run.py" "$OLD_HOOK" <"$call/in" >"$call/old" 2>/dev/null
   return 0
 }
-judge() {  # judge <папка вызова> <подпись> <сверка 0|1> <код хука> — форма и сверка; печатает текст модели
-  python3 -I "$work/shape.py" "$1" "$2" "$3" "$4" "$work" ||
+judge() {  # judge <папка вызова> <подпись> <сверка 0|1> <код хука> [событие] — форма и сверка; печатает текст модели
+  python3 -I "$work/shape.py" "$1" "$2" "$3" "$4" "$work" "${5:-SessionStart}" ||
     printf 'bad\t%s\t%s\tпроверка формы вышла с кодом %s\n' "$3" "$2" "$?" >>"$work/checks.log"
 }
 start() {  # start <source> [cwd] [env...] — печатает текст модели; строка пользователю — told, весь stdout — heard; CMP=0 — без сверки
@@ -859,7 +866,7 @@ for case_ in "${bad_cases[@]}"; do
 done
 rm -f "$markers"/*; mine a "$proj" "$own_dir/x.md" "своя"
 has "/clear: рядом своя записка своей папки отдаётся" "legit line" "$(start clear)"
-rm -f "$markers"/*; marker good "$dead_pid" "$dead_started" "$proj" "$own_dir/x.md" "своя"
+rm -rf "$markers"/*; marker good "$dead_pid" "$dead_started" "$proj" "$own_dir/x.md" "своя"
 i=0; for case_ in "${bad_cases[@]}"; do i=$((i + 1)); marker "b$i" $((99970 + i)) "$dead_started" "$proj" "${case_#*|}" "мимо: ${case_%%|*}"; done
 out=$(start startup); has "новая сессия: своя записка в списке" "\"своя\"" "$out"
 lacks "новая сессия: отметки руками мимо своей папки не в списке" "мимо" "$out"; lacks "новая сессия: мимо своей папки — и не в строке пользователю" "мимо" "$(told)"
@@ -1395,7 +1402,21 @@ words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
 script = [w for w in words if w.endswith("anchor-nudge.py")][0]
 print("script=%s exists=%s timeout=%s" % (script, os.path.isfile(script), hook.get("timeout")))' "$1" "$plugin_root" 2>&1
 }
-has "hooks.json: все семь хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=7 py.sh=True" "$(hooked wrapper)"
+has "hooks.json: все восемь хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=8 py.sh=True" "$(hooked wrapper)"
+read_hook=$(python3 -I -c 'import json,os,shlex,sys
+root = sys.argv[1]
+groups = json.load(open(os.path.join(root, "hooks", "hooks.json"), encoding="utf-8"))["hooks"]["PostToolUse"]
+found = [(g, h) for g in groups for h in g["hooks"] if "handoff.py" in h.get("command", "")]
+if len(found) != 1:
+    sys.exit("commands with handoff.py under PostToolUse: %d" % len(found))
+group, hook = found[0]
+words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
+others = [g for g in groups if g is not group]
+background = all(h.get("async") is True and "matcher" not in g for g in others for h in g["hooks"])
+print("matcher=%s async=%s timeout=%s last=%s hooks=%d groups=%d window=%s" % (
+    group.get("matcher"), hook.get("async", False), hook.get("timeout"), words[-1], len(group["hooks"]), len(groups), background))' "$plugin_root" 2>&1)
+has "hooks.json: took — своя синхронная группа PostToolUse с matcher Read, рядом фоновая группа window-fill без матчера" \
+  "matcher=Read async=False timeout=5 last=took hooks=1 groups=2 window=True" "$read_hook"
 has "hooks.json: UserPromptSubmit запускает scripts/anchor-nudge.py плагина, и он есть" \
   "script=$plugin_root/scripts/anchor-nudge.py exists=True timeout=5" "$(hooked nudge)"
 nudge_line=$(hooked command)
@@ -1477,6 +1498,740 @@ for p in plugins:
         problems.append(f"{label}: plugin.json names {name!r}")
 print("; ".join(problems) if problems or not plugins else f"catalog ok: {len(plugins)}")' "$(cd "$plugin_root/.." && pwd)" 2>&1)
 has "marketplace.json: каждый источник — папка с plugin.json того же имени" "catalog ok:" "$out"
+
+# --- 8c: пометка записки, которую читает другая живая сессия (хук took после Read)
+taken="$markers/taken"
+took_in() {  # took_in <сессия> <путь> [ещё поля] — вход PostToolUse/Read, поля как в замере 2026-11-13
+  printf '{"cwd":"%s","duration_ms":4,"effort":"high","hook_event_name":"PostToolUse","permission_mode":"default","prompt_id":"p-1","scratchpad_dir":"%s","session_id":"%s","tool_input":{"file_path":"%s"},"tool_name":"Read","tool_response":{"file":{"filePath":"%s","content":"x","numLines":1,"startLine":1,"totalLines":1},"type":"text"},"tool_use_id":"toolu_1","transcript_path":"%s"%s}' \
+    "$proj" "$work/pad" "$1" "$2" "$2" "$work/t.jsonl" "${3:-}"
+}
+run_took() {  # run_took <ввод> <pid:started> <папка вызова> [env...] — хук took; stdout, stderr и код — в папку вызова
+  local input="$1" p="$2" call="$3"; shift 3
+  mkdir -p "$call"; printf '%s' "$input" >"$call/in"
+  timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$p" "$@" python3 -I "$HOOK" took <"$call/in" >"$call/out" 2>"$call/err"; echo $? >"$call/rc"
+}
+judged() {  # judged <папка вызова> <подпись> — форма вывода took (PostToolUse); печатает текст модели, строка пользователю — told
+  rm -f "$work/told" "$work/heard"; judge "$1" "$2" 0 "$(cat "$1/rc")" PostToolUse
+}
+took() {  # took <pid:started> <сессия> <путь> [env...] — печатает текст модели; EXTRA — ещё поля входа
+  local call; call=$(mktemp -d "$work/call.XXXXXX")
+  run_took "$(took_in "$2" "$3" "${EXTRA:-}")" "$1" "$call" "${@:4}"; judged "$call" "took, строка ${BASH_LINENO[0]}"; rm -rf "$call"
+}
+raw_took() {  # raw_took <ввод как есть> [env...] — печатает текст модели
+  local call; call=$(mktemp -d "$work/call.XXXXXX")
+  run_took "$1" "$own" "$call" "${@:2}"; judged "$call" "took, сырой ввод, строка ${BASH_LINENO[0]}"; rm -rf "$call"
+}
+took_ms() {  # took_ms <pid:started> <сессия> <путь> [env...] — печатает время одного процесса хука в мс; stdout хука — в $work/ms.out; форма и told — как у took, после замера
+  local p="$1" s="$2" f="$3" call; shift 3; call=$(mktemp -d "$work/call.XXXXXX"); took_in "$s" "$f" "${EXTRA:-}" >"$call/in"
+  CALL="$call" python3 -I -c 'import os,subprocess,sys,time
+call = os.environ["CALL"]
+t = time.monotonic()
+done = subprocess.run(sys.argv[1:], stdin=open(call + "/in", "rb"), capture_output=True)
+ms = int((time.monotonic() - t) * 1000)
+open(call + "/out", "wb").write(done.stdout)
+open(call + "/err", "wb").write(done.stderr)
+open(call + "/rc", "w").write("%d\n" % done.returncode)
+print(ms)' env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$p" "$@" python3 -I "$HOOK" took
+  cp "$call/out" "$work/ms.out"; judged "$call" "took с замером, строка ${BASH_LINENO[0]}" >/dev/null; rm -rf "$call"
+}
+live() {  # live — фоновый sleep; печатает «pid:время запуска», гасится при выходе из набора
+  sleep 300 >/dev/null 2>&1 &
+  local p=$!; echo "$p" >>"$work/sleepers"
+  printf '%s:%s' "$p" "$(TZ=UTC LC_ALL=C ps -o lstart= -p "$p" | xargs)"
+}
+pid_of() { printf '%s' "${1%%:*}"; }
+key_of() { python3 -I -c 'import hashlib,os,sys; print(hashlib.sha256(os.fsencode(sys.argv[1])).hexdigest())' "$1"; }
+reads_of() { python3 -I -c 'import re,sys; p, _, s = sys.argv[1].partition(":"); print("%s-%s.reads" % (p, re.sub(r"[^0-9A-Za-z]+", "-", s).strip("-")))' "$1"; }
+reader_json() {  # reader_json <pid:started> <сессия> [время] — один читатель
+  printf '{"pid":%s,"started":"%s","session":"%s","at":"%s"}' "${1%%:*}" "${1#*:}" "$2" "${3:-2026-11-13T09:41:00Z}"
+}
+mark_file() {  # mark_file <настоящий путь записки> <JSON-список читателей> — файл пометки как есть
+  mkdir -p "$taken"; printf '{"note":"%s","readers":%s}' "$1" "$2" >"$taken/$(key_of "$1").json"
+}
+mark_of() { printf '%s' "$taken/$(key_of "$1").json"; }
+readers_of() {  # readers_of <настоящий путь записки> — «pid/сессия» по порядку; «нет», если файла нет
+  python3 -I -c 'import hashlib,json,os,sys
+path = os.path.join(sys.argv[2], hashlib.sha256(os.fsencode(sys.argv[1])).hexdigest() + ".json")
+if not os.path.lexists(path):
+    sys.exit("нет")
+print(" ".join("%s/%s" % (r["pid"], r["session"]) for r in json.load(open(path, encoding="utf-8"))["readers"]))' "$1" "$taken" 2>&1
+}
+at_of() {  # at_of <настоящий путь записки> <pid:started> — время первого чтения этим процессом
+  python3 -I -c 'import hashlib,json,os,sys
+path = os.path.join(sys.argv[3], hashlib.sha256(os.fsencode(sys.argv[1])).hexdigest() + ".json")
+print(next((r["at"] for r in json.load(open(path, encoding="utf-8"))["readers"] if r["pid"] == int(sys.argv[2])), "нет"))' "$1" "${2%%:*}" "$taken" 2>&1
+}
+keys_of() { python3 -I -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["keys"]))' "$taken/$(reads_of "$1")" 2>&1; }
+item_of() { printf 'session %s (pid %s, since %s)' "$2" "$(pid_of "$1")" "${3:-2026-11-13T09:41:00Z}"; }
+tmp_left() { ls -A "$taken" 2>/dev/null | grep -c '^\.tmp-'; }
+mkps() { mkdir -p "$work/psbin"; printf '#!/bin/bash\n%s\n' "$1" >"$work/psbin/ps"; chmod +x "$work/psbin/ps"; }
+wait_for() { local i; for i in $(seq 1 250); do eval "$1" && return 0; sleep 0.02; done; return 1; }
+hold_lock() {  # hold_lock <файл> <секунды> — держит flock в фоне; печатает pid держателя, когда блокировка взята
+  rm -f "$work/locked"
+  python3 -I -c 'import fcntl,os,sys,time; fd=os.open(sys.argv[1],os.O_RDWR|os.O_CREAT); fcntl.flock(fd,fcntl.LOCK_EX); open(sys.argv[2],"w").close(); time.sleep(float(sys.argv[3]))' "$1" "$work/locked" "$2" >/dev/null 2>&1 &
+  local h=$!; wait_for '[ -f "$work/locked" ]'; printf '%s' "$h"
+}
+fill_fifo() {  # fill_fifo <канал> — держит канал открытым и заполненным до отказа, никто не читает; печатает pid
+  local fifo="$1"
+  rm -f "$fifo" "$fifo.ready"; mkfifo "$fifo"
+  python3 -I -c 'import os,sys,time
+r = os.open(sys.argv[1], os.O_RDONLY | os.O_NONBLOCK)
+w = os.open(sys.argv[1], os.O_WRONLY | os.O_NONBLOCK)
+try:
+    while True:
+        os.write(w, b"x" * 4096)
+except BlockingIOError:
+    pass
+open(sys.argv[1] + ".ready", "w").close()
+time.sleep(30)' "$fifo" >/dev/null 2>&1 &
+  local f=$!; echo "$f" >>"$work/sleepers"; wait_for '[ -e "$fifo.ready" ]'; printf '%s' "$f"
+}
+tls() {  # tls <сессия> <поля...> — последняя строка журнала с этой сессией
+  python3 -I -c 'import json,sys
+lines = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8").read().splitlines() if l.strip()]
+found = [d for d in lines if d.get("session") == sys.argv[2]]
+d = found[-1] if found else {}
+print(" ".join(f"{k}={d.get(k)}" for k in sys.argv[3:]))' "$trace" "$@" 2>&1
+}
+harness_took() {  # harness_took <pid:started> <сессия> <путь> <код на Python> — took через exec, scope правится до запуска
+  local call; call=$(mktemp -d "$work/call.XXXXXX"); took_in "$2" "$3" >"$call/in"
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$1" python3 -I -c 'import os,sys
+path = sys.argv[1]
+scope = {
+    "__name__": "hook",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+exec(sys.argv[2], {
+    "scope": scope,
+    "os": os,
+})
+sys.exit(scope["main"](["took"]))' "$HOOK" "$4" <"$call/in" >"$call/out" 2>"$call/err"; echo $? >"$call/rc"
+  judged "$call" "took с подменой, строка ${BASH_LINENO[0]}"; rm -rf "$call"
+}
+nofcntl() {  # nofcntl <ввод> <pid:started> <команда> — хук без модуля fcntl, как на Windows; печатает stdout
+  printf '%s' "$1" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$2" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, sys.argv[2]]; exec(compile(open(path).read(), path, "exec"))' "$HOOK" "$3" 2>&1
+}
+user_of() { python3 -I -c 'import json,sys
+try:
+    print(json.loads(sys.stdin.read()).get("systemMessage", ""), end="")
+except ValueError as error:
+    print("не JSON: %s" % error)'; }
+closed_note() { marker "${1:-a}" "$dead_pid" "$dead_started" "$proj" "${2:-$note}" "${3:-закрытая}"; }
+ask_took='Another session may be continuing this task: continue it only if the user confirms.'
+ask_list='If the user picks it, say so and continue only if the user confirms.'
+me="$me_pid:$me_started"
+
+# --- took: первый читатель, другие живые, повторное чтение
+reset; closed_note; A=$(live); B=$(live); C=$(live)
+out=$(took "$A" sA "$note")
+empty "took: первый читатель — модели ничего" "$out"; empty "took: первый читатель — пользователю ничего" "$(heard)"
+has "took: первый читатель — журнал" "command=took outcome=took session=sA pid=$(pid_of "$A") live=0 unknown=0 warned=False" "$(tl command outcome session pid live unknown warned)"
+has "took: в журнале — настоящий путь записки" "note=$real_note" "$(tl note)"
+same "took: первый читатель записан" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+has "took: папка taken создана с правами 700" "0o700" "$(mode_of "$taken")"
+has "took: taken/.lock — права 600" "0o600" "$(mode_of "$taken/.lock")"
+same "took: свой список процесса — ключ записки" "$(key_of "$real_note")" "$(keys_of "$A")"
+has "took: файл пометки — права 600" "0o600" "$(mode_of "$(mark_of "$real_note")")"
+at_a=$(at_of "$real_note" "$A")
+case "$at_a" in 20[0-9][0-9]-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]Z) ok ;; *) bad "took: время первого чтения — в формате меток, UTC" "$at_a" ;; esac
+out=$(took "$B" sB "$note"); facts="1 other live session(s) reading this note: $(item_of "$A" sA "$at_a")"
+same "took: другая живая сессия — пользователю" "Hats handoff: $facts" "$(told)"
+same "took: другая живая сессия — модели" "[handoff] $facts. $ask_took" "$out"
+has "took: другая живая сессия — журнал" "outcome=took-shared live=1 unknown=0 warned=True" "$(tl outcome live unknown warned)"
+same "took: второй читатель записан" "$(pid_of "$A")/sA $(pid_of "$B")/sB" "$(readers_of "$real_note")"
+at_b=$(at_of "$real_note" "$B")
+out=$(took "$C" sC "$note")
+same "took: третий — о двух первых" "Hats handoff: 2 other live session(s) reading this note: $(item_of "$A" sA "$at_a"), $(item_of "$B" sB "$at_b")" "$(told)"
+before=$(cat "$(mark_of "$real_note")")
+out=$(took "$A" sA2 "$note")
+empty "took: повторное чтение тем же процессом — модели ничего" "$out"; empty "took: повторное чтение — пользователю ничего" "$(heard)"
+has "took: повторное чтение — again" "outcome=again live=2 unknown=0 warned=False" "$(tl outcome live unknown warned)"
+same "took: повторное чтение не меняет файл (время и сессия первого чтения)" "$before" "$(cat "$(mark_of "$real_note")")"
+out=$(took "$(live)" 'a/b' "$note")
+has "took: номер сессии не из SESSION_ID — предупреждён, в строке «session sA»" "session sA (pid" "$(told)"
+lacks "took: негодный номер сессии не печатается" "a/b" "$(told)"
+python3 -I -c 'import json,sys; d=json.load(open(sys.argv[1])); print([r["session"] for r in d["readers"]][-1])' "$(mark_of "$real_note")" >"$work/last-session" 2>&1
+same "took: без годного номера сессии — session null" "None" "$(cat "$work/last-session")"
+D=$(live); out=$(took "$D" sD "$note")
+has "took: читатель без номера сессии — «a session»" ", a session (pid " "$(told)"
+
+# --- took: мёртвые и непроверенные читатели
+reset; closed_note; A=$(live)
+mark_file "$real_note" "[$(reader_json "900001:$dead_started" sGone),$(reader_json "$me_pid:Thu Jan 1 00:00:00 2026" sOld),$(reader_json "$me" sMe)]"
+mkdir -p "$taken"; for r in "900001:$dead_started" "$me_pid:Thu Jan 1 00:00:00 2026" "$me"; do printf '{}' >"$taken/$(reads_of "$r")"; done
+out=$(took "$A" sA "$note")
+same "took: номер без процесса и тот же номер с другим временем запуска убраны, живой остался" "$me_pid/sMe $(pid_of "$A")/sA" "$(readers_of "$real_note")"
+same "took: о мёртвых — ни слова" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$me" sMe)" "$(told)"
+if [ ! -e "$taken/$(reads_of "900001:$dead_started")" ] && [ ! -e "$taken/$(reads_of "$me_pid:Thu Jan 1 00:00:00 2026")" ]; then ok; else bad "took: .reads мёртвых читателей удалены" "$(ls "$taken")"; fi
+if [ -e "$taken/$(reads_of "$me")" ]; then ok; else bad "took: .reads живого читателя цел" "$(ls "$taken")"; fi
+reset; closed_note; A=$(live)
+mark_file "$real_note" "[$(reader_json "900001:$dead_started" sGone),$(reader_json "$me_pid:Thu Jan 1 00:00:00 2026" sOld)]"
+out=$(took "$A" sA "$note")
+empty "took: все прежние читатели мертвы — тишина, как у первого читателя" "$out$(heard)"
+has "took: все прежние читатели мертвы — исход took" "outcome=took live=0 unknown=0 warned=False" "$(tl outcome live unknown warned)"
+same "took: все прежние читатели мертвы — убраны, новый записан" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+reset; closed_note; A=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mkps 'exit 1'
+out=$(took "$A" sA "$note" PATH="$work/psbin:$PATH"); facts="could not check 1 other session(s) that read this note: $(item_of "$me" sMe)"
+same "took: живой номер, ps — код 1 без вывода — «could not check», а не «live»" "Hats handoff: $facts" "$(told)"
+same "took: непроверенный — модели та же просьба подтверждения" "[handoff] $facts. $ask_took" "$out"
+same "took: непроверенный читатель остался в файле" "$me_pid/sMe $(pid_of "$A")/sA" "$(readers_of "$real_note")"
+has "took: непроверенный — журнал" "outcome=took-shared live=0 unknown=1 warned=True" "$(tl outcome live unknown warned)"
+reset; closed_note; A=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mkps 'sleep 10'
+ms=$(took_ms "$A" sA "$note" PATH="$work/psbin:$PATH")
+same "took: ps молчит — «could not check»" "Hats handoff: $facts" "$(told)"
+if [ "$ms" -le 3000 ]; then ok; else bad "took: ps молчит — хук в срок, ps спит 10 с" "${ms} мс"; fi
+reset; closed_note; A=$(live); S=$(live)
+mark_file "$real_note" "[$(reader_json "$me" sMe),$(reader_json "$S" sS 2026-11-13T09:42:00Z)]"
+mkps "case \" \$* \" in *\" $(pid_of "$S") \"*) sleep 10 ;; esac; exec /bin/ps \"\$@\""
+out=$(took "$A" sA "$note" PATH="$work/psbin:$PATH")
+same "took: живой и непроверенный — одной строкой, непроверенный отдельными словами" \
+  "Hats handoff: 1 other live session(s) reading this note: $(item_of "$me" sMe); could not check 1 more: $(item_of "$S" sS 2026-11-13T09:42:00Z)" "$(told)"
+has "took: живой и непроверенный — журнал" "outcome=took-shared live=1 unknown=1" "$(tl outcome live unknown)"
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe 2026-13-45T99:00:00Z)]"
+out=$(start startup); lacks "список: читатель с негодным временем — пометки нет" "reading it" "$out$(told)"
+A=$(live); out=$(took "$A" sA "$note")
+empty "took: читатель с временем 2026-13-45T99:00:00Z отброшен — предупреждения нет" "$out$(heard)"
+same "took: плохой читатель выброшен, новый записан" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+
+# --- took: гонки — три читателя через блокировку, ps вне блокировки
+reset; closed_note; A=$(live); B=$(live); C=$(live); sig="$work/sig"; rm -rf "$sig" "$work/ra" "$work/rb"; mkdir -p "$sig"
+run_took "$(took_in sA "$note")" "$A" "$work/ra" HANDOFF_TEST_PAUSE=0.6 HANDOFF_TEST_TAKEN_SIGNAL="$sig" & ra=$!
+wait_for '[ -n "$(ls "$sig" | grep "\.locked$")" ]'
+run_took "$(took_in sB "$note")" "$B" "$work/rb" HANDOFF_TEST_TAKEN_SIGNAL="$sig" & rb=$!
+wait_for '[ "$(ls "$sig" | grep -c "\.waiting$")" -eq 2 ]'; locked=$(ls "$sig" | grep -c '\.locked$'); a_alive=$(kill -0 "$ra" 2>/dev/null && echo yes)
+wait "$ra"; wait "$rb"
+if [ "$locked" -eq 1 ] && [ "$a_alive" = yes ]; then ok; else bad "гонка: B доказанно ждёт блокировку, пока её держит A" "locked=$locked A жив=${a_alive:-нет}"; fi
+out=$(judged "$work/ra" "гонка A"); empty "гонка: A — без предупреждения" "$out$(heard)"
+at_a=$(at_of "$real_note" "$A")
+out=$(judged "$work/rb" "гонка B"); same "гонка: B — об A, записавшемся после снимка B" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$A" sA "$at_a")" "$(told)"
+at_b=$(at_of "$real_note" "$B")
+out=$(took "$C" sC "$note")
+same "гонка: C после замены A — об A и B" "Hats handoff: 2 other live session(s) reading this note: $(item_of "$A" sA "$at_a"), $(item_of "$B" sB "$at_b")" "$(told)"
+same "гонка: три читателя" "$(pid_of "$A")/sA $(pid_of "$B")/sB $(pid_of "$C")/sC" "$(readers_of "$real_note")"
+reset; closed_note; D=$(live); X=$(live); Y=$(live); rm -rf "$work/rx" "$work/ry"
+mark_file "$real_note" "[$(reader_json "$(pid_of "$D"):Thu Jan 1 00:00:00 2026" sD)]"
+mkps "case \" \$* \" in *\" $(pid_of "$D") \"*) sleep 0.6 ;; esac; exec /bin/ps \"\$@\""
+run_took "$(took_in sX "$note")" "$X" "$work/rx" PATH="$work/psbin:$PATH" & rx=$!
+run_took "$(took_in sY "$note")" "$Y" "$work/ry" PATH="$work/psbin:$PATH" & ry=$!
+wait "$rx"; wait "$ry"
+judged "$work/rx" "ps 0,6 с, X" >/dev/null; tx=$(told); judged "$work/ry" "ps 0,6 с, Y" >/dev/null; ty=$(told)
+r=" $(readers_of "$real_note") "
+has "ps 0,6 с для одного номера, два took разом — X записан" " $(pid_of "$X")/sX " "$r"
+has "ps 0,6 с для одного номера, два took разом — Y записан" " $(pid_of "$Y")/sY " "$r"
+lacks "ps 0,6 с: мёртвый (другое время запуска) убран" "/sD" "$r"
+if { [ -z "$tx" ] && [ -n "$ty" ]; } || { [ -n "$tx" ] && [ -z "$ty" ]; }; then ok; else bad "ps 0,6 с: предупреждён ровно один — второй" "X «${tx}» Y «${ty}»"; fi
+case "$tx$ty" in "Hats handoff: 1 other live session(s) reading this note: session s"[XY]" (pid "*) ok ;; *) bad "ps 0,6 с: второй — о первом" "«${tx}${ty}»" ;; esac
+reset; closed_note; D=$(live); X=$(live); Y=$(live); rm -rf "$work/rx" "$work/ry"
+mark_file "$real_note" "[$(reader_json "$D" sD)]"
+mkps "case \" \$* \" in *\" $(pid_of "$D") \"*) sleep 0.6 ;; esac; exec /bin/ps \"\$@\""
+run_took "$(took_in sX "$note")" "$X" "$work/rx" PATH="$work/psbin:$PATH" & rx=$!
+run_took "$(took_in sY "$note")" "$Y" "$work/ry" PATH="$work/psbin:$PATH" & ry=$!
+wait "$rx"; wait "$ry"
+judged "$work/rx" "ps 0,6 с, живой, X" >/dev/null; tx=$(told); judged "$work/ry" "ps 0,6 с, живой, Y" >/dev/null; ty=$(told)
+lacks "ps вне блокировки: живой с медленным ps у обоих проверен — не «could not check»" "could not check" "$tx$ty"
+case "$tx|$ty" in
+  "Hats handoff: 1 other live session(s) reading this note: session sD "*"|Hats handoff: 2 other live session(s) reading this note: session sD "*", session sX "*) ok ;;
+  "Hats handoff: 2 other live session(s) reading this note: session sD "*", session sY "*"|Hats handoff: 1 other live session(s) reading this note: session sD "*) ok ;;
+  *) bad "ps вне блокировки: первый — о живом, второй — о живом и о первом" "X «${tx}» Y «${ty}»" ;;
+esac
+same "ps вне блокировки: все трое в файле" "3" "$(readers_of "$real_note" | wc -w | tr -d ' ')"
+reset; closed_note; A=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mkps 'sleep 10'
+holder=$(hold_lock "$markers/runs.lock" 8)
+ms=$(took_ms "$A" sA "$note" PATH="$work/psbin:$PATH"); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+if [ "$ms" -le 3500 ]; then ok; else bad "took: медленный ps (10 с) и занятая runs.lock (8 с) — не дольше 3,5 с" "${ms} мс"; fi
+has "took: медленный ps — предупреждение «could not check» напечатано" "could not check 1 other session(s) that read this note" "$(user_of <"$work/ms.out")"
+has "took: занятая runs.lock — строка журнала дописана" "outcome=took-shared unknown=1" "$(tl outcome unknown)"
+
+# --- took: stdout не принимает — печать сдаётся за 0,3 с, took другой записки записан
+# A и B стартуют разом; B до блокировки проверяет своего читателя R медленным ps (0,15 с), поэтому приходит к
+# блокировке, пока A держит её и пытается печатать. Порядок доказывают времена файлов, а не опрос.
+reset; closed_note; printf '## NOW\n\nвторая\n' >"$mem/n2.md"; closed_note b "$mem/n2.md" "вторая"
+A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mark_file "$real_mem/n2.md" "[$(reader_json "$R" sR)]"
+mkps "case \" \$* \" in *\" $(pid_of "$R") \"*) sleep 0.15 ;; esac; exec /bin/ps \"\$@\""
+sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
+filler=$(fill_fifo "$work/full")
+( took_in sA "$note" | timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
+run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
+wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
+has "заполненный stdout: печать не удалась — not-printed" "command=took outcome=not-printed warned=False" "$(tls sA command outcome warned)"
+a_ms=$(tls sA ms); a_ms=${a_ms#ms=}
+if [ "$a_ms" -ge 250 ] && [ "$a_ms" -le 1200 ]; then ok; else bad "заполненный stdout: печать сдалась за 0,3 с" "${a_ms} мс"; fi
+same "заполненный stdout: читатель не записан" "$me_pid/sMe" "$(readers_of "$real_note")"
+if [ "$(cat "$work/full.rc")" = 0 ] && [ ! -s "$work/full.err" ]; then ok; else bad "заполненный stdout: код 0, stderr пуст" "rc=$(cat "$work/full.rc") $(head -c 200 "$work/full.err")"; fi
+same "заполненный stdout: временных файлов не осталось" "0" "$(tmp_left)"
+order=$(python3 -I -c 'import glob,os,sys
+sig, rc = sys.argv[1:3]
+def at(pattern):
+    found = glob.glob(os.path.join(sig, pattern))
+    return os.stat(found[0]).st_mtime_ns if found else None
+a_locked, b_waiting, b_locked, a_end = at("a/*.locked"), at("b/*.waiting"), at("b/*.locked"), os.stat(rc).st_mtime_ns
+print("ok" if None not in (a_locked, b_waiting, b_locked) and a_locked < b_waiting < a_end and b_locked > a_locked else
+      "a_locked=%s b_waiting=%s b_locked=%s a_end=%s" % (a_locked, b_waiting, b_locked, a_end))' "$sig" "$work/full.rc")
+same "заполненный stdout: took другой записки ждал блокировку, пока A держал её и пытался печатать" "ok" "$order"
+out=$(judged "$work/rb" "заполненный stdout, B")
+same "заполненный stdout: took другой записки записан" "$(pid_of "$R")/sR $(pid_of "$B")/sB" "$(readers_of "$real_mem/n2.md")"
+has "заполненный stdout: took другой записки — took-shared" "outcome=took-shared live=1" "$(tls sB outcome live)"
+rm -f "$work/full" "$work/full.ready"
+
+# --- took: тихие пути — ни строки, ни журнала, ни папки состояния
+reset; rm -rf "$work/.claude/state"; A=$(live)
+out=$(took "$A" sA "$note" HANDOFF_OFF=1); empty "took: HANDOFF_OFF=1 — тишина" "$out$(heard)"
+out=$(EXTRA=',"agent_id":"a1b2"' took "$A" sA "$note"); empty "took: подагент — тишина" "$out$(heard)"
+out=$(EXTRA=',"agent_id":""' took "$A" sA "$note"); empty "took: подагент с пустым agent_id — тишина" "$out$(heard)"
+out=$(took "$A" sA "$note" CLAUDE_CODE_SESSION_ATTENDED=0); empty "took: без человека — тишина" "$out$(heard)"
+out=$(took "$A" sA "$note" CLAUDE_CODE_SESSION_ATTENDED=0 CLAUDE_CODE_ENTRYPOINT=sdk-cli); empty "took: без человека, sdk — тишина" "$out$(heard)"
+out=$(took "$A" sA "$note"); empty "took: отметок нет — тишина" "$out$(heard)"
+if [ ! -e "$work/.claude/state" ]; then ok; else bad "took: тихие пути — папки состояния нет и не появилась" "$(ls -R "$work/.claude/state" | head -5)"; fi
+reset; closed_note; A=$(live); printf 'x\n' >"$mem/note.txt"; printf 'x\n' >"$mem/MEMORY.md"; printf 'x\n' >"$mem/resume-index.md"
+printf 'x\n' >"$proj/n.md"; printf 'x\n' >"$mem/other.md"; printf 'x\n' >"$mem/Resume-Index.MD"
+holder=$(hold_lock "$markers/runs.lock" 30)
+for case_ in "HANDOFF_OFF=1|$note|HANDOFF_OFF=1" "подагент|$note|-" "без человека|$note|CLAUDE_CODE_SESSION_ATTENDED=0" "не .md|$mem/note.txt|-" \
+             "MEMORY.md|$mem/MEMORY.md|-" "resume-index.md|$mem/resume-index.md|-" "служебное имя в другом регистре|$mem/Resume-Index.MD|-" \
+             "вне памяти и папки записок|$proj/n.md|-" "ни одна отметка не указывает|$mem/other.md|-"; do
+  IFS='|' read -r label f extra <<<"$case_"
+  set -- ; [ "$extra" = - ] || set -- "$extra"
+  if [ "$label" = подагент ]; then ms=$(EXTRA=',"agent_id":"a1"' took_ms "$A" sQ "$f"); else ms=$(took_ms "$A" sQ "$f" "$@"); fi
+  if [ "$ms" -le 1000 ] && [ ! -s "$work/ms.out" ] && [ ! -e "$trace" ]; then ok
+  else bad "took: $label — тишина, runs.log не тронут, значит занятую runs.lock не ждали" "${ms} мс, $(ls -A "$markers"), $(head -c 200 "$work/ms.out")"; fi
+done
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+if [ ! -e "$trace" ] && [ ! -e "$taken" ]; then ok; else bad "took: тихие пути — runs.log и taken/ не появились" "$(ls -A "$markers")"; fi
+
+# --- took: плохой вход — тишина и bad-input
+reset; closed_note
+for case_ in "не JSON|not json" "не объект|[1]" "пусто|" \
+             "hook_event_name не PostToolUse|{\"hook_event_name\":\"Stop\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"$note\"},\"session_id\":\"b1\"}" \
+             "tool_name не Read|{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$note\"},\"session_id\":\"b1\"}" \
+             "file_path не абсолютный|{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"note.md\"},\"session_id\":\"b1\"}" \
+             "file_path нет|{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Read\",\"tool_input\":{},\"session_id\":\"b1\"}" \
+             "tool_input не объект|{\"hook_event_name\":\"PostToolUse\",\"tool_name\":\"Read\",\"tool_input\":\"$note\",\"session_id\":\"b1\"}"; do
+  label=${case_%%|*}; out=$(raw_took "${case_#*|}")
+  empty "took: плохой вход ($label) — тишина" "$out$(heard)"
+  has "took: плохой вход ($label) — bad-input в журнале" "command=took outcome=bad-input" "$(tl command outcome)"
+done
+if [ ! -e "$taken" ]; then ok; else bad "took: плохой вход — taken/ не создан" "есть"; fi
+out=$(raw_took "$(python3 -I -c 'print("[" * 100000 + "]" * 100000)')")
+has "took: вход с глубокой вложенностью — bad-input" "outcome=bad-input" "$(tl outcome)"
+
+# --- took: перебор меток — 600 чужих, FIFO и большая метка, срок посреди перебора
+reset; closed_note zzz; A=$(live); B=$(live)
+python3 -I -c 'import json,os,sys
+folder, mem, cwd = sys.argv[1:4]
+for i in range(600):
+    note = os.path.join(mem, "other%03d.md" % i)
+    open(note, "w").write("x\n")
+    json.dump({"pid": 99000 + i, "started": "Thu Jan 1 00:00:00 2026", "cwd": cwd, "note": note, "topic": "t", "saved_at": "2026-11-13T09:00:00Z"}, open(os.path.join(folder, "m%03d.json" % i), "w"))' "$markers" "$mem" "$proj"
+mkfifo "$markers/0pipe.json"
+python3 -I -c 'import json,sys; json.dump({"pid":1,"started":"x","cwd":sys.argv[2],"note":sys.argv[3],"topic":"t" * 70000,"saved_at":"2026-11-13T09:00:00Z"},open(sys.argv[1],"w"))' "$markers/0big.json" "$proj" "$note"
+cp "$markers/0big.json" "$work/big.before"
+out=$(took "$A" sA "$note")
+has "took: 600 меток других записок, FIFO и метка больше 64 КБ, метка записки последней — записан" "outcome=took" "$(tl outcome)"
+same "took: перебор меток — читатель записан" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+if [ -p "$markers/0pipe.json" ] && cmp -s "$markers/0big.json" "$work/big.before"; then ok; else bad "took: FIFO и большая метка не тронуты" "-"; fi
+out=$(took "$B" sB "$note" HANDOFF_TEST_BUDGET=0.004)
+empty "took: срок кончился посреди меток — тишина" "$out$(heard)"
+has "took: срок кончился посреди меток — incomplete" "outcome=incomplete session=sB" "$(tl outcome session)"
+same "took: incomplete — не записан" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+rm -f "$markers/0pipe.json"
+
+# --- took: прочие пути записки — память-ссылка, регистр букв, своя папка, жёсткая ссылка
+reset; mkdir -p "$work/vault" "$work/.claude/projects/-linked"; ln -s "$work/vault" "$work/.claude/projects/-linked/memory"
+printf '## NOW\n\nпо ссылке\n' >"$work/vault/n.md"; linked="$work/.claude/projects/-linked/memory/n.md"; real_linked=$(realp "$work/vault/n.md")
+closed_note a "$linked" "по ссылке"; A=$(live); B=$(live)
+out=$(took "$A" sA "$linked")
+same "память-ссылка: читатель записан под настоящим путём записки" "$(pid_of "$A")/sA" "$(readers_of "$real_linked")"
+upper="$work/.claude/projects/-LINKED/MEMORY/n.md"; [ -e "$upper" ] || upper="$linked"
+out=$(took "$B" sB "$upper")
+has "память-ссылка, чтение в другом регистре букв — предупреждён об A" "session sA (pid $(pid_of "$A")" "$(told)"
+same "память-ссылка и другой регистр — один ключ, один файл пометки" "1" "$(ls "$taken" | grep -c '\.json$')"
+same "память-ссылка и другой регистр — оба в одном файле" "$(pid_of "$A")/sA $(pid_of "$B")/sB" "$(readers_of "$real_linked")"
+C=$(live); out=$(took "$C" sC "$work/vault/n.md")
+empty "граница: записка памяти-ссылки по настоящему пути вне projects не ловится" "$out$(heard)"
+reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nсвоя\n' >"$own_dir/r.md"; closed_note a "$own_dir/r.md" "своя папка"; A=$(live); B=$(live)
+out=$(took "$A" sA "$own_dir/r.md")
+same "своя папка записок: читатель записан" "$(pid_of "$A")/sA" "$(readers_of "$(realp "$own_dir/r.md")")"
+shouty=$(printf '%s' "$own_dir" | sed 's|/Hats/notes/|/HATS/NOTES/|'); [ -e "$shouty/r.md" ] || shouty="$own_dir"
+out=$(took "$B" sB "$shouty/r.md")
+same "своя папка записок в другом регистре — тот же файл пометки" "$(pid_of "$A")/sA $(pid_of "$B")/sB" "$(readers_of "$(realp "$own_dir/r.md")")"
+reset; A=$(live); printf '## NOW\n\nжёсткая\n' >"$mem/a.md"; ln "$mem/a.md" "$mem/b.md"
+marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$mem/a.md" "своя"; closed_note m2 "$mem/b.md" "вторая"
+out=$(took "$A" sA "$mem/a.md")
+same "жёсткая ссылка с двумя метками: читатель в обоих файлах" "$(pid_of "$A")/sA|$(pid_of "$A")/sA" "$(readers_of "$real_mem/a.md")|$(readers_of "$real_mem/b.md")"
+same "жёсткая ссылка: два ключа в своём списке" "2" "$(keys_of "$A" | wc -w | tr -d ' ')"
+sid=j1; out=$(start clear "$proj" HANDOFF_PROCESS="$A")
+has "жёсткая ссылка: /clear отдаёт A его записку" "continues the note \"своя\"" "$out"
+same "жёсткая ссылка: после /clear A в обоих файлах" "$(pid_of "$A")/sA|$(pid_of "$A")/sA" "$(readers_of "$real_mem/a.md")|$(readers_of "$real_mem/b.md")"
+has "жёсткая ссылка: /clear — читатель уже был, выписки нет" "outcome=gave-note cleared=0 reader=again" "$(tl outcome cleared reader)"
+out=$(CMP=0 start startup)
+has "жёсткая ссылка: startup через вторую метку показывает A" "\"вторая\" — $real_mem/b.md
+   1 live session(s) reading it: $(item_of "$A" sA "$(at_of "$real_mem/a.md" "$A")")" "$(told)"
+
+# --- took: Read → save той же записки → Read другим процессом
+reset; closed_note; out=$(took "$me" s1 "$note")
+save "$proj" "$note" "та же" >/dev/null
+same "save не пишет в taken/: файл пометки цел" "$me_pid/s1" "$(readers_of "$real_note")"
+B=$(live); out=$(took "$B" sB "$note")
+same "после save той же записки — другой процесс предупреждён" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$me" s1 "$(at_of "$real_note" "$me")")" "$(told)"
+
+# --- took: не записан — блокировка, fcntl, taken, временный файл, os.replace
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; A=$(live); cp "$(mark_of "$real_note")" "$work/mark.before"
+want_user="Hats handoff: 1 other live session(s) reading this note: $(item_of "$me" sMe)"
+holder=$(hold_lock "$taken/.lock" 8)
+ms=$(took_ms "$A" sA "$note"); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+same "блокировка занята — предупреждение по прочитанному" "$want_user" "$(told)"
+has "блокировка занята — not-recorded" "outcome=not-recorded reason=lock-busy warned=True" "$(tl outcome reason warned)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/$(reads_of "$A")" ]; then ok; else bad "блокировка занята — файл не тронут, .reads нет" "$(ls -A "$taken")"; fi
+if [ "$ms" -le 3000 ]; then ok; else bad "блокировка занята — ждёт не дольше срока, держатель держит 8 с" "${ms} мс"; fi
+out=$(took "$A" sA "$note"); same "блокировка свободна — следующее чтение предупреждает снова" "$want_user" "$(told)"
+has "блокировка свободна — записан" "outcome=took-shared" "$(tl outcome)"
+reset; closed_note; A=$(live); B=$(live); mark_file "$real_note" "[$(reader_json "$A" sA),$(reader_json "$B" sB)]"
+holder=$(hold_lock "$taken/.lock" 4)
+out=$(took "$A" sA "$note"); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+empty "блокировка занята, A уже читатель вместе с живым B — повторное чтение молчит" "$out$(heard)"
+has "блокировка занята, A уже читатель — warned=False" "outcome=not-recorded reason=lock-busy warned=False" "$(tl outcome reason warned)"
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; A=$(live); cp "$(mark_of "$real_note")" "$work/mark.before"
+: >"$work/lock-target"; ln -s "$work/lock-target" "$taken/.lock"
+out=$(took "$A" sA "$note")
+same "блокировка не открылась (.lock — ссылка) — предупреждение по прочитанному" "$want_user" "$(told)"
+has "блокировка не открылась — not-recorded" "outcome=not-recorded reason=lock-not-opened warned=True" "$(tl outcome reason warned)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/$(reads_of "$A")" ] && [ -L "$taken/.lock" ]; then ok
+else bad "блокировка не открылась — файл не тронут, .reads нет, ссылка цела" "$(ls -A "$taken")"; fi
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; A=$(live); cp "$(mark_of "$real_note")" "$work/mark.before"
+same "нет fcntl: took предупреждает по прочитанному" "$want_user" "$(nofcntl "$(took_in sA "$note")" "$A" took | user_of)"
+has "нет fcntl: took не записывает" "command=took outcome=not-recorded reason=no-locking warned=True" "$(tl command outcome reason warned)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/.lock" ]; then ok; else bad "нет fcntl: файл не тронут, блокировка не создана" "$(ls -A "$taken")"; fi
+out=$(nofcntl "{\"session_id\":\"nf\",\"cwd\":\"$proj\",\"source\":\"startup\"}" "$own" start)
+has "нет fcntl: список с пометкой" "   1 live session(s) reading it: $(item_of "$me" sMe). $ask_list" "$(printf '%s' "$out" | model_of)"
+reset; closed_note; rm -rf "$work/taken-target"; mkdir -p "$work/taken-target"; ln -s "$work/taken-target" "$taken"; A=$(live)
+out=$(took "$A" sA "$note")
+has "taken — ссылка: не записан" "outcome=not-recorded reason=taken-not-folder" "$(tl outcome reason)"
+if [ -L "$taken" ] && [ -z "$(ls -A "$work/taken-target")" ]; then ok; else bad "taken — ссылка: ссылка цела, за ней пусто" "$(ls -A "$work/taken-target")"; fi
+rm -rf "$work/taken-target"
+reset; closed_note; rm -rf "$work/taken-target" "$work/taken-before"; mkdir -p "$work/taken-target"; ln -s "$work/taken-target" "$taken"
+printf '{"note":"%s","readers":[%s]}' "$real_note" "$(reader_json "$me" sMe)" >"$work/taken-target/$(key_of "$real_note").json"
+printf '{"pid":%s,"started":"%s","keys":["%s"]}' "$me_pid" "$me_started" "$(key_of "$real_note")" >"$work/taken-target/$(reads_of "$me")"
+: >"$work/taken-target/.lock"; cp -R "$work/taken-target" "$work/taken-before"
+out=$(CMP=0 start startup)
+has "taken — ссылка: список — пользователю «could not check whether»" "1. \"закрытая\" — $real_note
+   could not check whether another session is reading it" "$(told)"
+has "taken — ссылка: список — модели «could not check whether»" "   could not check whether another session is reading it. $ask_list" "$out"
+sid=t1; start clear "$proj" HANDOFF_PROCESS="$me" >/dev/null
+has "taken — ссылка: /clear — clear_error=taken-not-folder" "outcome=no-own-marker cleared=0 clear_error=taken-not-folder" "$(tl outcome cleared clear_error)"
+if [ -L "$taken" ] && diff -r "$work/taken-before" "$work/taken-target" >/dev/null; then ok; else bad "taken — ссылка: startup и /clear не тронули файлы за ссылкой" "$(ls -A "$work/taken-target")"; fi
+rm -rf "$work/taken-target" "$work/taken-before"
+reset; closed_note; printf 'x' >"$taken"; A=$(live); out=$(took "$A" sA "$note")
+has "taken — не папка: не записан" "outcome=not-recorded reason=taken-not-folder" "$(tl outcome reason)"
+same "taken — не папка: файл не тронут" "x" "$(cat "$taken")"
+if [ "$(id -u)" -ne 0 ]; then
+  reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; : >"$taken/.lock"; A=$(live); chmod 500 "$taken"
+  out=$(took "$A" sA "$note"); chmod 700 "$taken"
+  same "временный файл не создать — предупреждение" "$want_user" "$(told)"
+  has "временный файл не создать — not-recorded" "outcome=not-recorded reason=temp warned=True" "$(tl outcome reason warned)"
+fi
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; A=$(live); cp "$(mark_of "$real_note")" "$work/mark.before"
+out=$(took "$A" sA "$note" HANDOFF_TEST_FAIL=replace)
+same "os.replace упал после печати — предупреждён" "$want_user" "$(told)"
+has "os.replace упал — not-recorded" "outcome=not-recorded reason=replace warned=True" "$(tl outcome reason warned)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/$(reads_of "$A")" ] && [ "$(tmp_left)" -eq 0 ]; then ok
+else bad "os.replace упал — файл не тронут, .reads нет, временных нет" "$(ls -A "$taken")"; fi
+out=$(took "$A" sA "$note"); same "os.replace упал — следующее чтение предупреждает снова" "$want_user" "$(told)"
+
+# --- took: вместимость — ровно 100 с мёртвыми, 100 живых
+reset; closed_note; A=$(live); S=$(live)
+list=$(python3 -I -c 'import json,sys
+dead = [{"pid": 900001 + i, "started": "Thu Jan 1 00:00:00 2026", "session": "d%d" % i, "at": "2026-11-13T09:00:00Z"} for i in range(98)]
+me_pid, me_started, s_pid, s_started = sys.argv[1:5]
+live = [{"pid": int(me_pid), "started": me_started, "session": "sMe", "at": "2026-11-13T09:40:00Z"},
+        {"pid": int(s_pid), "started": s_started, "session": "sS", "at": "2026-11-13T09:42:00Z"}]
+print(json.dumps(dead + live))' "$me_pid" "$me_started" "$(pid_of "$S")" "${S#*:}")
+mark_file "$real_note" "$list"; out=$(took "$A" sA "$note")
+same "ровно 100 записей, 98 мёртвых — мёртвые убраны, новый записан" "$me_pid/sMe $(pid_of "$S")/sS $(pid_of "$A")/sA" "$(readers_of "$real_note")"
+has "ровно 100 записей — took-shared о двух живых" "outcome=took-shared live=2" "$(tl outcome live)"
+reset; closed_note
+hundred=$(python3 -I -c 'import json,subprocess,sys
+procs = [subprocess.Popen(["sleep", "300"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True) for _ in range(100)]
+pids = [p.pid for p in procs]
+open(sys.argv[1], "a").write("".join("%d\n" % p for p in pids))
+out = subprocess.run(["ps", "-o", "pid=,lstart=", "-p", ",".join(map(str, pids))], capture_output=True, text=True, env={"TZ": "UTC", "LC_ALL": "C", "PATH": "/bin:/usr/bin"}).stdout
+starts = {int(line.split()[0]): " ".join(line.split()[1:]) for line in out.splitlines() if line.strip()}
+print(json.dumps([{"pid": p, "started": starts[p], "session": "h%d" % i, "at": "2026-11-13T09:41:00Z"} for i, p in enumerate(pids)]))' "$work/sleepers")
+mark_file "$real_note" "$hundred"; cp "$(mark_of "$real_note")" "$work/mark.before"; Z=$(live)
+out=$(took "$Z" sZ "$note")
+has "100 живых — предупреждён" "Hats handoff: " "$(told)"
+has "100 живых — список обрезан хвостом «and K more»" " more" "$(told)"
+has "100 живых — модели та же просьба" "$ask_took" "$out"
+has "100 живых — not-recorded, full" "outcome=not-recorded reason=full warned=True" "$(tl outcome reason warned)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/$(reads_of "$Z")" ]; then ok; else bad "100 живых — файл не тронут, .reads нет" "-"; fi
+
+# --- took: файл пометки или свой .reads нечитаем — тишина, не тронут; список — «could not check whether»
+for kind in link fifo big many reads; do
+  reset; closed_note; A=$(live); mkdir -p "$taken"; f=$(mark_of "$real_note")
+  case $kind in
+    link) printf '{"note":"%s","readers":[%s]}' "$real_note" "$(reader_json "$me" sMe)" >"$work/target.json"; ln -s "$work/target.json" "$f" ;;
+    fifo) mkfifo "$f" ;;
+    big) python3 -I -c 'import json,sys; json.dump({"note":sys.argv[2],"readers":[],"pad":"x" * 70000},open(sys.argv[1],"w"))' "$f" "$real_note" ;;
+    many) python3 -I -c 'import json,sys; json.dump({"note":sys.argv[2],"readers":[{"pid":900001 + i,"started":"x","session":"m","at":"2026-11-13T09:00:00Z"} for i in range(101)]},open(sys.argv[1],"w"))' "$f" "$real_note" ;;
+    reads) mkfifo "$taken/$(reads_of "$A")" ;;
+  esac
+  [ -f "$f" ] && ! [ -L "$f" ] && cp "$f" "$work/mark.before"
+  out=$(took "$A" sA "$note")
+  empty "нечитаемо ($kind): took — тишина" "$out$(heard)"
+  has "нечитаемо ($kind): not-recorded" "outcome=not-recorded reason=unreadable" "$(tl outcome reason)"
+  case $kind in
+    link) if [ -L "$f" ]; then ok; else bad "нечитаемо (link): ссылка цела" "-"; fi ;;
+    fifo) if [ -p "$f" ]; then ok; else bad "нечитаемо (fifo): канал цел" "-"; fi ;;
+    reads) if [ -p "$taken/$(reads_of "$A")" ] && [ ! -e "$f" ]; then ok; else bad "нечитаемо (reads): свой .reads цел, файла пометки нет" "$(ls -A "$taken")"; fi ;;
+    *) if cmp -s "$f" "$work/mark.before"; then ok; else bad "нечитаемо ($kind): файл не тронут" "-"; fi ;;
+  esac
+  [ "$kind" = reads ] && continue
+  out=$(CMP=0 start startup)
+  has "нечитаемо ($kind): список — пользователю" "1. \"закрытая\" — $real_note
+   could not check whether another session is reading it" "$(told)"
+  has "нечитаемо ($kind): список — модели" "   could not check whether another session is reading it. $ask_list" "$out"
+done
+
+# --- took: процесс не определён, исключение
+reset; closed_note; A=$(live); mkps 'exit 1'
+out=$(took "$A" sA "$note" HANDOFF_TEST=0 PATH="$work/psbin:$PATH")
+empty "took: процесс не определён — тишина" "$out$(heard)"
+has "took: процесс не определён — no-process" "command=took outcome=no-process" "$(tl command outcome)"
+if [ ! -e "$taken" ]; then ok; else bad "took: процесс не определён — taken/ не создан" "есть"; fi
+reset; closed_note; A=$(live)
+out=$(harness_took "$A" sA "$note" 'def broken(*args):
+    raise RuntimeError("boom")
+scope["find_snapshot"] = broken')
+empty "took: исключение — тишина" "$out$(heard)"
+has "took: исключение — в журнале тип и текст" "command=took outcome=error error=RuntimeError message=boom" "$(tl command outcome error message)"
+
+# --- took: команда из hooks.json как есть через sh -c
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"; A=$(live); plugin_at "$plugin_root/hooks/hooks.json" yes
+took_line=$(python3 -I -c 'import json,os,sys; groups=json.load(open(os.path.join(sys.argv[1],"hooks","hooks.json")))["hooks"]["PostToolUse"]; print([h["command"] for g in groups for h in g["hooks"] if "handoff.py" in h["command"]][0])' "$plugin_root")
+call=$(mktemp -d "$work/call.XXXXXX"); took_in sh1 "$note" >"$call/in"
+env CLAUDE_PLUGIN_ROOT="$plug" HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" sh -c "$took_line" <"$call/in" >"$call/out" 2>"$call/err"; echo $? >"$call/rc"
+out=$(judged "$call" "took из hooks.json через sh -c"); rm -rf "$call"
+same "hooks.json: команда took как есть через sh -c предупреждает" "$want_user" "$(told)"
+has "hooks.json: команда took через sh -c — модели" "[handoff] 1 other live session(s) reading this note" "$out"
+
+# --- пометка в списке новой сессии
+reset; closed_note; start startup >/dev/null
+if [ ! -e "$taken" ]; then ok; else bad "startup не создаёт taken/" "есть"; fi
+mark_file "$real_note" "[$(reader_json "900001:$dead_started" sGone)]"; cp "$(mark_of "$real_note")" "$work/mark.before"
+start startup >/dev/null
+same "список: все читатели мертвы — как в 8b" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note" "$(told)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ ! -e "$taken/.lock" ]; then ok; else bad "startup не пишет в taken/" "$(ls -A "$taken")"; fi
+printf 'not json' >"$(mark_of "$real_note")"; start startup >/dev/null
+same "список: файл пометки битый — как в 8b" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note" "$(told)"
+has "список без пометок — в журнале 0" "outcome=listed marks=0 marks_dropped=0" "$(tl outcome marks marks_dropped)"
+mark_file "$real_note" "[$(reader_json "$me" sMe)]"; cp "$(mark_of "$real_note")" "$work/mark.before"
+out=$(CMP=0 start startup)
+same "список: живая сессия читает — пользователю строка под записью" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note
+   1 live session(s) reading it: $(item_of "$me" sMe)" "$(told)"
+has "список: модели — пометка после строки записки" "1. \"закрытая\" — saved $(markerfield "$markers" saved_at): $real_note
+   1 live session(s) reading it: $(item_of "$me" sMe). $ask_list" "$out"
+has "список: пометка — в журнале" "outcome=listed marks=1 marks_dropped=0" "$(tl outcome marks marks_dropped)"
+old=$(printf '{"session_id":"s","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$work/before/run.py" "$OLD_HOOK")
+same "список: без строки пометки — прежний текст символ в символ" "$old" "$(printf '%s\n' "$out" | grep -v '^   1 live session(s) reading it: ')"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before"; then ok; else bad "список с пометкой — файл не тронут" "-"; fi
+mkps 'exit 1'; out=$(CMP=0 start startup "$proj" PATH="$work/psbin:$PATH")
+same "список: непроверенный читатель — отдельными словами" "Hats handoff: 1 note from closed sessions in this folder:
+1. \"закрытая\" — $real_note
+   could not check 1 session(s) that read it: $(item_of "$me" sMe)" "$(told)"
+has "список: непроверенный — модели та же просьба" "   could not check 1 session(s) that read it: $(item_of "$me" sMe). $ask_list" "$out"
+S=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe),$(reader_json "$S" sS 2026-11-13T09:42:00Z)]"
+mkps "case \" \$* \" in *\" $(pid_of "$S") \"*) sleep 10 ;; esac; exec /bin/ps \"\$@\""
+out=$(CMP=0 start startup "$proj" PATH="$work/psbin:$PATH" HANDOFF_TEST_BUDGET=1)
+has "список: живой и непроверенный" "   1 live session(s) reading it: $(item_of "$me" sMe); could not check 1 more: $(item_of "$S" sS 2026-11-13T09:42:00Z)" "$(told)"
+list=$(python3 -I -c 'import json,sys; print(json.dumps([{"pid": int(sys.argv[1]), "started": "x%d" % i, "session": "reader-with-a-long-name-%02d" % i, "at": "2026-11-13T09:41:00Z"} for i in range(20)]))' "$me_pid")
+mark_file "$real_note" "$list"; mkps 'exit 1'; out=$(CMP=0 start startup "$proj" PATH="$work/psbin:$PATH")
+fit=$(told | python3 -I -c 'import re,sys
+lines = sys.stdin.read().split("\n")
+mark = lines[2][3:] if len(lines) > 2 else ""
+print("units=%s more=%s" % (len(mark.encode("utf-16-le")) // 2 <= 600, bool(re.search(r", and \d+ more$", mark))))')
+same "список: читатели одной записки — до 600 знаков, дальше «and K more»" "units=True more=True" "$fit"
+has "список: модели — все читатели" "reader-with-a-long-name-19" "$out"
+reset; long=$(printf 'n%.0s' $(seq 1 240)); ttt=$(printf 't%.0s' $(seq 1 130))
+for i in 1 2 3 4 5; do
+  printf 'x\n' >"$mem/$i$long.md"; marker "m$i" $((99980 + i)) "$dead_started" "$proj" "$mem/$i$long.md" "$ttt" "2026-11-0${i}T10:00:00Z"
+  case $i in 1|3|5) mark_file "$real_mem/$i$long.md" "[$(reader_json "$me" sMe)]" ;; esac
+done
+out=$(CMP=0 start startup)
+tail_line=$(told | python3 -I -c 'import re,sys
+text = sys.stdin.read()
+lines = text.split("\n")
+shown = {m.group(1) for m in (re.match(r"\d\. \".*\" — .*/(\d)n+\.md$", line) for line in lines) if m}
+dropped = {"1", "2", "3", "4", "5"} - shown
+read = dropped & {"1", "3", "5"}
+want = "and %d more, %d of them being read by another session" % (len(dropped), len(read))
+print("units=%s tail=%s mixed=%s" % (len(text.encode("utf-16-le")) // 2 <= 2000, lines[-1] == want, 0 < len(read) < len(dropped)))')
+same "список: записки отброшены по пределу 2000 — хвост считает только помеченные среди отброшенных" "units=True tail=True mixed=True" "$tail_line"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "x"
+base=$(printf '{"session_id":"s","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$work/before/run.py" "$OLD_HOOK" | python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')
+topic=$(python3 -I -c 'import sys; print("x" * (9440 - int(sys.argv[1])))' "$base")
+marker a "$dead_pid" "$dead_started" "$proj" "$note" "$topic"; mark_file "$real_note" "[$(reader_json "$me" sMe)]"
+out=$(start startup)
+lacks "список: пометка не влезает в 9500 — модели её нет, прежний текст цел (сверка с образцом)" "reading it" "$out"
+has "список: пометка не влезает — пользователю есть" "   1 live session(s) reading it: $(item_of "$me" sMe)" "$(told)"
+has "список: пометка не влезает — marks_dropped" "outcome=listed marks=1 marks_dropped=1" "$(tl outcome marks marks_dropped)"
+reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"
+out=$(printf '{"session_id":"mx","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
+path = sys.argv[1]
+scope = {
+    "__name__": "hook",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+def broken(*args):
+    raise RuntimeError("marks")
+scope["find_marks"] = broken
+sys.exit(scope["main"](["start"]))' "$HOOK" 2>&1)
+has "исключение в пометках — список всё равно отдан" "\"закрытая\"" "$(printf '%s' "$out" | model_of)"
+lacks "исключение в пометках — модели пометки нет" "reading it" "$(printf '%s' "$out" | model_of)"
+lacks "исключение в пометках — пользователю пометки нет" "reading it" "$(printf '%s' "$out" | user_of)"
+has "исключение в пометках — listed и marks_error" "outcome=listed marks=0 marks_error=RuntimeError" "$(tl outcome marks marks_error)"
+
+# --- /clear: выписка на всех трёх путях
+reset; A=$(live); printf '## NOW\n\nвторая\n' >"$mem/n2.md"
+marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; closed_note b "$mem/n2.md" "вторая"
+took "$A" sA "$mem/n2.md" >/dev/null; took "$A" sA "$note" >/dev/null
+sid=c1; out=$(start clear "$proj" HANDOFF_PROCESS="$A")
+has "/clear: своя записка отдана" "continues the note \"своя\"" "$out"
+same "/clear: выписан из чужой записки, её файл без читателей удалён" "нет" "$(readers_of "$real_mem/n2.md")"
+same "/clear: читатель записки, отданной этим /clear, остался" "$(pid_of "$A")/sA" "$(readers_of "$real_note")"
+same "/clear: свой список — только ключ отданной записки" "$(key_of "$real_note")" "$(keys_of "$A")"
+has "/clear: журнал — выписка и исход записи читателя" "outcome=gave-note cleared=1 reader=again receiver=new" "$(tl outcome cleared reader receiver)"
+reset; closed_note; B=$(live); took "$B" sB "$note" >/dev/null
+sid=c2; start clear "$proj" HANDOFF_PROCESS="$B" >/dev/null
+same "/clear без своего якоря: выписан, пустой файл удалён" "нет" "$(readers_of "$real_note")"
+if [ ! -e "$taken/$(reads_of "$B")" ]; then ok; else bad "/clear без своего якоря: .reads удалён" "есть"; fi
+has "/clear без своего якоря — журнал" "outcome=no-own-marker cleared=1" "$(tl outcome cleared)"
+reset; A=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; took "$A" sA "$note" >/dev/null
+sid=h1; start clear "$proj" HANDOFF_PROCESS="$A" >/dev/null; sid=h2; start clear "$proj" HANDOFF_PROCESS="$A" >/dev/null
+same "/clear, якорь отдан другой сессии: выписан и из своей записки" "нет" "$(readers_of "$real_note")"
+has "/clear, отдан другой — журнал" "outcome=handed-elsewhere cleared=1" "$(tl outcome cleared)"
+reset; sid=c4; start clear >/dev/null
+if [ ! -e "$taken" ]; then ok; else bad "/clear: нет taken/ — выписка ничего не делает" "taken/ есть"; fi
+has "/clear: нет taken/ — cleared=0 без ошибки" "outcome=no-own-marker cleared=0 clear_error=None" "$(tl outcome cleared clear_error)"
+reset; closed_note; B=$(live); took "$B" sB "$note" >/dev/null; holder=$(hold_lock "$taken/.lock" 8)
+sid=c3; start clear "$proj" HANDOFF_PROCESS="$B" >/dev/null; kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+has "/clear: блокировка выписки занята — clear_error" "outcome=no-own-marker cleared=0 clear_error=lock-busy" "$(tl outcome cleared clear_error)"
+same "/clear: блокировка занята — читатель остался, следующий /clear попробует снова" "$(pid_of "$B")/sB" "$(readers_of "$real_note")"
+ms=$(tl ms); ms=${ms#ms=}
+if [ "$ms" -ge 450 ] && [ "$ms" -le 2000 ]; then ok; else bad "/clear: блокировка выписки ждётся до 0,5 с (время хука из runs.log, держатель держит 8 с)" "${ms} мс"; fi
+rm -f "$taken/.lock"; sid=c5; start clear "$proj" HANDOFF_PROCESS="$B" >/dev/null
+has "/clear: taken/ без .lock — выписка не создаёт блокировку, clear_error" "outcome=no-own-marker cleared=0 clear_error=lock-not-opened" "$(tl outcome cleared clear_error)"
+if [ ! -e "$taken/.lock" ] && [ "$(readers_of "$real_note")" = "$(pid_of "$B")/sB" ]; then ok; else bad "/clear: без .lock — блокировка не появилась, читатель цел" "$(ls -A "$taken")"; fi
+reset; closed_note; B=$(live); C=$(live); took "$C" sC "$note" >/dev/null; took "$B" sB "$note" >/dev/null; cp "$(mark_of "$real_note")" "$work/mark.before"
+sid=c6; start clear "$proj" HANDOFF_PROCESS="$B" HANDOFF_TEST_FAIL=replace >/dev/null
+has "/clear: перезапись файла пометки не удалась — cleared=0, clear_error=write" "outcome=no-own-marker cleared=0 clear_error=write" "$(tl outcome cleared clear_error)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before" && [ "$(tmp_left)" -eq 0 ]; then ok; else bad "/clear: перезапись не удалась — файл пометки не тронут, временных нет" "$(readers_of "$real_note"); $(ls -A "$taken")"; fi
+same "/clear: перезапись не удалась — ключ остался в .reads" "$(key_of "$real_note")" "$(keys_of "$B")"
+sid=c7; start clear "$proj" HANDOFF_PROCESS="$B" >/dev/null
+same "/clear: следующий /clear выписывает снова" "$(pid_of "$C")/sC" "$(readers_of "$real_note")"
+reset; mine; B=$(live); took "$B" sB "$note" >/dev/null; cp "$(mark_of "$real_note")" "$work/mark.before"
+has "/clear без человека: текст 8b (сверка с образцом), без пометки" "continues the note" "$(nobody clear 0 sdk-cli)"
+if cmp -s "$(mark_of "$real_note")" "$work/mark.before"; then ok; else bad "/clear без человека: ни записи, ни выписки" "$(readers_of "$real_note")"; fi
+
+# --- /clear отдаёт свою записку: читатель, пометка первой строкой
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
+sid=g1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A"); facts="1 live session(s) reading it: $(item_of "$B" sB)"
+same "/clear: первая строка модели — пометка" "[handoff] $facts. $ask_took" "$(printf '%s\n' "$out" | sed -n 1p)"
+old=$(printf '{"session_id":"g1","cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I "$work/before/run.py" "$OLD_HOOK")
+same "/clear: за пометкой — прежний текст символ в символ" "$old" "$(printf '%s\n' "$out" | sed 1d)"
+same "/clear: пользователю — пометка под строкой 8b" "Hats handoff: continuing anchor \"своя\" — $real_note
+   $facts" "$(told)"
+same "/clear: процесс записан читателем после печати" "$(pid_of "$B")/sB $(pid_of "$A")/g1" "$(readers_of "$real_note")"
+has "/clear: журнал — reader=took" "outcome=gave-note reader=took receiver=new" "$(tl outcome reader receiver)"
+if [ -f "$markers/own.handed" ]; then ok; else bad "/clear: «отдано» записано после читателя" "own.handed нет"; fi
+reset; rm -rf "$markers"; A=$(live)
+env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic свежая >/dev/null 2>&1
+if [ -f "$markers/$(reads_of "$A" | sed 's/\.reads$/.json/')" ] && [ ! -e "$taken" ]; then ok; else bad "свежее состояние: save пишет отметку и не трогает taken/" "$(ls -A "$markers" 2>&1)"; fi
+sid=f1; start clear "$proj" HANDOFF_PROCESS="$A" >/dev/null
+has "свежее состояние: /clear без Read создаёт taken/ (700)" "0o700" "$(mode_of "$taken")"
+has "свежее состояние: и taken/.lock (600)" "0o600" "$(mode_of "$taken/.lock")"
+same "свежее состояние: /clear записал читателя" "$(pid_of "$A")/f1" "$(readers_of "$real_note")"
+B=$(live); out=$(took "$B" sB "$note")
+same "свежее состояние: Read другим процессом — предупреждён" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$A" f1 "$(at_of "$real_note" "$A")")" "$(told)"
+reset; A=$(live); B=$(live); python3 -I -c 'print("## СЕЙЧАС\n"); print("\n".join("😀" * 60 for _ in range(110)))' >"$note"
+marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "смайлы"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
+sid=e1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A")
+case "$(printf '%s\n' "$out" | sed -n 1p)" in "[handoff] 1 live session(s) reading it: session sB (pid "*". $ask_took") ok ;; *) bad "полный вывод из эмодзи: пометка первой строкой" "$(printf '%s\n' "$out" | sed -n 1p | head -c 300)" ;; esac
+units=$(printf '%s' "$out" | python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')
+if [ "$units" -le 9500 ]; then ok; else bad "полный вывод из эмодзи: не длиннее 9500 единиц UTF-16" "$units"; fi
+has "полный вывод из эмодзи: режется хвост записки" "😀" "$out"
+same "полный вывод из эмодзи: читатель записан" "$(pid_of "$B")/sB $(pid_of "$A")/e1" "$(readers_of "$real_note")"
+reset; A=$(live); mkdir -p "$work/gitbin" "$work/repo"
+printf '#!/bin/bash\nsleep 30\n' >"$work/gitbin/git"; chmod +x "$work/gitbin/git"
+printf '## NOW\n\n- git %s main = abcdef1\n' "$work/repo" >"$note"; marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"
+mkdir -p "$taken"; : >"$taken/.lock"; python3 -I -c 'import hashlib,json,os,sys
+folder, me_pid, me_started, a_pid, a_started = sys.argv[1:6]
+keys = []
+for i in range(603):
+    note = "/x/other-%03d.md" % i
+    readers = [{"pid": int(me_pid), "started": me_started, "session": "sMe", "at": "2026-11-13T09:40:00Z"}]
+    if i < 3:
+        readers.append({"pid": int(a_pid), "started": a_started, "session": "sA", "at": "2026-11-13T09:41:00Z"})
+    key = hashlib.sha256(os.fsencode(note)).hexdigest()
+    json.dump({"note": note, "readers": readers}, open(os.path.join(folder, key + ".json"), "w"))
+    if i < 3:
+        keys.append(key)
+open(os.path.join(folder, sys.argv[6]), "w").write(json.dumps({"pid": int(a_pid), "started": a_started, "keys": keys}))' \
+  "$taken" "$me_pid" "$me_started" "$(pid_of "$A")" "${A#*:}" "$(reads_of "$A")"
+sid=s1; out=$(CMP=0 start clear "$proj" PATH="$work/gitbin:$PATH" HANDOFF_TEST_BUDGET=2 HANDOFF_PROCESS="$A")
+has "600 файлов и медленный git: записка отдана, git не успел" "no time to check" "$out"
+has "600 файлов и медленный git: свои записи сняты" "cleared=3 clear_error=None" "$(tl cleared clear_error)"
+gone=$(python3 -I -c 'import glob,json,os,sys
+pid = int(sys.argv[2])
+files = [p for p in glob.glob(os.path.join(sys.argv[1], "*.json"))]
+print(sum(1 for p in files if any(r["pid"] == pid for r in json.load(open(p))["readers"]) and json.load(open(p))["note"].startswith("/x/")), len(files))' "$taken" "$(pid_of "$A")")
+same "600 файлов и медленный git: A нет ни в одном чужом файле, файлы на месте" "0 604" "$gone"
+same "600 файлов: свой список — только отданная записка" "$(key_of "$real_note")" "$(keys_of "$A")"
+pkill -f "$work/gitbin/git" 2>/dev/null
+reset; A=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; filler=$(fill_fifo "$work/full")
+( printf '{"session_id":"np","cwd":"%s","source":"clear"}' "$proj" | timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I "$HOOK" start >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" )
+kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
+has "/clear, stdout не принимает — not-printed" "outcome=not-printed reader=not-printed" "$(tl outcome reader)"
+if [ ! -e "$markers/own.handed" ] && [ "$(readers_of "$real_note")" = нет ] && [ "$(tmp_left)" -eq 0 ]; then ok; else bad "/clear не напечатан — ни читателя, ни «отдано», ни временных файлов" "$(ls -A "$markers" "$taken")"; fi
+if [ "$(cat "$work/full.rc")" = 0 ] && [ ! -s "$work/full.err" ]; then ok; else bad "/clear не напечатан — код 0, stderr пуст" "rc=$(cat "$work/full.rc")"; fi
+rm -f "$work/full" "$work/full.ready"
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; took "$B" sB "$note" >/dev/null; holder=$(hold_lock "$taken/.lock" 4)
+sid=k1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=1.2); kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+has "/clear, блокировка не взята — печать по снимку" "[handoff] 1 live session(s) reading it: $(item_of "$B" sB "$(at_of "$real_note" "$B")")" "$(printf '%s\n' "$out" | sed -n 1p)"
+has "/clear, блокировка не взята — читатель не записан" "outcome=gave-note reader=not-recorded reason=lock-busy" "$(tl outcome reader reason)"
+same "/clear, блокировка не взята — в файле только B" "$(pid_of "$B")/sB" "$(readers_of "$real_note")"
+if [ -f "$markers/own.handed" ]; then ok; else bad "/clear, блокировка не взята — напечатано, значит «отдано» записано" "own.handed нет"; fi
+for kind in big fifo; do
+  reset; A=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mkdir -p "$taken"; f=$(mark_of "$real_note")
+  case $kind in
+    big) python3 -I -c 'import json,sys; json.dump({"note":sys.argv[2],"readers":[],"pad":"x" * 70000},open(sys.argv[1],"w"))' "$f" "$real_note"; cp "$f" "$work/mark.before" ;;
+    fifo) mkfifo "$f" ;;
+  esac
+  sid=u1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A")
+  same "/clear, файл пометки своей записки нечитаем ($kind): первая строка модели — «could not check whether»" \
+    "[handoff] could not check whether another session is reading it. $ask_took" "$(printf '%s\n' "$out" | sed -n 1p)"
+  has "/clear, нечитаем ($kind): читатель не записан" "outcome=gave-note reader=not-recorded reason=unreadable" "$(tl outcome reader reason)"
+  if [ -f "$markers/own.handed" ]; then ok; else bad "/clear, нечитаем ($kind): напечатано, значит «отдано» записано" "own.handed нет"; fi
+  if { [ "$kind" = fifo ] && [ -p "$f" ]; } || { [ "$kind" = big ] && cmp -s "$f" "$work/mark.before"; }; then ok; else bad "/clear, нечитаем ($kind): файл пометки не тронут" "$(ls -lA "$taken")"; fi
+done
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
+out=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I -c 'import os,sys
+path = sys.argv[1]
+scope = {
+    "__name__": "hook",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+def broken(*args):
+    raise RuntimeError("snapshot")
+scope["find_snapshot"] = broken
+sys.exit(scope["main"](["start"]))' "$HOOK" 2>&1)
+old=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I "$work/before/run.py" "$OLD_HOOK")
+same "/clear, исключение в снимке читателей — модели текст 8b символ в символ" "$old" "$(printf '%s' "$out" | model_of)"
+same "/clear, исключение в снимке — пользователю строка 8b без пометки" "Hats handoff: continuing anchor \"своя\" — $real_note" "$(printf '%s' "$out" | user_of)"
+has "/clear, исключение в снимке — reader=error" "outcome=gave-note reader=error marks_error=RuntimeError" "$(tl outcome reader marks_error)"
 
 # --- сверка: форма вывода каждого вызова через помощники и совпадение с образцом
 if [ -s "$OLD_HOOK" ]; then ok; else bad "сверка: образец" "нет файла $OLD_HOOK"; fi

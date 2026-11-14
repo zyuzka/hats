@@ -4,6 +4,7 @@ Claude process, and the SessionStart hook gives the note back after /clear, or l
 of closed sessions when a new session starts in the same folder.
 
   handoff.py start                      SessionStart hook (matcher startup|clear), stdin = hook input
+  handoff.py took                       PostToolUse hook (matcher Read): who else reads this note
   handoff.py save --note P --topic T    after a save request: marker + check of the note + resume index
   handoff.py check P                    the check alone
   handoff.py new --slug S [--memory D]  creates an empty note resume-S.md under a free name, prints its path
@@ -180,7 +181,8 @@ recorded, as before.
 Every `start` run appends one JSON line to `runs.log` beside the markers: time, how long it took,
 source, session, folder, Claude process and the decision — `off`, `bad-input`, `skipped`,
 `unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `gave-note` (receiver `new`, `same`
-or `none`), `no-closed`, `unchecked`, `listed`, `error` (with `error`, the exception's type, and
+or `none`), `not-printed` (the note could not be written to stdout under the mark lock, task 8c),
+`no-closed`, `unchecked`, `listed`, `error` (with `error`, the exception's type, and
 `message`, its text); a start in a new session also records `unchecked`, the number of notes it could
 not check. A run that prints nothing leaves nothing in the transcript
 (measured 2026-11-11: 11 Bash calls with five hooks each, and only the one run that printed was
@@ -200,14 +202,135 @@ of 20. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE=<s> widens both windows so the te
 sits in a plugin (`.claude-plugin/plugin.json` two folders above it), in the plugin's
 hooks/hooks.json. A copy outside a plugin never reads a hooks.json.
 
+Who reads a note (task 8c, user decisions of 2026-11-13). Two new sessions of one folder see one list
+of closed notes and may take the same one: the start hook knows whether the process that saved a note
+lives, not who continues it. So `took`, a PostToolUse hook on Read, records the reading Claude process
+in a mark file and, on its first read only, warns once when other sessions read the note; the start
+list marks such notes, and /clear takes the process off. To take a note is to read its file with Read
+(user, "1) а"): a read made only to describe the note counts too, and cat is not caught. Measured on
+Claude Code 2.1.323 in tmux: the input of a PostToolUse hook on Read carries cwd, duration_ms, effort,
+hook_event_name, permission_mode, prompt_id, scratchpad_dir, session_id, tool_input ({"file_path"}),
+tool_name, tool_response ({"file", "type"}), tool_use_id and transcript_path; `systemMessage` shows
+under the call as `PostToolUse:Read says: …` and never reaches the model, `additionalContext` does;
+starting the hook (py.sh, python3 -I, importing this file) takes a median of 58 ms over 15 runs.
+
+The note of `took` is the file in the `note` field of any marker that passes `allowed_note` with that
+marker's cwd and is the same file as the path read (os.path.samestat); a partial or an empty read
+counts, and markers are not filtered by folder, age or whether their process closed (user, "4) да").
+Before any marker is read, a path that is not .md, has a service name (MEMORY.md, resume-index.md, in
+any case), or sits neither directly in a memory folder under <config>/projects (seen as typed, so a
+memory folder that is a link counts) nor in a project folder of the notes root is not a note. Markers
+are read in name order, as load_markers reads them, each through get_small_text (64 KB, O_NONBLOCK: a
+FIFO never hangs), the deadline checked between files; markers still unread at the deadline make the
+outcome `incomplete`. The note's group is every such marker whose note is that same file; a mark file
+is <markers>/taken/<sha256 of the real path of the marker's note>.json, one per distinct real path, so
+a memory folder behind a link, another letter case and a hard link all reach the group.
+
+A mark file is {"note": <real path>, "readers": [{"pid", "started", "session", "at"}]} (user, "2) в"):
+a reader is a Claude process (pid and start time, as in markers), the session id of its first read
+(a whole id, else null) and the time of that read; another read by the same process changes nothing.
+A reader goes into every file of the group, and the facts are the union of readers by (pid, started)
+with the earliest at. The process's own list, taken/<pid>-<started>.reads ({"pid", "started", "keys"}),
+names the files it reads: written under the same lock before the mark files, at most 500 keys and
+64 KB, so /clear finds its own records without walking taken/. A reader is removed only when seen dead
+— os.kill finds no such process, or ps shows another start time — and its .reads goes with it; ps
+saying "no" (code 1, empty output, which a failing ps also prints) while os.kill finds a process makes
+that reader "could not check", never dead and never live. There is no age limit (user, "4) да"): a
+file with no readers left is removed, and `save` never writes into taken/. Mark files and .reads are
+read through get_small_text, at most 64 KB and 100 readers, else unreadable and never rewritten; a bad
+reader (pid not a positive int, started empty, at not a marker timestamp) is dropped, and a bad file
+(not JSON, another shape, another note) counts as empty.
+
+`took` runs in this order: a deadline of 1.5 s from entry, the filter by name and place, the markers,
+the group, the own process, a snapshot of the group's files without the lock, the other readers checked
+outside the lock (os.kill, then ps, once per pid, until 0.3 s before the deadline), flock on
+taken/.lock (waited for until 0.1 s before the deadline), the files read again and merged (those seen
+dead dropped, those that appeared kept; a reader written after this run's snapshot counts as live),
+temporary files, the print, os.replace (.reads first), runs.log. The print under the lock is a
+non-blocking write to stdout of at most 0.3 s and never past the deadline; a write not finished is
+`not-printed`, its temporary files are removed and a fragment may have gone out. A reader owed a warning
+is recorded only if the warning printed, and nothing checks the deadline between the print and the
+replace. taken/.lock is a file of its own, never replaced or removed, and ps never runs under it; only
+a run that records a reader (`took`, and /clear with `gave-note`) creates taken/ (700) and .lock (600),
+opened with O_NOFOLLOW|O_NONBLOCK and checked by fstat. Capacity is 100 readers per file once the dead
+are dropped: a reader already there stays (`again`); a new one at 100 is not recorded (`full`), and the
+warning prints by the facts of the file. The same reason=full also stops a reader whose own .reads would
+then pass 500 keys or 64 KB: it is not recorded either.
+
+The matrix of `took`; runs.log gets a line only on the paths that name an outcome, and the others write
+nothing, create no state folder and never wait for runs.lock:
+  not a note — not .md, a service name, outside both folders, no marker on the file: silent
+  quiet — HANDOFF_OFF=1, a subagent (agent_id on the input), a session without a person: silent
+  bad input — not a JSON object, hook_event_name not PostToolUse, tool_name not Read, tool_input.file_path
+    not an absolute path: silent, `bad-input`
+  markers not read by the deadline: silent, `incomplete`
+  first reader — no other reader, or all of them dead: recorded, the dead removed, `took`
+  already a reader: only the dead removed, `again`
+  others — live and/or not checked: the user gets "Hats handoff: <facts>", the model "[handoff] <facts>.
+    Another session may be continuing this task: continue it only if the user confirms."; recorded after
+    the print, `took-shared` with `live` and `unknown`
+  full — 100 readers after the dead, this process not among them: warned, nothing written, `not-recorded`
+    reason=full
+  not recorded — the lock not taken in time or not opened, no fcntl, taken a link or not a folder, a
+    temporary file not created, os.replace failed after the print: warned by the last state read when
+    others read the note, nothing written, the next read warns again; `not-recorded` with `reason`, `warned`
+  unreadable — a mark file or the own .reads a link, not a regular file, over 64 KB or 100 entries, a read
+    error: silent, untouched, `not-recorded` reason=unreadable
+  no Claude process: silent, `no-process`; stdout not taking the output: `not-printed`; an exception:
+    `error` with its type and text
+<facts> is "<N> other live session(s) reading this note: <list>" or "could not check <M> other
+session(s) that read this note: <list>", both joined as "…; could not check <M> more: <list>"; <list>
+is "session <id> (pid <pid>, since <at>)" joined by ", ", <id> only a whole session id, else "a
+session", cut with "and <K> more" to 2,000 UTF-16 units for the user and 9,500 for the model. The output
+is one JSON object with hookEventName PostToolUse, or nothing, written as UTF-8 bytes; the exit code is
+0 and stderr empty. A runs.log line of `took` carries "command": "took", session, pid, note, outcome,
+live, unknown, reason and warned.
+
+The start list marks a listed note that live or unchecked sessions read, after the text of before is
+built, in the time left until 0.2 s before the deadline and in a try of its own. The model gets, after
+the note's line, "   <facts>. If the user picks it, say so and continue only if the user confirms.",
+only while the whole text stays within 9,500 units (else `marks_dropped`); the user gets "   <facts>"
+under the note's entry, the readers of one note cut to 600 characters with "and <K> more", and notes
+dropped for the 2,000 limit end as "and <N> more, <K> of them being read by another session". Here
+<facts> reads "<N> live session(s) reading it: …", "could not check <M> session(s) that read it: …",
+and for an unreadable file "could not check whether another session is reading it". No mark file, all
+readers dead or a broken file leave the text of before character for character; an exception in the
+marks drops them (`listed`, marks_error=<type>). `startup` reads without the lock and never creates or
+writes taken/.
+
+/clear with a person and an identified process first takes the process off, on all three paths: by its
+own .reads, out of the files of its keys, except the keys of the group of the note this /clear gives
+it; an empty file is removed, .reads is rewritten or removed, and a key leaves .reads only once its
+file was rewritten. The lock is waited for 0.5 s; no taken/ — nothing; a failure — clear_error. When
+/clear gives the process its note (`gave-note`; user decision "8c-1 а": the session counts as reading
+it at once, without a Read), the group, the snapshot, the readers' check and render_own run until 0.3 s
+before the deadline; then the lock, the merge, the temporary files, one JSON with the facts in both
+fields printed as `took` prints, os.replace, and only then record_handed. Not printed (`not-printed`):
+neither reader nor hand-over; the lock not taken: printed by the snapshot, no reader. When others read
+the note, the model's text starts with "[handoff] <facts>. Another session may be continuing this task:
+continue it only if the user confirms." and the whole is cut to 9,500 units from the end, so the tail
+of render_own suffers, not the mark; the user line gets "   <facts>" under "continuing anchor …". A
+runs.log line of start adds marks, marks_dropped, marks_error, cleared and clear_error, and after
+`gave-note` reader (with reason). A subagent and a session without a person record nothing and get no
+line of 8c: after /clear without a person the text is that of before.
+
+Known gaps of the marks: a file whose readers all left without /clear stays until a `took` of the same
+note; the .reads of such a process stays until a `took` sees it dead; the .tmp of a killed run stays;
+a process that read a note and dropped it without /clear stays a reader until it exits; a memory note
+behind a link, read by its real path outside <config>/projects, is not caught; cat is not caught.
+
 HANDOFF_OFF=1 silences the hook. With HANDOFF_TEST=1, HANDOFF_PROCESS=<pid>:<start> stands in
-for the claude process and HANDOFF_TEST_BUDGET for the time budget.
+for the claude process and HANDOFF_TEST_BUDGET for the time budget (of `took` too). HANDOFF_TEST_PAUSE
+also pauses under taken/.lock before the replace, HANDOFF_TEST_TAKEN_SIGNAL=<folder> gets <pid>.waiting
+before the wait for that lock and <pid>.locked once it is held, and HANDOFF_TEST_FAIL=replace makes
+os.replace of the mark files fail.
 """
 import argparse
 import hashlib
 import json
 import os
 import re
+import select
 import signal
 import stat
 import subprocess
@@ -304,6 +427,35 @@ GIT_FACT = re.compile(
 NOW_HEADING = re.compile(r"^##\s+(?:СЕЙЧАС\b|(?i:NOW)\s*(?:$|[—–:(,]|-\s|\d))")
 MARKER_FIELDS = {"pid": int, "started": str, "cwd": str, "note": str, "topic": str, "saved_at": str}
 SESSION_ID = re.compile(r"[0-9A-Za-z_-]{1,128}")
+TOOK_BUDGET_S = 1.5
+CHECK_SPARE_S = 0.3
+LOCK_SPARE_S = 0.1
+PRINT_LIMIT_S = 0.3
+MARKS_SPARE_S = 0.2
+UNLIST_LOCK_S = 0.5
+LOCK_STEP_S = 0.01
+TAKEN_FOLDER = "taken"
+TAKEN_LOCK = ".lock"
+TAKEN_LIMIT = 64 * 1024
+MARKER_LIMIT = 64 * 1024
+READER_LIMIT = 100
+READS_KEY_LIMIT = 500
+MARK_LIST_LIMIT = 600
+NOTE_KEY = re.compile(r"[0-9a-f]{64}")
+STAMP = "%Y-%m-%dT%H:%M:%SZ"
+TOOK_ASK = "Another session may be continuing this task: continue it only if the user confirms."
+LIST_ASK = "If the user picks it, say so and continue only if the user confirms."
+TOOK_WORDS = (
+    "{} other live session(s) reading this note: ",
+    "could not check {} other session(s) that read this note: ",
+)
+MARK_WORDS = (
+    "{} live session(s) reading it: ",
+    "could not check {} session(s) that read it: ",
+)
+MORE_WORDS = "; could not check {} more: "
+UNREADABLE_MARK = "could not check whether another session is reading it"
+MARK_INDENT = "   "
 
 _deadline = None
 _check_errors = []
@@ -374,8 +526,11 @@ def run(cmd, timeout):
     return proc.returncode, out
 
 
-def process_start(pid):
-    code, out = run(["ps", "-o", "lstart=", "-p", str(pid)], time_left(CALL_TIMEOUT_S))
+def process_start(pid, until=None):
+    timeout = time_left(CALL_TIMEOUT_S)
+    if until is not None:
+        timeout = min(timeout, until - time.monotonic())
+    code, out = run(["ps", "-o", "lstart=", "-p", str(pid)], timeout)
     if code is None:
         return "unknown", None
     started = " ".join((out or "").split())
@@ -538,6 +693,14 @@ def marker_file(pid, started):
     return f"{pid}-{re.sub(r'[^0-9A-Za-z]+', '-', started).strip('-')}.json"
 
 
+def is_marker_shape(marker):
+    return (
+        isinstance(marker, dict)
+        and all(isinstance(marker.get(k), t) and not isinstance(marker.get(k), bool) for k, t in MARKER_FIELDS.items())
+        and all(usable(marker[k]) for k in ("started", "cwd", "note"))
+    )
+
+
 def load_markers():
     folder = state_dir()
     try:
@@ -554,12 +717,7 @@ def load_markers():
                 marker = json.load(f)
         except (OSError, ValueError, RecursionError):
             continue
-        if not isinstance(marker, dict):
-            continue
-        if not all(isinstance(marker.get(k), t) and not isinstance(marker.get(k), bool)
-                   for k, t in MARKER_FIELDS.items()):
-            continue
-        if not all(usable(marker[k]) for k in ("started", "cwd", "note")):
+        if not is_marker_shape(marker):
             continue
         marker["_path"] = path
         markers.append(marker)
@@ -925,17 +1083,17 @@ def render_own(marker):
     return "\n".join(out)
 
 
-def render_list(markers):
-    out = [
+def get_list_blocks(markers):
+    blocks = [[
         "[handoff] Sessions that already closed left notes in this folder. Do not hold up the user's "
         "request for them: do what the user asks, and in your first reply mention these notes in one "
         "short line, in the user's language, so the user can pick one. Continue a note only if the user "
         "picks it; if the user asks to continue earlier work, offer these notes and wait for the choice:"
-    ]
+    ]]
     all_facts = []
     for index, marker in enumerate(markers, 1):
         text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
-        out.append(f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}")
+        out = [f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}"]
         problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
         if problems and problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
@@ -944,8 +1102,18 @@ def render_list(markers):
         facts = state_lines(text)
         all_facts.extend(facts)
         out.extend("   " + fact for fact in facts)
-    out.extend(fetch_hint(all_facts))
-    return "\n".join(out)
+        blocks.append(out)
+    blocks.append(fetch_hint(all_facts))
+    return blocks
+
+
+def get_joined(blocks, marks=None):
+    lines = []
+    for index, block in enumerate(blocks):
+        mark = marks[index - 1] if marks and 0 < index <= len(marks) else None
+        lines.extend(block[:1] + ([mark] if mark else []) + block[1:])
+
+    return "\n".join(lines)
 
 
 def cap_utf16(text, limit):
@@ -955,22 +1123,76 @@ def cap_utf16(text, limit):
     return encoded[:limit * 2].decode("utf-16-le", errors="ignore")
 
 
-def say(user, model):
-    global _printed
+def get_payload(user, model, event):
     payload = {}
     if user is not None and _tell:
         payload["systemMessage"] = cap_utf16(user, USER_LINE_LIMIT)
     if model is not None:
         payload["hookSpecificOutput"] = {
-            "hookEventName": "SessionStart",
+            "hookEventName": event,
             "additionalContext": model,
         }
     if not payload:
+        return None
+
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
+
+
+def say(user, model, event="SessionStart"):
+    global _printed
+    data = get_payload(user, model, event)
+    if data is None:
         return
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
     _printed = True
     sys.stdout.buffer.write(data)
     sys.stdout.buffer.flush()
+
+
+def say_within(
+    user,
+    model,
+    event,
+):
+    data = get_payload(user, model, event)
+    if data is None:
+        return True
+    end = min(time.monotonic() + PRINT_LIMIT_S, _deadline)
+    try:
+        fd = sys.stdout.fileno()
+        blocking = os.get_blocking(fd)
+        os.set_blocking(fd, False)
+    except (OSError, ValueError):
+        return False
+    try:
+        return is_written(fd, memoryview(data), end)
+    except OSError:
+        return False
+    finally:
+        set_blocking_back(fd, blocking)
+
+
+def set_blocking_back(fd, blocking):
+    try:
+        os.set_blocking(fd, blocking)
+    except OSError:
+        pass
+
+
+def is_written(fd, view, end):
+    global _printed
+    while view:
+        left = end - time.monotonic()
+        if left <= 0:
+            return False
+        try:
+            count = os.write(fd, view)
+        except BlockingIOError:
+            select.select([], [fd], [], left)
+            continue
+        _printed = True
+        view = view[count:]
+
+    return True
 
 
 def tell_failure(kind):
@@ -1014,14 +1236,22 @@ def get_unlisted_line(unchecked):
     return f"{USER_LINE_START} no notes from closed sessions in this folder"
 
 
-def get_list_line(markers, hidden, unchecked):
+def get_list_line(
+    markers,
+    hidden,
+    unchecked,
+    marks=(),
+):
     found = len(markers) + hidden
     head = f"{USER_LINE_START} {found} {get_note_noun(found)} from closed sessions in this folder:"
     items = [f"{index}. \"{get_topic(marker)}\" — {get_shown(marker['note'])}" for index, marker in enumerate(markers, 1)]
+    items = [item + (f"\n{MARK_INDENT}{mark}" if mark else "") for item, mark in zip(items, list(marks) + [None] * len(items))]
     tail = f"\ncould not check {unchecked} more {get_note_noun(unchecked)} in time" if unchecked else ""
     for kept in range(len(items), -1, -1):
         dropped = len(items) - kept + hidden
         more = f"\nand {dropped} more" if dropped else ""
+        read = sum(1 for mark in marks[kept:] if mark)
+        more += f", {read} of them being read by another session" if read else ""
         text = head + "".join("\n" + item for item in items[:kept]) + more + tail
         if len(text.encode("utf-16-le")) // 2 <= USER_LINE_LIMIT:
             return text
@@ -1029,10 +1259,10 @@ def get_list_line(markers, hidden, unchecked):
     return text
 
 
-def time_budget():
+def time_budget(default=TIME_BUDGET_S):
     if testing() and os.environ.get("HANDOFF_TEST_BUDGET"):
         return float(os.environ["HANDOFF_TEST_BUDGET"])
-    return TIME_BUDGET_S
+    return default
 
 
 def test_pause():
@@ -1080,19 +1310,40 @@ def cmd_start(seen):
             return 0
         seen["pid"] = proc[0]
         own = [m for m in markers if m["pid"] == proc[0] and m["started"] == proc[1]]
+        given = handed_session(own[0]) if own and session else None
+        if _tell:
+            set_unlisted(
+                proc,
+                find_kept_reals(
+                    own,
+                    given,
+                    session,
+                    markers,
+                ),
+                seen,
+            )
         if not own:
             seen["outcome"] = "no-own-marker"
             say(f"{USER_LINE_START} no anchor saved in this Claude process", None)
             return 0
-        given = handed_session(own[0]) if session else None
         if given is not None and given != session:
             seen.update(outcome="handed-elsewhere", handed_to=clip(given))
             say(f"{USER_LINE_START} anchor \"{get_topic(own[0])}\" was already given to {get_receiver(given)}", None)
             return 0
-        say(
-            f"{USER_LINE_START} continuing anchor \"{get_topic(own[0])}\" — {get_shown(own[0]['note'])}",
-            cap_utf16(render_own(own[0]), OUTPUT_LIMIT),
-        )
+        if not _tell:
+            say(
+                f"{USER_LINE_START} continuing anchor \"{get_topic(own[0])}\" — {get_shown(own[0]['note'])}",
+                cap_utf16(render_own(own[0]), OUTPUT_LIMIT),
+            )
+        elif not set_given_note(
+            own[0],
+            proc,
+            markers,
+            session,
+            seen,
+        ):
+            seen["outcome"] = "not-printed"
+            return 0
         if session and given is None:
             record_handed(own[0], session)
         receiver = "none" if not session else ("new" if given is None else "same")
@@ -1123,10 +1374,1098 @@ def cmd_start(seen):
             return 0
         closed.sort(key=lambda pair: pair[0], reverse=True)
         shown = [marker for _, marker in closed[:LIST_LIMIT]]
-        text = render_list(shown)
-    say(get_list_line(shown, len(closed) - len(shown), unchecked), cap_utf16(text, OUTPUT_LIMIT))
+        blocks = get_list_blocks(shown)
+    user, model = find_marked_list(
+        shown,
+        len(closed) - len(shown),
+        unchecked,
+        blocks,
+        markers,
+        seen,
+    )
+    say(user, model)
     seen.update(outcome="listed", listed=len(shown))
     return 0
+
+
+def get_units(text):
+    return len(text.encode("utf-16-le")) // 2
+
+
+def get_file_id(path):
+    try:
+        info = os.stat(path)
+    except (OSError, ValueError):
+        return None
+
+    return info.st_dev, info.st_ino
+
+
+def get_cached_id(path, ids):
+    if path not in ids:
+        ids[path] = get_file_id(path)
+
+    return ids[path]
+
+
+def find_group_reals(
+    note,
+    markers,
+    ids=None,
+):
+    ids = {} if ids is None else ids
+    want = get_cached_id(note, ids)
+    reals = []
+    for marker in markers:
+        if want is None or get_cached_id(marker["note"], ids) != want:
+            continue
+        real = os.path.realpath(marker["note"])
+        if real not in reals:
+            reals.append(real)
+
+    return reals
+
+
+def is_handed_elsewhere(given, session):
+    return given is not None and given != session
+
+
+def find_kept_reals(
+    own,
+    given,
+    session,
+    markers,
+):
+    if not own or is_handed_elsewhere(given, session):
+        return []
+
+    return find_group_reals(own[0]["note"], markers)
+
+
+def get_taken_folder():
+    return os.path.join(state_dir(), TAKEN_FOLDER)
+
+
+def get_taken_kind():
+    try:
+        info = os.lstat(get_taken_folder())
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return "other"
+
+    return "folder" if stat.S_ISDIR(info.st_mode) else "other"
+
+
+def get_note_key(real):
+    return hashlib.sha256(os.fsencode(real)).hexdigest()
+
+
+def is_key_of(note, key):
+    try:
+        return isinstance(note, str) and get_note_key(note) == key
+    except (UnicodeError, ValueError):
+        return False
+
+
+def get_mark_path(key):
+    return os.path.join(get_taken_folder(), key + ".json")
+
+
+def get_reads_name(pid, started):
+    return marker_file(pid, started)[:-len(".json")] + ".reads"
+
+
+def get_reads_path(proc):
+    return os.path.join(get_taken_folder(), get_reads_name(proc[0], proc[1]))
+
+
+def get_small_json(path, limit):
+    if not os.path.lexists(path):
+        return "absent", None
+    text, error = get_small_text(path, limit)
+    if error == "is not UTF-8":
+        return "bad", None
+    if error:
+        return "unreadable", None
+    try:
+        return "ok", json.loads(text)
+    except (ValueError, RecursionError):
+        return "bad", None
+
+
+def is_stamp(value):
+    try:
+        datetime.strptime(value, STAMP)
+    except (TypeError, ValueError):
+        return False
+
+    return True
+
+
+def is_pid(value):
+    return (
+        isinstance(value, int)
+        and not isinstance(value, bool)
+        and value > 0
+    )
+
+
+def is_reader(entry):
+    return (
+        isinstance(entry, dict)
+        and is_pid(entry.get("pid"))
+        and usable(entry.get("started"))
+        and (entry.get("session") is None or isinstance(entry.get("session"), str))
+        and is_stamp(entry.get("at"))
+    )
+
+
+def get_reader_key(reader):
+    return reader["pid"], reader["started"]
+
+
+def get_clean_reader(entry):
+    return {
+        "pid": entry["pid"],
+        "started": entry["started"],
+        "session": entry.get("session"),
+        "at": entry["at"],
+    }
+
+
+def create_reader(proc, session):
+    return {
+        "pid": proc[0],
+        "started": proc[1],
+        "session": session,
+        "at": datetime.now(timezone.utc).strftime(STAMP),
+    }
+
+
+def get_merged_readers(lists):
+    found = {}
+    for reader in [reader for readers in lists for reader in readers]:
+        key = get_reader_key(reader)
+        if key not in found or reader["at"] < found[key]["at"]:
+            found[key] = reader
+
+    return sorted(found.values(), key=lambda reader: (reader["at"], reader["pid"]))
+
+
+def get_others(readers, proc):
+    return [reader for reader in readers if get_reader_key(reader) != proc]
+
+
+def is_mark_shape(data, key):
+    return (
+        isinstance(data, dict)
+        and is_key_of(data.get("note"), key)
+        and isinstance(data.get("readers"), list)
+    )
+
+
+def get_mark_file(key):
+    state, data = get_small_json(get_mark_path(key), TAKEN_LIMIT)
+    if state == "unreadable":
+        return state, None, None
+    if state != "ok" or not is_mark_shape(data, key):
+        return "absent" if state == "absent" else "bad", [], None
+    if len(data["readers"]) > READER_LIMIT:
+        return "unreadable", None, None
+    readers = [get_clean_reader(entry) for entry in data["readers"] if is_reader(entry)]
+
+    return "ok", get_merged_readers([readers]), data["note"]
+
+
+def is_reads_shape(data, proc):
+    return (
+        isinstance(data, dict)
+        and data.get("pid") == proc[0]
+        and data.get("started") == proc[1]
+        and isinstance(data.get("keys"), list)
+    )
+
+
+def get_reads_file(proc):
+    state, data = get_small_json(get_reads_path(proc), TAKEN_LIMIT)
+    if state == "unreadable":
+        return state, None
+    if state != "ok" or not is_reads_shape(data, proc):
+        return "absent" if state == "absent" else "bad", []
+    if len(data["keys"]) > READS_KEY_LIMIT:
+        return "unreadable", None
+    keys = [key for key in data["keys"] if isinstance(key, str) and NOTE_KEY.fullmatch(key)]
+
+    return "ok", list(dict.fromkeys(keys))
+
+
+def get_json_bytes(data):
+    return json.dumps(data, ensure_ascii=False).encode("utf-8") + b"\n"
+
+
+def get_mark_bytes(note, readers):
+    return get_json_bytes({
+        "note": note,
+        "readers": readers,
+    })
+
+
+def get_reads_bytes(proc, keys):
+    return get_json_bytes({
+        "pid": proc[0],
+        "started": proc[1],
+        "keys": keys,
+    })
+
+
+def get_pid_state(pid, until):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return "gone", None
+    except (OverflowError, ValueError):
+        return "gone", None
+    except OSError:
+        pass
+    if time.monotonic() >= until:
+        return "unknown", None
+
+    return process_start(pid, until)
+
+
+def get_verdict(state, reader):
+    status, started = state
+    if status == "gone":
+        return "dead"
+    if status == "ok":
+        return "alive" if started == reader["started"] else "dead"
+
+    return "unknown"
+
+
+def get_reader_states(
+    readers,
+    until,
+    cache,
+):
+    states = {}
+    for reader in readers:
+        if reader["pid"] not in cache:
+            cache[reader["pid"]] = get_pid_state(reader["pid"], until)
+        states[get_reader_key(reader)] = get_verdict(cache[reader["pid"]], reader)
+
+    return states
+
+
+def create_mark(
+    others,
+    states,
+    known,
+    unreadable,
+):
+    seen = {get_reader_key(reader) for reader in known}
+
+    return {
+        "live": [r for r in others if get_reader_key(r) not in seen or states.get(get_reader_key(r)) == "alive"],
+        "unknown": [r for r in others if get_reader_key(r) in seen and states.get(get_reader_key(r)) == "unknown"],
+        "unreadable": unreadable,
+    }
+
+
+def has_mark(mark):
+    return bool(mark) and bool(mark["live"] or mark["unknown"] or mark["unreadable"])
+
+
+def get_reader_item(reader):
+    session = reader["session"]
+    who = f"session {session}" if isinstance(session, str) and SESSION_ID.fullmatch(session) else "a session"
+
+    return f"{who} (pid {reader['pid']}, since {reader['at']})"
+
+
+def get_reader_list(readers, shown):
+    listed = ", ".join(get_reader_item(reader) for reader in readers[:shown])
+    more = len(readers) - shown
+    if not more:
+        return listed
+
+    return f"{listed}, and {more} more" if listed else f"and {more} more"
+
+
+def get_facts(
+    mark,
+    words,
+    shown=None,
+):
+    live, unknown = mark["live"], mark["unknown"]
+    shown = len(live) + len(unknown) if shown is None else shown
+    text = words[0].format(len(live)) + get_reader_list(live, min(shown, len(live))) if live else ""
+    if unknown:
+        lead = MORE_WORDS if live else words[1]
+        text += lead.format(len(unknown)) + get_reader_list(unknown, max(0, shown - len(live)))
+    if mark["unreadable"]:
+        text += ("; " if text else "") + UNREADABLE_MARK
+
+    return text
+
+
+def find_fitting(
+    mark,
+    words,
+    frame,
+    limit,
+):
+    prefix, suffix = frame
+    text = ""
+    for shown in range(len(mark["live"]) + len(mark["unknown"]), -1, -1):
+        text = prefix + get_facts(
+            mark,
+            words,
+            shown,
+        ) + suffix
+        if get_units(text) <= limit:
+            return text
+
+    return cap_utf16(text, limit)
+
+
+def get_short_facts(mark):
+    return find_fitting(
+        mark,
+        MARK_WORDS,
+        ("", ""),
+        MARK_LIST_LIMIT,
+    )
+
+
+def get_took_output(mark):
+    user = find_fitting(
+        mark,
+        TOOK_WORDS,
+        (f"{USER_LINE_START} ", ""),
+        USER_LINE_LIMIT,
+    )
+    model = find_fitting(
+        mark,
+        TOOK_WORDS,
+        ("[handoff] ", f". {TOOK_ASK}"),
+        OUTPUT_LIMIT,
+    )
+
+    return user, model
+
+
+def get_clear_output(
+    marker,
+    body,
+    mark,
+):
+    user = f"{USER_LINE_START} continuing anchor \"{get_topic(marker)}\" — {get_shown(marker['note'])}"
+    if not has_mark(mark):
+        return user, cap_utf16(body, OUTPUT_LIMIT)
+    facts = get_short_facts(mark)
+
+    return f"{user}\n{MARK_INDENT}{facts}", cap_utf16(f"[handoff] {facts}. {TOOK_ASK}\n{body}", OUTPUT_LIMIT)
+
+
+def find_mark(
+    reals,
+    kind,
+    until,
+    cache,
+):
+    if kind != "folder":
+        return create_mark(
+            [],
+            {},
+            [],
+            True,
+        )
+    lists, unreadable = [], False
+    for real in reals:
+        state, readers, _ = get_mark_file(get_note_key(real))
+        unreadable = unreadable or state == "unreadable"
+        lists.append(readers or [])
+    union = get_merged_readers(lists)
+    mark = create_mark(
+        union,
+        get_reader_states(
+            union,
+            until,
+            cache,
+        ),
+        union,
+        unreadable,
+    )
+
+    return mark if has_mark(mark) else None
+
+
+def find_marks(shown, markers):
+    kind = get_taken_kind()
+    if kind == "absent":
+        return [None] * len(shown)
+    until = _deadline - MARKS_SPARE_S
+    ids, cache = {}, {}
+
+    return [find_mark(
+        find_group_reals(
+            marker["note"],
+            markers,
+            ids,
+        ),
+        kind,
+        until,
+        cache,
+    ) for marker in shown]
+
+
+def find_model_marks(blocks, found):
+    marks = [None] * len(found)
+    dropped = 0
+    for index, mark in enumerate(found):
+        if not mark:
+            continue
+        marks[index] = f"{MARK_INDENT}{get_facts(mark, MARK_WORDS)}. {LIST_ASK}"
+        if get_units(get_joined(blocks, marks)) > OUTPUT_LIMIT:
+            marks[index] = None
+            dropped += 1
+
+    return marks, dropped
+
+
+def find_marked_list(
+    shown,
+    hidden,
+    unchecked,
+    blocks,
+    markers,
+    seen,
+):
+    plain = get_list_line(shown, hidden, unchecked), cap_utf16(get_joined(blocks), OUTPUT_LIMIT)
+    seen.update(marks=0, marks_dropped=0)
+    try:
+        found = find_marks(shown, markers)
+        if not any(found):
+            return plain
+        model_marks, dropped = find_model_marks(blocks, found)
+        user_marks = [get_short_facts(mark) if mark else None for mark in found]
+        seen.update(marks=sum(1 for mark in found if mark), marks_dropped=dropped)
+        user = get_list_line(
+            shown,
+            hidden,
+            unchecked,
+            user_marks,
+        )
+        return user, cap_utf16(get_joined(blocks, model_marks), OUTPUT_LIMIT)
+    except Exception as error:
+        seen.update(marks=0, marks_dropped=0, marks_error=type(error).__name__)
+        return plain
+
+
+def set_signal(kind):
+    folder = os.environ.get("HANDOFF_TEST_TAKEN_SIGNAL") if testing() else None
+    if not folder:
+        return
+    fd = os.open(
+        os.path.join(folder, f"{os.getpid()}.{kind}"),
+        os.O_WRONLY | os.O_CREAT,
+        0o600,
+    )
+    os.close(fd)
+
+
+def create_taken_folder():
+    try:
+        os.mkdir(get_taken_folder(), 0o700)
+    except FileExistsError:
+        pass
+    except OSError:
+        return "taken-not-created"
+    kind = get_taken_kind()
+    if kind != "folder":
+        return "taken-not-folder"
+
+    return None
+
+
+def get_lock_flags(create):
+    flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+
+    return flags | os.O_CREAT if create else flags
+
+
+def get_taken_lock(create, until):
+    if fcntl is None:
+        return None, "no-locking"
+    error = create_taken_folder() if create else None
+    if error:
+        return None, error
+    try:
+        fd = os.open(
+            os.path.join(get_taken_folder(), TAKEN_LOCK),
+            get_lock_flags(create),
+            0o600,
+        )
+    except OSError:
+        return None, "lock-not-opened"
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        return None, "lock-not-file"
+    if time.monotonic() >= until:
+        os.close(fd)
+        return None, "no-time"
+    set_signal("waiting")
+    while not try_lock(fd):
+        if time.monotonic() >= until:
+            os.close(fd)
+            return None, "lock-busy"
+        time.sleep(LOCK_STEP_S)
+    set_signal("locked")
+
+    return fd, None
+
+
+def remove_quietly(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def set_written(
+    fd,
+    path,
+    data,
+):
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+    except OSError:
+        remove_quietly(path)
+        raise
+
+
+def create_temp_file(data):
+    folder = get_taken_folder()
+    for number in range(NAME_TRIES):
+        path = os.path.join(folder, f".tmp-{os.getpid()}-{number}.json")
+        try:
+            fd = os.open(
+                path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+            )
+        except FileExistsError:
+            continue
+        set_written(
+            fd,
+            path,
+            data,
+        )
+        return path
+
+    raise FileExistsError(f"no free temporary name in {folder}")
+
+
+def set_replaced(tmp, path):
+    if testing() and os.environ.get("HANDOFF_TEST_FAIL") == "replace":
+        raise OSError("os.replace failed on purpose (HANDOFF_TEST_FAIL=replace)")
+    os.replace(tmp, path)
+
+
+def remove_temps(pairs):
+    for tmp, _ in pairs or ():
+        remove_quietly(tmp)
+
+
+def set_replaced_all(pairs):
+    for index, (tmp, path) in enumerate(pairs):
+        try:
+            set_replaced(tmp, path)
+        except OSError:
+            remove_temps(pairs[index:])
+            return "replace"
+
+    return None
+
+
+def remove_dead_reads(dead):
+    for pid, started in dead:
+        remove_quietly(os.path.join(get_taken_folder(), get_reads_name(pid, started)))
+
+
+def find_snapshot(reals, proc):
+    snapshot = {
+        "union": [],
+        "unreadable": False,
+        "reads_unreadable": False,
+    }
+    if get_taken_kind() != "folder":
+        return snapshot
+    lists = []
+    for real in reals:
+        state, readers, _ = get_mark_file(get_note_key(real))
+        snapshot["unreadable"] = snapshot["unreadable"] or state == "unreadable"
+        lists.append(readers or [])
+    snapshot["union"] = get_merged_readers(lists)
+    snapshot["reads_unreadable"] = get_reads_file(proc)[0] == "unreadable"
+
+    return snapshot
+
+
+def get_snapshot_mark(
+    snapshot,
+    states,
+    proc,
+):
+    others = get_others(snapshot["union"], proc)
+
+    return create_mark(
+        others,
+        states,
+        others,
+        snapshot["unreadable"],
+    )
+
+
+def is_reader_in(readers, proc):
+    return any(get_reader_key(reader) == proc for reader in readers)
+
+
+def set_plan_content(
+    plan,
+    files,
+    kept,
+    reader,
+):
+    proc = get_reader_key(reader)
+    for real, readers in kept.items():
+        mine = is_reader_in(readers, proc)
+        if not mine and len(readers) >= READER_LIMIT:
+            plan["full"] = True
+        content = readers if mine else get_merged_readers([readers, [reader]])
+        if content != files[real]:
+            plan["files"][real] = content
+
+
+def set_plan_reads(
+    plan,
+    proc,
+    keys,
+    wanted,
+):
+    keys_after = keys + [key for key in wanted if key not in keys]
+    if keys_after == keys:
+        return
+    data = get_reads_bytes(proc, keys_after)
+    if len(keys_after) > READS_KEY_LIMIT or len(data) > TAKEN_LIMIT:
+        plan["full"] = True
+    plan["reads"] = data
+
+
+def find_plan(
+    reals,
+    proc,
+    session,
+    snapshot,
+    states,
+):
+    files = {}
+    for real in reals:
+        state, readers, _ = get_mark_file(get_note_key(real))
+        if state == "unreadable":
+            return None
+        files[real] = readers
+    reads_state, keys = get_reads_file(proc)
+    if reads_state == "unreadable":
+        return None
+    dead = {key for key, verdict in states.items() if verdict == "dead"}
+    kept = {real: [r for r in readers if get_reader_key(r) not in dead] for real, readers in files.items()}
+    union = get_merged_readers(kept.values())
+    mine = [reader for reader in union if get_reader_key(reader) == proc]
+    plan = {
+        "again": bool(mine),
+        "mark": create_mark(
+            get_others(union, proc),
+            states,
+            snapshot,
+            False,
+        ),
+        "dead": {get_reader_key(r) for readers in files.values() for r in readers if get_reader_key(r) in dead},
+        "full": False,
+        "files": {},
+        "reads": None,
+    }
+    set_plan_content(
+        plan,
+        files,
+        kept,
+        mine[0] if mine else create_reader(proc, session),
+    )
+    set_plan_reads(
+        plan,
+        proc,
+        keys,
+        [get_note_key(real) for real in reals],
+    )
+
+    return plan
+
+
+def create_plan_temps(plan, proc):
+    pairs = []
+    try:
+        if plan["reads"] is not None:
+            pairs.append((create_temp_file(plan["reads"]), get_reads_path(proc)))
+        for real, readers in plan["files"].items():
+            pairs.append((create_temp_file(get_mark_bytes(real, readers)), get_mark_path(get_note_key(real))))
+    except (OSError, ValueError):
+        remove_temps(pairs)
+        return None, "temp"
+
+    return pairs, None
+
+
+def find_plan_temps(plan, proc):
+    if plan is None:
+        return None, "unreadable"
+    if plan["full"]:
+        return None, "full"
+
+    return create_plan_temps(plan, proc)
+
+
+def get_took_input():
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except (ValueError, RecursionError):
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def is_read_input(data):
+    return data.get("hook_event_name") == "PostToolUse" and data.get("tool_name") == "Read"
+
+
+def get_read_path(data):
+    tool_input = data.get("tool_input")
+    path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if not is_read_input(data) or not usable(path) or not os.path.isabs(path):
+        return None
+
+    return path
+
+
+def is_same_place(path, other):
+    found = get_file_id(path)
+
+    return found is not None and found == get_file_id(other)
+
+
+def is_note_place(path):
+    name = os.path.basename(path)
+    if not name.lower().endswith(".md") or is_service_name(name):
+        return False
+    folder = os.path.dirname(os.path.normpath(path))
+    in_memory_folder = os.path.basename(folder).lower() == "memory"
+    if in_memory_folder and is_same_place(os.path.dirname(os.path.dirname(folder)), memory_root()):
+        return True
+
+    return is_same_place(os.path.dirname(folder), get_notes_root())
+
+
+def find_marker_real(path, read_id):
+    text, error = get_small_text(path, MARKER_LIMIT)
+    if error:
+        return None
+    try:
+        marker = json.loads(text)
+    except (ValueError, RecursionError):
+        return None
+    if not is_marker_shape(marker) or get_file_id(os.path.expanduser(marker["note"])) != read_id:
+        return None
+    kept = allowed_note(marker["note"], marker["cwd"])
+    if kept is None or get_file_id(kept) != read_id:
+        return None
+
+    return os.path.realpath(kept)
+
+
+def find_took_group(read_id):
+    folder = state_dir()
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return []
+    reals = []
+    for name in names:
+        if out_of_time():
+            return None
+        if not name.endswith(".json"):
+            continue
+        real = find_marker_real(os.path.join(folder, name), read_id)
+        if real is not None and real not in reals:
+            reals.append(real)
+
+    return reals
+
+
+def set_took_locked(given, seen):
+    plan = find_plan(
+        given["reals"],
+        given["proc"],
+        given["session"],
+        given["snapshot"]["union"],
+        given["states"],
+    )
+    if plan is None:
+        seen.update(outcome="not-recorded", reason="unreadable")
+        return
+    mark = plan["mark"]
+    warn = has_mark(mark) and not plan["again"]
+    seen.update(live=len(mark["live"]), unknown=len(mark["unknown"]), warned=warn)
+    pairs, reason = find_plan_temps(plan, given["proc"])
+    if warn and not say_within(*get_took_output(mark), "PostToolUse"):
+        remove_temps(pairs)
+        seen.update(outcome="not-printed", warned=False)
+        return
+    if reason:
+        seen.update(outcome="again" if plan["again"] else "not-recorded", reason=reason)
+        return
+    test_pause()
+    reason = set_replaced_all(pairs)
+    if reason:
+        seen.update(outcome="not-recorded", reason=reason)
+        return
+    remove_dead_reads(plan["dead"])
+    seen["outcome"] = "again" if plan["again"] else ("took-shared" if warn else "took")
+
+
+def set_took(given, seen):
+    snapshot = find_snapshot(given["reals"], given["proc"])
+    if snapshot["unreadable"] or snapshot["reads_unreadable"]:
+        seen.update(outcome="not-recorded", reason="unreadable")
+        return
+    others = get_others(snapshot["union"], given["proc"])
+    given.update(snapshot=snapshot, states=get_reader_states(others, _deadline - CHECK_SPARE_S, {}))
+    lock, reason = get_taken_lock(True, _deadline - LOCK_SPARE_S)
+    if lock is None:
+        mark = get_snapshot_mark(snapshot, given["states"], given["proc"])
+        warn = has_mark(mark) and not is_reader_in(snapshot["union"], given["proc"])
+        if warn:
+            say(*get_took_output(mark), "PostToolUse")
+        seen.update(outcome="not-recorded", reason=reason, warned=warn, live=len(mark["live"]), unknown=len(mark["unknown"]))
+        return
+    try:
+        set_took_locked(given, seen)
+    finally:
+        os.close(lock)
+
+
+def cmd_took(seen):
+    global _deadline, _tell
+    _deadline = time.monotonic() + time_budget(TOOK_BUDGET_S)
+    if os.environ.get("HANDOFF_OFF") == "1" or unattended():
+        return
+    data = get_took_input()
+    if data is None:
+        seen["outcome"] = "bad-input"
+        return
+    if data.get("agent_id") is not None:
+        return
+    session = session_id(data)
+    path = get_read_path(data)
+    if path is None:
+        seen.update(outcome="bad-input", session=session)
+        return
+    read_id = get_file_id(path) if is_note_place(path) else None
+    reals = find_took_group(read_id) if read_id is not None else []
+    if reals is None:
+        seen.update(outcome="incomplete", session=session)
+        return
+    if not reals:
+        return
+    seen.update(session=session, note=clip(reals[0]))
+    proc = claude_process()
+    if not proc:
+        seen["outcome"] = "no-process"
+        return
+    seen["pid"] = proc[0]
+    _tell = True
+    given = {
+        "reals": reals,
+        "proc": proc,
+        "session": session,
+    }
+    set_took(given, seen)
+
+
+def find_checked_snapshot(given, seen):
+    try:
+        snapshot = find_snapshot(given["reals"], given["proc"])
+        others = get_others(snapshot["union"], given["proc"])
+        given.update(snapshot=snapshot, states=get_reader_states(others, _deadline, {}))
+        return True
+    except Exception as error:
+        seen.update(reader="error", marks_error=type(error).__name__)
+        return False
+
+
+def set_given_locked(given, seen):
+    plan = find_plan(
+        given["reals"],
+        given["proc"],
+        given["session"],
+        given["snapshot"]["union"],
+        given["states"],
+    )
+    mark = plan["mark"] if plan else dict(get_snapshot_mark(given["snapshot"], given["states"], given["proc"]), unreadable=True)
+    pairs, reason = find_plan_temps(plan, given["proc"])
+    user, model = get_clear_output(given["marker"], given["body"], mark)
+    if not say_within(user, model, "SessionStart"):
+        remove_temps(pairs)
+        seen["reader"] = "not-printed"
+        return False
+    if reason:
+        seen.update(reader="not-recorded", reason=reason)
+        return True
+    test_pause()
+    reason = set_replaced_all(pairs)
+    if reason:
+        seen.update(reader="not-recorded", reason=reason)
+        return True
+    remove_dead_reads(plan["dead"])
+    seen["reader"] = "again" if plan["again"] else "took"
+
+    return True
+
+
+def set_given_note(
+    marker,
+    proc,
+    markers,
+    session,
+    seen,
+):
+    global _deadline
+    deadline = _deadline
+    given = {
+        "marker": marker,
+        "reals": find_group_reals(marker["note"], markers),
+        "proc": proc,
+        "session": session,
+    }
+    _deadline = deadline - CHECK_SPARE_S
+    try:
+        checked_ok = find_checked_snapshot(given, seen)
+        given["body"] = render_own(marker)
+    finally:
+        _deadline = deadline
+    if not checked_ok:
+        say(*get_clear_output(marker, given["body"], None))
+        return True
+    lock, reason = get_taken_lock(True, _deadline - LOCK_SPARE_S)
+    if lock is None:
+        say(*get_clear_output(marker, given["body"], get_snapshot_mark(given["snapshot"], given["states"], proc)))
+        seen.update(reader="not-recorded", reason=reason)
+        return True
+    try:
+        return set_given_locked(given, seen)
+    finally:
+        os.close(lock)
+
+
+def set_unlisted_reader(key, proc):
+    state, readers, note = get_mark_file(key)
+    if state == "unreadable":
+        return "unreadable"
+    left = get_others(readers, proc)
+    if state != "ok" or len(left) == len(readers):
+        return None
+    path = get_mark_path(key)
+    tmp = None
+    try:
+        if not left:
+            os.remove(path)
+            return None
+        tmp = create_temp_file(get_mark_bytes(note, left))
+        set_replaced(tmp, path)
+    except (OSError, ValueError):
+        remove_temps([(tmp, path)] if tmp else [])
+        return "write"
+
+    return None
+
+
+def set_reads_keys(proc, keys):
+    path = get_reads_path(proc)
+    tmp = None
+    try:
+        if not keys:
+            os.remove(path)
+            return None
+        tmp = create_temp_file(get_reads_bytes(proc, keys))
+        set_replaced(tmp, path)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        remove_temps([(tmp, path)] if tmp else [])
+        return "write"
+
+    return None
+
+
+def set_unlisted_files(proc, keep):
+    state, keys = get_reads_file(proc)
+    if state == "unreadable":
+        return 0, "unreadable"
+    left, cleared, error = [], 0, None
+    for key in keys:
+        failure = None if key in keep else set_unlisted_reader(key, proc)
+        if key in keep or failure:
+            left.append(key)
+        else:
+            cleared += 1
+        error = failure or error
+    if state != "ok" or left != keys:
+        error = set_reads_keys(proc, left) or error
+
+    return cleared, error
+
+
+def set_unlisted_keys(proc, keep):
+    kind = get_taken_kind()
+    if kind == "absent":
+        return 0, None
+    if kind != "folder":
+        return 0, "taken-not-folder"
+    if not os.path.lexists(get_reads_path(proc)):
+        return 0, None
+    lock, reason = get_taken_lock(False, time.monotonic() + UNLIST_LOCK_S)
+    if lock is None:
+        return 0, reason
+    try:
+        return set_unlisted_files(proc, keep)
+    finally:
+        os.close(lock)
+
+
+def set_unlisted(
+    proc,
+    reals,
+    seen,
+):
+    keep = {get_note_key(real) for real in reals}
+    try:
+        cleared, error = set_unlisted_keys(proc, keep)
+    except Exception as failure:
+        cleared, error = 0, type(failure).__name__
+    seen["cleared"] = cleared
+    if error:
+        seen["clear_error"] = error
 
 
 def get_plain(text):
@@ -1605,10 +2944,25 @@ def cmd_check(args):
     return 1
 
 
+def run_took():
+    began = time.monotonic()
+    seen = {}
+    try:
+        cmd_took(seen)
+    except Exception as error:
+        seen.update(outcome="error", error=type(error).__name__, message=clip(str(error)))
+    finally:
+        if seen.get("outcome"):
+            write_trace(dict({"command": "took"}, **seen), began)
+
+    return 0
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog="handoff.py")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("start")
+    commands.add_parser("took")
     save = commands.add_parser("save")
     save.add_argument("--note", required=True)
     save.add_argument("--topic", required=True)
@@ -1636,6 +2990,8 @@ def main(argv):
             if _check_errors:
                 seen["check_error"] = ",".join(sorted(set(_check_errors)))
             write_trace(seen, began)
+    if args.command == "took":
+        return run_took()
     if args.command == "save":
         return cmd_save(args)
     if args.command == "where":

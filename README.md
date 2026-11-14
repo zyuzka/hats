@@ -175,7 +175,18 @@ When a session starts, and after `/clear`, Claude Code shows one line from the p
 to another session or that this Claude process has none; in a new session it lists the notes that
 closed sessions left in this folder, or says there are none or that some could not be checked in
 time. The line is for you only: what the model receives is unchanged (checked with Claude Code
-2.1.323).
+2.1.323), except for the mark below.
+
+The plugin also notices two sessions on one task. A session that reads a note with the Read tool is
+recorded as reading it; when other live sessions read that note too, a line appears under that Read
+call — `PostToolUse:Read says: Hats handoff: 1 other live session(s) reading this note: …` — and the
+model is asked to continue the task only if you confirm. Only the first read warns. The list in a new
+session and the note given back after `/clear` carry the same mark, for you and for the model, and
+`/clear` takes the session off the notes it was reading. For this the plugin runs a hook after every
+Read and writes, in `state/handoff/taken/` of Claude Code's settings folder (`~/.claude` unless
+`CLAUDE_CONFIG_DIR` says otherwise), the Claude process id, start time and session id of each session
+that read a note; a read made only to look at the note counts too, and the session stays recorded
+until its `/clear` or until its Claude process exits.
 
 Hats never installs it on its own. Open **Settings › General › Session handoff**: the row says whether
 the plugin is installed, from where, and whether it is switched off in Claude Code. **Install…** first
