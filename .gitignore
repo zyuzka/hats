@@ -27,3 +27,7 @@ Dev/*.md
 # measured the behaviour the app rests on. Both stay on disk.
 DESIGN-live-session-move.md
 token-probe/
+
+# Written by Claude Code beside a plugin folder it loads a hooks module from: the editor settings of
+# the mod, extending a types folder that ignores itself.
+plugin/tsconfig.json
