@@ -255,10 +255,19 @@ window that can be one already fuller at its first answer — gets neither. «а
 turn that ends past 55% counts as that save. If the session wrote to another repository, Claude Code
 may ask your permission to check it, and the save waits for your answer. Subagents and sessions
 without a person (`claude -p`, the SDK) are left alone; a teammate of an agent team that runs in its
-own tmux pane is a session of its own to the plugin, and is warned and anchored like any other. The thresholds and the action come from `window-thresholds.json` in
-`~/Library/Application Support/Hats`, which Hats will write from its settings; without it the plugin
-takes 45%, 55% and the `/clear` offer. Each session's stage goes to `session-thresholds/<session>.json`
-beside it, but only into a folder Hats made.
+own tmux pane is a session of its own to the plugin, and is warned and anchored like any other. The thresholds and the action are set in Hats, under **Settings › Context**: **Warn at** and
+**Anchor at**, each with a switch that turns it off, and **After anchoring** — only tell you, offer
+`/clear`, or offer `/exit` and a new session. Until you change them they are 45%, 55% and the `/clear`
+offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
+`~/Library/Application Support/Hats` and puts the file back if it is removed; the plugin reads it at
+every decision, also while Hats is not running, and without it takes 45%, 55% and the `/clear` offer.
+Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
+Hats made. A running Hats reads those files and shows one notification for each threshold a session
+crosses, titled with the session's name — the title you gave it, else its folder, else the start of
+its id — and its percent: `hats — context 47%` with «Past the warning threshold of 45%. The session
+anchors at 55%.», or «Past 55%: the session anchors at the end of its turn.» —
+also while Settings is open in front. It says nothing about stages written before it started, nothing
+when mods are off in Claude Code, and removes stage files older than 30 days.
 
 ## Supported CLIs
 

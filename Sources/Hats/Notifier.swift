@@ -30,6 +30,7 @@ final class NotifierListener: NSObject, UNUserNotificationCenterDelegate {
 
 enum Notifier {
     static let opensSettingsKey = "dev.tmk.hats.opensSettings"
+    static let showsInFrontKey = "dev.tmk.hats.showsInFront"
     private static let listener = NotifierListener()
 
     private static var centre: UNUserNotificationCenter? {
@@ -57,12 +58,16 @@ enum Notifier {
         userInfo[opensSettingsKey] as? Bool == true
     }
 
+    static func isShownInFront(_ userInfo: [AnyHashable: Any]) -> Bool {
+        isOpeningSettings(userInfo) || userInfo[showsInFrontKey] as? Bool == true
+    }
+
     static func isClickOpeningSettings(_ action: String, _ userInfo: [AnyHashable: Any]) -> Bool {
         action == UNNotificationDefaultActionIdentifier && isOpeningSettings(userInfo)
     }
 
     static func getPresentation(_ userInfo: [AnyHashable: Any]) -> UNNotificationPresentationOptions {
-        isOpeningSettings(userInfo)
+        isShownInFront(userInfo)
             ? [
                 .banner,
                 .list,
@@ -93,7 +98,14 @@ enum Notifier {
         return content
     }
 
-    private static func deliver(_ content: UNMutableNotificationContent) {
+    static func createContentShownInFront(title: String, body: String) -> UNMutableNotificationContent {
+        let content = createContent(title: title, body: body)
+        content.userInfo = [showsInFrontKey: true]
+
+        return content
+    }
+
+    static func deliver(_ content: UNMutableNotificationContent) {
         guard let centre else {
             Journal.log("notify.skipped", ["reason": "no bundle", "title": content.title])
             return

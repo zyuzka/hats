@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hatUsage = HatUsageFile()
     var lastHatUsageFailure = NoteOnChange()
     let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
+    let contextChannel = ContextThresholdsChannel()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -97,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
         sessionWindows.onChange = { [weak self] in self?.showTheContextRows() }
         sessionWindows.start()
+        contextChannel.start { [weak self] in self?.sessionWindows.windows ?? [] }
         startTheUpdater()
         DockPresence.watch()
 

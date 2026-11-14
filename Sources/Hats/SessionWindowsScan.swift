@@ -45,7 +45,7 @@ struct SessionWindowsScan {
     }
 
     mutating func findWindows(in folder: URL, now: Date) -> [SessionWindow] {
-        let candidates = findCandidates(in: folder)
+        let candidates = (Self.findCandidates(in: folder) ?? []).prefix(Self.fileLimit)
         var next: [String: Seen] = [:]
         for (name, stamp) in candidates {
             if let known = seen[name], known.stamp == stamp {
@@ -72,18 +72,17 @@ struct SessionWindowsScan {
         return windows
     }
 
-    private func findCandidates(in folder: URL) -> [(String, FileStamp)] {
+    static func findCandidates(in folder: URL) -> [(String, FileStamp)]? {
         var facts = stat()
-        guard lstat(folder.path, &facts) == 0, facts.st_mode & S_IFMT == S_IFDIR else { return [] }
-        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return [] }
-        let stamped = names
+        guard lstat(folder.path, &facts) == 0, facts.st_mode & S_IFMT == S_IFDIR else { return nil }
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return nil }
+
+        return names
             .filter { $0.hasSuffix(".json") && !$0.hasPrefix(".") }
             .compactMap { name in FileStamp.find(folder.appendingPathComponent(name).path).map { (name, $0) } }
             .sorted { first, second in
                 (first.1.seconds, first.1.nanoseconds, second.0) > (second.1.seconds, second.1.nanoseconds, first.0)
             }
-
-        return Array(stamped.prefix(Self.fileLimit))
     }
 
     private mutating func tellSkipped(_ name: String, reason: String) {
