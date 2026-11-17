@@ -476,6 +476,7 @@ export const createStageRecord = (state, now) => ({
   reason: state.reason,
   marker: state.marker,
   at: getStamp(now),
+  limits: state.limits ?? { five_hour: null, seven_day: null },
 })
 
 export const findRounds = (text, id) => {

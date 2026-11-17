@@ -22,7 +22,14 @@ export const HANDED = `${CONFIG}/state/handoff/42-Sat-Nov-14-12-00-00-2026.hande
 
 type Entry = { text: string; mtimeMs: number; kind: 'file' | 'dir' | 'other' }
 
-type SceneOptions = { on: any; hasRunHook?: boolean; hasStateHome?: boolean; configDir?: string; configRoot?: string }
+type SceneOptions = {
+  on: any
+  hasRunHook?: boolean
+  hasStateHome?: boolean
+  configDir?: string
+  configRoot?: string
+  env?: Record<string, string>
+}
 
 type Ending = { percent?: number; reason?: string; agentId?: string }
 
@@ -70,7 +77,8 @@ const createWorld = (options: SceneOptions) => {
   const clock = mock.clock(on, { now: START })
   const isStateHome = options.hasStateHome !== false
   const configEnv = options.configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: options.configDir }
-  mock.env(on, isStateHome ? { HOME, HATS_STATE_HOME: STATE, ...configEnv } : { HOME, ...configEnv })
+  const extraEnv = options.env ?? {}
+  mock.env(on, isStateHome ? { HOME, HATS_STATE_HOME: STATE, ...configEnv, ...extraEnv } : { HOME, ...configEnv, ...extraEnv })
   const files = new Map<string, Entry>()
   const links = new Map<string, string>()
   const paths = createPaths(options.configRoot ?? CONFIG)
@@ -91,6 +99,8 @@ const createWorld = (options: SceneOptions) => {
     paths,
     resolve,
     percent: undefined as number | undefined,
+    rateLimits: [] as unknown[],
+    readPaths: [] as string[],
     sessionId: SESSION,
     runs: [] as string[],
     logs: [] as string[],
@@ -175,6 +185,7 @@ const answerFiles = (world: World, on: any) => {
     return { value: e.resolve ? { ...stat, realPath: real } : stat }
   })
   on('fs.read', (_: any, e: any) => {
+    world.readPaths.push(e.path)
     const entry = files.get(world.resolve(e.path))
     if (entry?.kind === 'other') world.otherReads += 1
     const isReadable = entry !== undefined && entry.kind === 'file' && world.unreadableUntilWrite !== e.path
@@ -251,7 +262,7 @@ const answerEngine = (world: World, options: SceneOptions) => {
   on('session.usage', () => {
     const fill = world.percent === undefined ? {} : { tokens: world.percent * 10000, percent: world.percent }
 
-    return { value: { startedAt: 0, context: { window: 1000000, ...fill }, rateLimits: [] } }
+    return { value: { startedAt: 0, context: { window: 1000000, ...fill }, rateLimits: world.rateLimits } }
   })
   on('session.id', async () => {
     world.idReads += 1

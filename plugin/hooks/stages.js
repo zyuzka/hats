@@ -16,11 +16,14 @@ import {
   setReading,
   setRoundStarted,
 } from './drain.js'
+import { setAskFailed } from './limits.js'
 
 export async function endChain($, job) {
   const { state, reason } = job
   if (state.request === null && !isWaiting(state)) return
+  const isLimitOnly = state.request !== null && !state.request.isWindow && !isWaiting(state)
   state.request = null
+  if (isLimitOnly) return
   state.drain = null
   setStage(state, { stage: 'interrupted', reason })
   await queueStage($, state)
@@ -28,8 +31,10 @@ export async function endChain($, job) {
 
 export async function failRequest($, job) {
   const { state, reason } = job
+  const isWindow = state.request === null || state.request.isWindow
+  setAskFailed(state.request?.limits ?? [])
   state.request = null
-  setStage(state, { stage: 'failed', reason })
+  if (isWindow) setStage(state, { stage: 'failed', reason })
   await queueStage($, state)
   tellUser($, getFailedLine(reason))
 }
@@ -51,6 +56,7 @@ export async function restoreStage($, state) {
   if (saved === null) return
   state.warnRound = saved.warnRound
   state.saveRound = saved.saveRound
+  state.limits = saved.limits
   if (saved.stage !== 'requested' && saved.stage !== 'waiting') return
   setStage(state, { stage: 'interrupted', reason: REASONS.reloaded })
   await queueStage($, state)

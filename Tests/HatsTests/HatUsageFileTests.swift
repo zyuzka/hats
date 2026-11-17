@@ -6,6 +6,7 @@ final class HatUsageFileTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let readAt = Date(timeIntervalSince1970: 1_799_999_000)
     private let resets = Date(timeIntervalSince1970: 1_800_010_000)
+    private let polledAt = Date(timeIntervalSince1970: 1_799_999_500)
 
     override func setUpWithError() throws {
         folder = FileManager.default.temporaryDirectory
@@ -53,7 +54,9 @@ final class HatUsageFileTests: XCTestCase {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         let record = HatUsageRecord.create(
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")], reading: reading),
-            readAt: ["work": readAt, "personal": now]
+            readAt: ["work": readAt, "personal": now],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
 
         XCTAssertEqual(file.setRecord(record, at: now), .written)
@@ -71,7 +74,18 @@ final class HatUsageFileTests: XCTestCase {
         XCTAssertEqual(fields["written_at"] as? String, HatUsageRecord.getStamp(now))
         XCTAssertEqual(
             Set(fields.keys),
-            ["worn", "five_hour", "weekly", "measured_at", "has_a_hat_to_switch_to", "auto_switch_on", "written_at"]
+            [
+                "worn",
+                "five_hour",
+                "weekly",
+                "measured_at",
+                "has_a_hat_to_switch_to",
+                "auto_switch_on",
+                "written_at",
+                "credential_service",
+                "switch_covers",
+                "alive_at",
+            ]
         )
         let text = try String(contentsOf: file.url, encoding: .utf8)
         XCTAssertFalse(text.contains("@"), "no address in the file another program reads")
@@ -81,7 +95,9 @@ final class HatUsageFileTests: XCTestCase {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         let unread = HatUsageRecord.create(
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")]),
-            readAt: ["work": readAt]
+            readAt: ["work": readAt],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
         XCTAssertEqual(file.setRecord(unread, at: now), .written)
         var fields = try written(file)
@@ -92,7 +108,9 @@ final class HatUsageFileTests: XCTestCase {
 
         let bare = HatUsageRecord.create(
             from: snapshot(wearing: nil, hats: [hat("work"), hat("personal")], autoSwitch: false),
-            readAt: [:]
+            readAt: [:],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
         XCTAssertEqual(file.setRecord(bare, at: now), .written)
         fields = try written(file)
@@ -104,7 +122,9 @@ final class HatUsageFileTests: XCTestCase {
     func testNowhereToSwitchToFollowsTheAutoSwitchChoice() {
         let alone = HatUsageRecord.create(
             from: snapshot(wearing: "work", hats: [hat("work"), hat("team", switchable: false)], reading: reading),
-            readAt: [:]
+            readAt: [:],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
         XCTAssertFalse(alone.hasAHatToSwitchTo)
         let shown = snapshot(wearing: "work", hats: [hat("work"), hat("team", switchable: false)], reading: reading)
@@ -114,7 +134,12 @@ final class HatUsageFileTests: XCTestCase {
     func testTheFileIsRewrittenOnlyWhenTheRecordChanges() throws {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         let hats = [hat("work"), hat("personal")]
-        let first = HatUsageRecord.create(from: snapshot(wearing: "work", hats: hats, reading: reading), readAt: ["work": readAt])
+        let first = HatUsageRecord.create(
+            from: snapshot(wearing: "work", hats: hats, reading: reading),
+            readAt: ["work": readAt],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
+        )
         XCTAssertEqual(file.setRecord(first, at: now), .written)
         let inode = try FileManager.default.attributesOfItem(atPath: file.url.path)[.systemFileNumber] as? Int
 
@@ -123,13 +148,20 @@ final class HatUsageFileTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.url.path)[.systemFileNumber] as? Int, inode)
         XCTAssertEqual(try written(file)["written_at"] as? String, HatUsageRecord.getStamp(now))
 
-        let other = HatUsageRecord.create(from: snapshot(wearing: "personal", hats: hats), readAt: ["work": readAt])
+        let other = HatUsageRecord.create(
+            from: snapshot(wearing: "personal", hats: hats),
+            readAt: ["work": readAt],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
+        )
         XCTAssertEqual(file.setRecord(other, at: now.addingTimeInterval(600)), .written, "another hat put on is written")
         XCTAssertEqual(try written(file)["worn"] as? String, "personal")
 
         let polled = HatUsageRecord.create(
             from: snapshot(wearing: "personal", hats: hats, reading: reading),
-            readAt: ["personal": now]
+            readAt: ["personal": now],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
         XCTAssertEqual(file.setRecord(polled, at: now.addingTimeInterval(900)), .written, "a new reading is written")
     }
@@ -138,7 +170,9 @@ final class HatUsageFileTests: XCTestCase {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         let record = HatUsageRecord.create(
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")], reading: reading),
-            readAt: ["work": readAt]
+            readAt: ["work": readAt],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
         )
         XCTAssertEqual(file.setRecord(record, at: now), .written)
         try FileManager.default.removeItem(at: file.url)
@@ -152,7 +186,12 @@ final class HatUsageFileTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data("x".utf8).write(to: folder.appendingPathComponent("blocked"))
         var file = HatUsageFile(url: folder.appendingPathComponent("blocked/\(HatUsageFile.name)"))
-        let record = HatUsageRecord.create(from: snapshot(wearing: nil, hats: []), readAt: [:])
+        let record = HatUsageRecord.create(
+            from: snapshot(wearing: nil, hats: []),
+            readAt: [:],
+            liveSlot: FakeSlots.live,
+            aliveAt: polledAt
+        )
 
         guard case .failed = file.setRecord(record, at: now) else { return XCTFail("a folder that is a file must fail") }
         guard case .failed = file.setRecord(record, at: now) else {

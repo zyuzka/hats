@@ -32,11 +32,29 @@ final class SessionStageContractTests: XCTestCase {
     private var script: String {
         """
         import { writeStage } from '\(repository.appendingPathComponent("plugin/hooks/files.js").path)'
+        import {
+          createEvent,
+          createLimits,
+          getLimitsRecord,
+          setEpisode,
+        } from '\(repository.appendingPathComponent("plugin/hooks/limit-rules.js").path)'
         let text = ''
         for await (const chunk of process.stdin) text += chunk
         const input = JSON.parse(text)
         const written = []
+        const getEvent = event => (event ? createEvent(event) : null)
+        const getLimits = readings => {
+          const limits = createLimits()
+          for (const reading of readings) {
+            const thresholds = { warn: reading.warn, save: reading.save }
+            const episode = setEpisode(limits, { kind: reading.kind, reading, thresholds })
+            episode.warned = episode.warned ?? getEvent(reading.warned)
+            episode.asked = episode.asked ?? getEvent(reading.asked)
+          }
+          return getLimitsRecord(limits)
+        }
         for (const record of input.records) {
+          if (record.limitReadings) record.limits = getLimits(record.limitReadings)
           const $ = {
             env: { get: async name => input.env[name] ?? '' },
             fs: {
@@ -163,7 +181,58 @@ final class SessionStageContractTests: XCTestCase {
             savePercent: save,
             at: now,
             afterSave: after,
-            drainMinutes: drainMinutes
+            drainMinutes: drainMinutes,
+            limitEpisodes: [],
+            limitTrouble: nil
+        )
+    }
+
+    func testLimitEventsTheModWritesWithoutAWindowStageAreReadByHats() throws {
+        let session = "5a32129e-d019-4c3e-9f7a-2b1c0d9e8f71"
+        let resets = now.addingTimeInterval(3 * 3600)
+        let warnedAt = now.addingTimeInterval(0.8)
+        let askedAt = now.addingTimeInterval(60.115)
+        let first: [String: Any] = [
+            "kind": "five_hour",
+            "percent": 72,
+            "resetsMs": (resets.timeIntervalSince1970 - 2 * 3600) * 1000,
+            "warn": 70,
+            "save": 80,
+            "warned": ["now": warnedAt.timeIntervalSince1970 * 1000, "percent": 72, "worn": "work", "reason": "no_hat"],
+        ]
+        let second: [String: Any] = [
+            "kind": "five_hour",
+            "percent": 81.5,
+            "resetsMs": resets.timeIntervalSince1970 * 1000,
+            "warn": 70,
+            "save": 80,
+            "asked": ["now": askedAt.timeIntervalSince1970 * 1000, "percent": 81.5, "worn": "work", "reason": "hats_not_running"],
+        ]
+        var input = record(session, stage: "warned", rounds: (0, 0), percent: nil)
+        input["stage"] = NSNull()
+        input["limitReadings"] = [first, second]
+
+        let written = try runTheMod([input], env: [StateDirectory.overrideName: work.path])
+
+        let file = try XCTUnwrap(written.first)
+        let name = URL(fileURLWithPath: file.path).lastPathComponent
+        try Data(file.text.utf8).write(to: work.appendingPathComponent(name))
+        guard case .read(let stage) = SessionStageFile.getRecord(name, in: work) else {
+            return XCTFail("Hats did not read the mod's record: \(file.text)")
+        }
+        XCTAssertNil(stage.kind)
+        let events = stage.limitEpisodes.flatMap(\.events)
+        XCTAssertEqual(events.map(\.stage), [.warned, .asked], file.text)
+        XCTAssertEqual(events.map(\.reason), [.noHat, .hatsNotRunning])
+        XCTAssertEqual(events.map(\.percent), [72, 81.5])
+        XCTAssertEqual(events.map { LimitThresholdNotices.getMilliseconds(of: $0.at) }, [
+            LimitThresholdNotices.getMilliseconds(of: warnedAt),
+            LimitThresholdNotices.getMilliseconds(of: askedAt),
+        ])
+        XCTAssertEqual(
+            Set(stage.limitEpisodes.map(\.resetsAt)),
+            [resets, resets.addingTimeInterval(-2 * 3600)],
+            "the current episode and the previous one"
         )
     }
 

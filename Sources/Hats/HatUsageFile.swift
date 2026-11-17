@@ -17,6 +17,28 @@ struct HatUsageWindow: Equatable {
     }
 }
 
+struct SwitchCovers: Equatable {
+    let fiveHour: Bool
+    let sevenDay: Bool
+
+    static func create(from snapshot: HatsSnapshot) -> SwitchCovers {
+        let policy = snapshot.settings.autoSwitch
+        let canSwitch = policy.isOn && snapshot.nextInLine != nil
+
+        return SwitchCovers(
+            fiveHour: canSwitch && policy.sessionThresholdPercent != nil,
+            sevenDay: canSwitch && policy.weeklyThresholdPercent != nil
+        )
+    }
+
+    func getFields() -> [String: Any] {
+        [
+            "five_hour": fiveHour,
+            "seven_day": sevenDay,
+        ]
+    }
+}
+
 struct HatUsageRecord: Equatable {
     let worn: String?
     let fiveHour: HatUsageWindow?
@@ -24,8 +46,16 @@ struct HatUsageRecord: Equatable {
     let measuredAt: Date?
     let hasAHatToSwitchTo: Bool
     let autoSwitchOn: Bool
+    let credentialService: String?
+    let switchCovers: SwitchCovers
+    let aliveAt: Date?
 
-    static func create(from snapshot: HatsSnapshot, readAt: [String: Date]) -> HatUsageRecord {
+    static func create(
+        from snapshot: HatsSnapshot,
+        readAt: [String: Date],
+        liveSlot: String?,
+        aliveAt: Date?
+    ) -> HatUsageRecord {
         let worn = snapshot.wearing
         let reading = worn?.usage
 
@@ -35,7 +65,19 @@ struct HatUsageRecord: Equatable {
             weekly: reading?.weekly.map(HatUsageWindow.init),
             measuredAt: reading == nil ? nil : worn.flatMap { readAt[$0.id] },
             hasAHatToSwitchTo: snapshot.nextInLine != nil,
-            autoSwitchOn: snapshot.settings.autoSwitch.isOn
+            autoSwitchOn: snapshot.settings.autoSwitch.isOn,
+            credentialService: worn == nil ? nil : liveSlot,
+            switchCovers: SwitchCovers.create(from: snapshot),
+            aliveAt: aliveAt
+        )
+    }
+
+    static func create(from snapshot: HatsSnapshot, watch: AutoSwitchWatch) -> HatUsageRecord {
+        create(
+            from: snapshot,
+            readAt: watch.readAt,
+            liveSlot: watch.lastPoll?.liveSlot,
+            aliveAt: watch.aliveAt
         )
     }
 
@@ -51,6 +93,9 @@ struct HatUsageRecord: Equatable {
             "measured_at": measuredAt.map(Self.getStamp) ?? NSNull(),
             "has_a_hat_to_switch_to": hasAHatToSwitchTo,
             "auto_switch_on": autoSwitchOn,
+            "credential_service": credentialService ?? NSNull(),
+            "switch_covers": switchCovers.getFields(),
+            "alive_at": aliveAt.map(Self.getStamp) ?? NSNull(),
             "written_at": Self.getStamp(writtenAt),
         ]
 

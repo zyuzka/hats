@@ -42,7 +42,7 @@ final class ContextThresholdNotices {
     }
 
     private func consider(_ stage: SessionStage, title: String?) {
-        guard let percent = stage.percent else { return }
+        guard stage.kind != nil, let percent = stage.percent else { return }
         let label = HatsCopy.getContextLabel(title: title, cwd: stage.cwd, session: stage.session)
         let heading = HatsCopy.getContextNoticeTitle(label: label, percent: percent)
         let warn = ThresholdCrossing(session: stage.session, kind: .warn, round: stage.warnRound)

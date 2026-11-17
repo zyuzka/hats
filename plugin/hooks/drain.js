@@ -179,7 +179,7 @@ export async function findDrainChoice($, job) {
   }
   const list = findListText(snapshot.tasks)
   const holders = getHolderCount(snapshot.tasks)
-  if (holders === 0 || isDeadlinePassed(state.drain, await $.clock.now())) return { isHeld: false, list }
+  if (holders === 0 || !job.canHold || isDeadlinePassed(state.drain, await $.clock.now())) return { isHeld: false, list }
   await holdAnchor($, { state, reading, holders })
 
   return HELD

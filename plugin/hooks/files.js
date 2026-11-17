@@ -11,6 +11,11 @@ import {
   getSha256,
   isSessionId,
 } from './thresholds.js'
+import {
+  createLimits,
+  findLimits,
+  getLimitsRecord,
+} from './limit-rules.js'
 
 let writes = Promise.resolve()
 
@@ -21,7 +26,7 @@ export const setStage = (state, stage) => {
 }
 
 export function queueStage($, state) {
-  const record = { ...state }
+  const record = { ...state, limits: getLimitsRecord(state.limits ?? createLimits()) }
   writes = writes.then(() => writeStage($, record)).catch(() => {})
 
   return writes
@@ -110,8 +115,9 @@ export async function findStageFile($, id) {
   const root = await getStateRoot($)
   if (root === null || !isSessionId(id)) return null
   const text = await findSmallText($, `${root}/${STAGE_FOLDER}/${id}.json`)
+  const rounds = text === null ? null : findRounds(text, id)
 
-  return text === null ? null : findRounds(text, id)
+  return rounds === null ? null : { ...rounds, limits: findLimits(JSON.parse(text).limits) }
 }
 
 async function isWritablePlace($, place) {
