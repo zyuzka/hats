@@ -12,15 +12,21 @@ struct ContextThresholds: Codable, Equatable {
     static let defaultSave = 70
     static let warnRange = 10...94
     static let saveRange = 11...95
+    static let defaultDrainMinutes = 10
+    static let drainMinutesRange = 1...60
 
     var warnPercent: Int? = ContextThresholds.defaultWarn
     var savePercent: Int? = ContextThresholds.defaultSave
     var afterSave = AfterSave.offerClear
+    var drain = false
+    var drainMinutes = ContextThresholds.defaultDrainMinutes
 
     enum CodingKeys: String, CodingKey {
         case warnPercent
         case savePercent
         case afterSave
+        case drain
+        case drainMinutes
     }
 
     func encode(to encoder: Encoder) throws {
@@ -28,6 +34,8 @@ struct ContextThresholds: Codable, Equatable {
         try c.encode(warnPercent, forKey: .warnPercent)
         try c.encode(savePercent, forKey: .savePercent)
         try c.encode(afterSave, forKey: .afterSave)
+        try c.encode(drain, forKey: .drain)
+        try c.encode(drainMinutes, forKey: .drainMinutes)
     }
 
     private static func findPair(in c: KeyedDecodingContainer<CodingKeys>) throws -> (warn: Int?, save: Int?) {
@@ -85,6 +93,18 @@ struct ContextThresholds: Codable, Equatable {
         guard savePercent != nil else { return }
         savePercent = getSaveRange().getClamped(percent)
     }
+
+    mutating func setDrainMinutes(_ minutes: Int) {
+        drainMinutes = Self.drainMinutesRange.getClamped(minutes)
+    }
+
+    private static func findDrainMinutes(in c: KeyedDecodingContainer<CodingKeys>) -> Int {
+        guard let minutes = try? c.decodeIfPresent(Int.self, forKey: .drainMinutes),
+              drainMinutesRange.contains(minutes)
+        else { return defaultDrainMinutes }
+
+        return minutes
+    }
 }
 
 extension ContextThresholds {
@@ -95,6 +115,8 @@ extension ContextThresholds {
             savePercent = pair.save
         }
         afterSave = (try? c.decodeIfPresent(AfterSave.self, forKey: .afterSave)) ?? .offerClear
+        drain = (try? c.decodeIfPresent(Bool.self, forKey: .drain)) ?? false
+        drainMinutes = Self.findDrainMinutes(in: c)
     }
 }
 

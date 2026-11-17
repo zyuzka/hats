@@ -2,6 +2,8 @@ export const DEFAULTS = {
   warn: 60,
   save: 70,
   after: 'offer_clear',
+  drain: false,
+  drainMinutes: 10,
 }
 export const ACTIONS = [
   'tell',
@@ -81,6 +83,7 @@ const MARKER_NONEMPTY_FIELDS = [
 const PERCENT_RANGE = { low: 0, high: 100 }
 const WARN_RANGE = { low: 10, high: 94 }
 const SAVE_RANGE = { low: 11, high: 95 }
+const MINUTES_RANGE = { low: 1, high: 60 }
 const ROUND_RANGE = { low: 0, high: Number.MAX_SAFE_INTEGER }
 
 const isWholeIn = (value, range) => Number.isInteger(value) && value >= range.low && value <= range.high
@@ -106,13 +109,17 @@ export const findThresholds = text => {
   if (!isThresholdShape(warn, WARN_RANGE) || !isThresholdShape(save, SAVE_RANGE)) return null
   if (warn !== null && save !== null && warn >= save) return null
   const after = ACTIONS.includes(data.after_save) ? data.after_save : 'tell'
+  const drain = data.drain === true
+  const drainMinutes = isWholeIn(data.drain_minutes, MINUTES_RANGE) ? data.drain_minutes : DEFAULTS.drainMinutes
 
-  return { warn, save, after }
+  return { warn, save, after, drain, drainMinutes }
 }
+
+export const isDrainOn = thresholds => thresholds.drain === true && thresholds.save !== null
 
 export const createArm = () => ({ seenBelowLowest: false, warn: false, save: false })
 
-const getLowest = thresholds => {
+export const getLowest = thresholds => {
   const enabled = [
     thresholds.warn,
     thresholds.save,
@@ -137,17 +144,30 @@ export const isWarnDue = (arm, reading) =>
 export const isSaveDue = (arm, reading) =>
   reading.thresholds.save !== null && arm.save && reading.percent >= reading.thresholds.save
 
+const getDrainAnchorPart = ({ thresholds, percent }) => {
+  const later = `, or, while its background work runs, at the end of a later turn within ${thresholds.drainMinutes} min. `
+  if (percent >= thresholds.save) return `It anchors itself at the end of this turn${later}`
+
+  return `It anchors itself once it reaches ${thresholds.save}%: at the end of that turn${later}`
+}
+
 const getAnchorPart = ({ thresholds, percent }) => {
   if (thresholds.save === null) return ''
+  if (isDrainOn(thresholds)) return getDrainAnchorPart({ thresholds, percent })
   if (percent >= thresholds.save) return 'It anchors itself at the end of this turn. '
 
   return `It anchors itself at the end of a turn once it reaches ${thresholds.save}%. `
 }
 
+const DRAIN_WARNING =
+  ' Drain is on: do not start subagents, workflows, monitors or background commands; ' +
+  'they are refused until the session is asked to anchor.'
+
 export const getWarningText = reading =>
   `Hats context threshold: this session's context window is at ${reading.percent}% ` +
   `(warning threshold ${reading.thresholds.warn}%). ${getAnchorPart(reading)}` +
-  'Tell the user so in one short line in your reply, in their language, and go on with the task.'
+  'Tell the user so in one short line in your reply, in their language, and go on with the task.' +
+  (isDrainOn(reading.thresholds) ? DRAIN_WARNING : '')
 
 export const getRequestLine = (percent, save) => `context ${percent}% (anchor threshold ${save}%) — anchoring this session.`
 
@@ -231,6 +251,15 @@ export const findStepsReason = outcomes => {
 
 const isTaskShape = task => task !== null && typeof task === 'object' && typeof task.id === 'string'
 
+const getTaskText = value => (typeof value === 'string' ? value : '')
+
+const getTaskFields = task => ({
+  id: task.id,
+  type: getTaskText(task.type),
+  status: getTaskText(task.status),
+  description: getTaskText(task.description),
+})
+
 const isSnapshotShape = (data, id) =>
   data !== null &&
   typeof data === 'object' &&
@@ -250,7 +279,14 @@ export const findSnapshot = (text, id) => {
   }
   if (!isSnapshotShape(data, id)) return { kind: 'bad' }
 
-  return { kind: 'snapshot', at: data.at_ms, ok: data.ok, ids: data.tasks.map(task => task.id), crons: data.crons }
+  return {
+    kind: 'snapshot',
+    at: data.at_ms,
+    ok: data.ok,
+    ids: data.tasks.map(task => task.id),
+    crons: data.crons,
+    tasks: data.tasks.map(getTaskFields),
+  }
 }
 
 const getEscaped = text => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
@@ -392,6 +428,17 @@ export const getTurnFailure = reason => FAILED_TURN[reason] ?? `the anchor turn 
 
 export const getRefusedReason = message => `the anchor command was refused: ${message}`
 
+export const createPrevious = state => ({
+  stage: state.stage,
+  reason: state.reason,
+  marker: state.marker,
+  saveRound: state.saveRound,
+  percent: state.percent,
+  thresholds: state.thresholds,
+  drainMinutes: state.drainMinutes,
+  drain: state.drain,
+})
+
 export const findRefusalOutcome = (message, previous) => {
   if (!message.includes(STOPPED)) return { kind: 'failed', reason: getRefusedReason(message) }
 
@@ -425,6 +472,7 @@ export const createStageRecord = (state, now) => ({
   warn_percent: state.thresholds.warn,
   save_percent: state.thresholds.save,
   after_save: state.thresholds.after,
+  drain_minutes: state.drainMinutes ?? null,
   reason: state.reason,
   marker: state.marker,
   at: getStamp(now),

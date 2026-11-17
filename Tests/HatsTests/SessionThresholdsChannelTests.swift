@@ -80,8 +80,8 @@ final class SessionThresholdsChannelTests: XCTestCase {
 
         wait(for: [toldAt[2]], timeout: 5)
         XCTAssertEqual(told.map(\.body), [
-            HatsCopy.getAnchorNoticeBody(save: 55),
-            HatsCopy.getAnchorNoticeBody(save: 55),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil),
             HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
         ], "the mod rewrites its file in place, which a folder watch alone does not see")
     }

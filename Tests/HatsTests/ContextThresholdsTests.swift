@@ -165,6 +165,7 @@ final class ContextThresholdsTests: XCTestCase {
                             toggle: { next, isOn in next.setWarn(isOn: isOn) },
                             step: { next, percent in next.setWarn(percent) }
                         )
+                        drain
                         threshold(
                             HatsCopy.anchorAt,
                             percent: thresholds.savePercent,
@@ -212,10 +213,93 @@ final class ContextThresholdsTests: XCTestCase {
                     body(&next)
                     model.actions?.updateContextThresholds(next)
             """,
+            """
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Toggle(HatsCopy.drainBackgroundWork, isOn: Binding(
+                                get: { thresholds.drain },
+                                set: { isOn in change { $0.drain = isOn } }
+                            ))
+                            .font(.system(size: 13))
+                            Spacer()
+                            if thresholds.drain {
+                                Stepper(
+                                    HatsCopy.getDrainWaitTitle(minutes: thresholds.drainMinutes),
+                                    value: Binding(
+                                        get: { thresholds.drainMinutes },
+                                        set: { minutes in change { $0.setDrainMinutes(minutes) } }
+                                    ),
+                                    in: ContextThresholds.drainMinutesRange,
+                                    step: 1
+                                )
+                                .font(.system(size: 13))
+                            }
+                        }
+                        .disabled(thresholds.savePercent == nil)
+                        Text(HatsCopy.drainNote)
+            """,
         ]
         for row in rows {
             XCTAssertTrue(panel.contains(row), "the panel no longer reads, as one block:\n\(row)")
         }
+    }
+
+    func testWithoutTheDrainFieldsTheDrainIsOffAndWaitsTenMinutes() throws {
+        let settings = try load(#"{"contextThresholds": {"warnPercent": 30, "savePercent": 40, "afterSave": "tell"}}"#)
+
+        XCTAssertFalse(settings.contextThresholds.drain)
+        XCTAssertEqual(settings.contextThresholds.drainMinutes, 10)
+        XCTAssertEqual(settings.contextThresholds, thresholds(30, 40, .tell))
+        XCTAssertFalse(ContextThresholds().drain)
+        XCTAssertEqual(ContextThresholds().drainMinutes, 10)
+    }
+
+    func testTheDrainAndItsMinutesSurviveARestart() throws {
+        var chosen = thresholds(45, 55, .clear)
+        chosen.drain = true
+        chosen.drainMinutes = 25
+        var settings = AppSettings()
+        settings.contextThresholds = chosen
+        try settings.save(to: url)
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertEqual(AppSettings.loaded(from: url).contextThresholds, chosen)
+        XCTAssertTrue(text.contains(#""drain" : true"#), text)
+        XCTAssertTrue(text.contains(#""drainMinutes" : 25"#), text)
+    }
+
+    func testBadDrainFieldsFallBackOneByOneAndLeaveTheThresholdsAlone() throws {
+        let cases: [(String, Bool, Int)] = [
+            (#""drain": true, "drainMinutes": 0"#, true, 10),
+            (#""drain": true, "drainMinutes": 61"#, true, 10),
+            (#""drain": true, "drainMinutes": 5.5"#, true, 10),
+            (#""drain": true, "drainMinutes": "5""#, true, 10),
+            (#""drain": "true", "drainMinutes": 1"#, false, 1),
+            (#""drain": 1, "drainMinutes": 60"#, false, 60),
+            (#""drain": null, "drainMinutes": null"#, false, 10),
+        ]
+        for (fields, drain, minutes) in cases {
+            let part = #"{"warnPercent": 30, "savePercent": 40, "afterSave": "tell", \#(fields)}"#
+            let settings = try load(#"{"contextThresholds": \#(part)}"#)
+
+            XCTAssertEqual(settings.contextThresholds.drain, drain, fields)
+            XCTAssertEqual(settings.contextThresholds.drainMinutes, minutes, fields)
+            XCTAssertEqual(settings.contextThresholds.warnPercent, 30, fields)
+            XCTAssertEqual(settings.contextThresholds.savePercent, 40, fields)
+            XCTAssertEqual(settings.contextThresholds.afterSave, .tell, fields)
+        }
+    }
+
+    func testTheWaitStaysFromOneToSixtyMinutes() {
+        var chosen = ContextThresholds()
+
+        chosen.setDrainMinutes(0)
+        XCTAssertEqual(chosen.drainMinutes, 1)
+        chosen.setDrainMinutes(61)
+        XCTAssertEqual(chosen.drainMinutes, 60)
+        chosen.setDrainMinutes(7)
+        XCTAssertEqual(chosen.drainMinutes, 7)
+        XCTAssertEqual(ContextThresholds.drainMinutesRange, 1...60)
     }
 
     func testTheSteppersKeepWarnBelowAnchor() {

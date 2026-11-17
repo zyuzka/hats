@@ -85,7 +85,8 @@ final class SessionStageContractTests: XCTestCase {
         percent: Int?,
         thresholds: (Int?, Int?) = (45, 55),
         reason: String? = nil,
-        after: AfterSave = .offerClear
+        after: AfterSave = .offerClear,
+        drainMinutes: Int? = nil
     ) -> [String: Any] {
         let limits: [String: Any] = [
             "warn": thresholds.0 ?? NSNull(),
@@ -103,6 +104,7 @@ final class SessionStageContractTests: XCTestCase {
             "thresholds": limits,
             "reason": reason ?? NSNull(),
             "marker": stage == "saved" ? "/tmp/probe-config/state/handoff/123-456.json" : NSNull(),
+            "drainMinutes": drainMinutes ?? NSNull(),
         ]
     }
 
@@ -124,6 +126,10 @@ final class SessionStageContractTests: XCTestCase {
              expect(session, .cleared, (1, 3), 56, after: .clear)),
             (record(session, stage: "kept", rounds: (1, 3), percent: 56, reason: "a draft is in the prompt", after: .clear),
              expect(session, .kept, (1, 3), 56, after: .clear)),
+            (record(session, stage: "waiting", rounds: (1, 4), percent: 56, drainMinutes: 5),
+             expect(session, .waiting, (1, 4), 56, drainMinutes: 5)),
+            (record(session, stage: "warned", rounds: (1, 4), percent: 56, reason: "wait cancelled", drainMinutes: 5),
+             expect(session, .warned, (1, 4), 56, drainMinutes: 5)),
         ]
 
         let written = try runTheMod(cases.map(\.0), env: [StateDirectory.overrideName: work.path])
@@ -143,7 +149,8 @@ final class SessionStageContractTests: XCTestCase {
         _ rounds: (Int, Int),
         _ percent: Int?,
         save: Int? = 55,
-        after: AfterSave = .offerClear
+        after: AfterSave = .offerClear,
+        drainMinutes: Int? = nil
     ) -> SessionStage {
         SessionStage(
             session: session,
@@ -155,7 +162,8 @@ final class SessionStageContractTests: XCTestCase {
             warnPercent: 45,
             savePercent: save,
             at: now,
-            afterSave: after
+            afterSave: after,
+            drainMinutes: drainMinutes
         )
     }
 

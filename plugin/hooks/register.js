@@ -4,15 +4,14 @@ import {
   INTERRUPTED_LINE,
   KEPT,
   REASONS,
-  RELOADED_LINE,
   createArm,
+  createPrevious,
   findRefusalOutcome,
   getFailedLine,
   getPauseLine,
   getRequestLine,
   getSavedLine,
   getTurnFailure,
-  getWarningText,
   isSaveDue,
   isWarnDue,
   setArm,
@@ -33,6 +32,22 @@ import {
   recordStepsOutput,
 } from './anchor-check.js'
 import {
+  findDenial,
+  findDrainChoice,
+  getDrainList,
+  isDrainCall,
+  isWaiting,
+  setPaused,
+  setReading,
+  settleRound,
+} from './drain.js'
+import {
+  endChain,
+  failRequest,
+  fireWarning,
+  restoreStage,
+} from './stages.js'
+import {
   endClearBeforeRun,
   endClearOnSessionEnd,
   failOwnRun,
@@ -43,6 +58,7 @@ import {
   isPausedAfterClear,
   markChainFailed,
   noteInput,
+  noteMainToolEnd,
   noteToolEnd,
   passAgentCall,
   passContinuation,
@@ -77,23 +93,9 @@ const createSession = id => ({
   pending: null,
   request: null,
   turn: null,
+  drain: null,
+  drainMinutes: null,
 })
-
-const endChain = async ($, job) => {
-  const { state, reason } = job
-  if (state.request === null) return
-  state.request = null
-  setStage(state, { stage: 'interrupted', reason })
-  await queueStage($, state)
-}
-
-const failRequest = async ($, job) => {
-  const { state, reason } = job
-  state.request = null
-  setStage(state, { stage: 'failed', reason })
-  await queueStage($, state)
-  tellUser($, getFailedLine(reason))
-}
 
 const findState = async $ => {
   const id = await $.session.id()
@@ -123,18 +125,6 @@ const isOwnAnchor = e => e.origin?.kind === 'plugin' && e.origin?.name === 'hats
 const isDone = out => out.deny === undefined && out.isError !== true
 
 const isCurrent = state => session === state
-
-const fireWarning = async ($, job) => {
-  const { state, reading } = job
-  if (state.request !== null) return
-  state.arm.warn = false
-  state.warnRound += 1
-  state.percent = reading.percent
-  state.thresholds = reading.thresholds
-  state.pending = getWarningText(reading)
-  setStage(state, { stage: 'warned' })
-  await queueStage($, state)
-}
 
 const isChainAlive = async ($, job) =>
   isCurrent(job.state) && job.state.request === job.request && (await $.session.id()) === job.request.sessionId
@@ -201,14 +191,7 @@ const createRequest = (state, reading) => {
     isRaised: false,
     isSubmitted: false,
     hasHookFailed: false,
-    previous: {
-      stage: state.stage,
-      reason: state.reason,
-      marker: state.marker,
-      saveRound: state.saveRound,
-      percent: state.percent,
-      thresholds: state.thresholds,
-    },
+    previous: createPrevious(state),
   }
 }
 
@@ -218,12 +201,13 @@ const askToAnchor = async ($, job) => {
   if (!isCurrent(state) || state.request !== null) return
   const request = createRequest(state, reading)
   request.askedAt = askedAt
+  request.list = job.list ?? null
   state.arm.save = false
   state.arm.warn = false
   state.pending = null
-  state.saveRound += 1
-  state.percent = reading.percent
-  state.thresholds = reading.thresholds
+  if (!isWaiting(state)) state.saveRound += 1
+  setReading(state, reading)
+  state.drain = null
   setStage(state, { stage: 'requested' })
   state.request = request
   watchInputs()
@@ -241,8 +225,8 @@ const acceptManualSave = async ($, job) => {
   state.arm.save = false
   if (isWarnDue(state.arm, reading)) state.arm.warn = false
   state.pending = null
-  state.percent = reading.percent
-  state.thresholds = reading.thresholds
+  setReading(state, reading)
+  state.drain = null
   setStage(state, { stage: 'saved', reason: REASONS.manual, marker: turn.save.path })
   await queueStage($, state)
 
@@ -254,14 +238,16 @@ const judgeTurnEnd = async ($, job) => {
   const reading = await findReading($)
   if (reading === null || !isCurrent(state)) return
   setArm(state.arm, reading)
+  await settleRound($, { state, reading })
   if (isSaveDue(state.arm, reading)) {
     if (await acceptManualSave($, { state, turn, reading })) return
     if (isPausedAfterClear(await $.clock.now())) {
-      state.arm.save = false
+      setPaused(state)
       tellUser($, getPauseLine(reading.percent, reading.thresholds.save))
       return
     }
-    await askToAnchor($, { state, reading })
+    const drain = await findDrainChoice($, { state, turn, reading })
+    if (!drain.isHeld) await askToAnchor($, { state, reading, list: drain.list })
     return
   }
   if (isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
@@ -270,6 +256,7 @@ const judgeTurnEnd = async ($, job) => {
 const updateArm = async ($, state) => {
   const reading = await findReading($)
   if (reading !== null) setArm(state.arm, reading)
+  if (reading !== null) await settleRound($, { state, reading })
 
   return reading
 }
@@ -278,28 +265,22 @@ const findDelivered = async ($, job) => {
   const { state, out } = job
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
-  if (state.pending === null || out.deny !== undefined) return out
-  const text = state.pending
+  const list = getDrainList(state)
+  const texts = [
+    state.pending,
+    list,
+  ].filter(text => text !== null)
+  if (out.deny !== undefined || texts.length === 0) return out
   state.pending = null
+  if (list !== null) state.request.list = null
 
   return {
     ...out,
     context: [
       ...(out.context ?? []),
-      text,
+      ...texts,
     ],
   }
-}
-
-const restoreStage = async ($, state) => {
-  const saved = await findStageFile($, state.id)
-  if (saved === null) return
-  state.warnRound = saved.warnRound
-  state.saveRound = saved.saveRound
-  if (saved.stage !== 'requested') return
-  setStage(state, { stage: 'interrupted', reason: REASONS.reloaded })
-  await queueStage($, state)
-  tellUser($, RELOADED_LINE)
 }
 
 const submitOwnAnchor = async ($, job) => {
@@ -439,19 +420,31 @@ const onTurnStart = async (
   return next(e)
 }
 
+const findCallDenial = async ($, e) => {
+  if (!isDrainCall(e)) return null
+  const state = await findState($)
+  await updateArm($, state)
+
+  return findDenial($, state)
+}
+
 const onToolCall = async (
   $,
   e,
   next,
 ) => {
   if (!isActive) return next(e)
+  const denial = await findCallDenial($, e)
+  if (denial !== null) return { deny: denial }
   if (e.agentId !== undefined) return passAgentCall($, e, next)
   const state = await findState($)
   const turn = state.turn
   const isWrite = turn !== null && WRITE_TOOLS.includes(e.tool)
   const target = isWrite ? await recordSnapshot($, { turn, path: e.file_path }) : null
   const out = await next(e)
-  noteToolEnd(await $.clock.now())
+  const endedAt = await $.clock.now()
+  noteToolEnd(endedAt)
+  noteMainToolEnd(endedAt)
   if (target !== null && isDone(out)) await recordOwnWrite($, { turn, target })
   if (turn !== null && e.tool === 'Bash') recordStepsOutput(turn, { command: e.command, out })
   if (turn !== null && e.tool === 'Bash' && isDone(out)) await recordHandoffOutput($, { turn, command: e.command, out })

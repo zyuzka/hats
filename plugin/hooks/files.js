@@ -88,7 +88,7 @@ export async function findSmallText($, path) {
   return $.fs.read(path).catch(() => null)
 }
 
-async function findCurrentThresholds($) {
+export async function findCurrentThresholds($) {
   const root = await getStateRoot($)
   if (root === null) return { ...DEFAULTS }
   const path = `${root}/${THRESHOLDS_FILE}`

@@ -58,7 +58,8 @@ final class SessionStageFileTests: XCTestCase {
             warnPercent: 45,
             savePercent: 55,
             at: now,
-            afterSave: .offerClear
+            afterSave: .offerClear,
+            drainMinutes: nil
         )))
     }
 
@@ -81,7 +82,7 @@ final class SessionStageFileTests: XCTestCase {
     }
 
     func testEveryStageTheModNamesIsRead() throws {
-        for stage in ["warned", "requested", "saved", "failed", "interrupted", "kept", "cleared"] {
+        for stage in ["warned", "waiting", "requested", "saved", "failed", "interrupted", "kept", "cleared"] {
             try write(Self.fields(["stage": stage]))
 
             guard case .read(let record) = read() else {
@@ -89,6 +90,31 @@ final class SessionStageFileTests: XCTestCase {
                 continue
             }
             XCTAssertEqual(record.kind.rawValue, stage)
+        }
+    }
+
+    func testTheMinutesOfTheDrainAreReadAndAWrongValueIsNoneWithoutSkippingTheRecord() throws {
+        let minutes: [(Any?, Int?)] = [
+            (5, 5),
+            (60, 60),
+            (NSNull(), nil),
+            (nil, nil),
+            (0, nil),
+            (61, nil),
+            ("5", nil),
+            (5.5, nil),
+        ]
+        for (value, expected) in minutes {
+            var fields = Self.fields(["stage": "waiting"])
+            fields["drain_minutes"] = value
+            try write(fields)
+
+            guard case .read(let record) = read() else {
+                XCTFail("\(String(describing: value)) skipped the record")
+                continue
+            }
+            XCTAssertEqual(record.kind, .waiting)
+            XCTAssertEqual(record.drainMinutes, expected, String(describing: value))
         }
     }
 

@@ -3,6 +3,7 @@ import Foundation
 
 enum SessionStageKind: String, Equatable {
     case warned
+    case waiting
     case requested
     case saved
     case failed
@@ -22,6 +23,7 @@ struct SessionStage: Equatable {
     let savePercent: Int?
     let at: Date
     var afterSave: AfterSave?
+    let drainMinutes: Int?
 }
 
 enum SessionStageRead: Equatable {
@@ -74,7 +76,8 @@ enum SessionStageFile {
             warnPercent: raw.warnPercent,
             savePercent: raw.savePercent,
             at: at,
-            afterSave: raw.afterSave.flatMap(AfterSave.init(rawValue:))
+            afterSave: raw.afterSave.flatMap(AfterSave.init(rawValue:)),
+            drainMinutes: raw.drainMinutes?.value.flatMap(getDrainMinutes)
         ))
     }
 
@@ -92,8 +95,20 @@ enum SessionStageFile {
     }
 }
 
+private func getDrainMinutes(_ minutes: Int) -> Int? {
+    ContextThresholds.drainMinutesRange.contains(minutes) ? minutes : nil
+}
+
 private func getText(of range: ClosedRange<Int>) -> String {
     "\(range.lowerBound)…\(range.upperBound)"
+}
+
+private struct LenientNumber: Decodable {
+    let value: Int?
+
+    init(from decoder: Decoder) throws {
+        value = try? decoder.singleValueContainer().decode(Int.self)
+    }
 }
 
 private struct SessionStageFields: Decodable {
@@ -106,6 +121,7 @@ private struct SessionStageFields: Decodable {
     let warnPercent: Int?
     let savePercent: Int?
     let afterSave: String?
+    let drainMinutes: LenientNumber?
     let reason: String?
     let marker: String?
     let at: String
@@ -120,6 +136,7 @@ private struct SessionStageFields: Decodable {
         case warnPercent = "warn_percent"
         case savePercent = "save_percent"
         case afterSave = "after_save"
+        case drainMinutes = "drain_minutes"
         case reason
         case marker
         case at
