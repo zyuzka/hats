@@ -42,6 +42,8 @@ struct HatListView: View {
                     row: row,
                     isChanging: snapshot.changing == row.id,
                     handover: handover(for: row),
+                    display: snapshot.settings.usageDisplay,
+                    tool: snapshot.tool,
                     onWear: { model.actions?.wear(row.id) },
                     onRelogin: { model.actions?.relogin(row.id) }
                 )

@@ -13,6 +13,7 @@ struct HatRowState: Identifiable, Equatable {
     let usageTrouble: UsageTrouble?
     let roseWhileParked: Int?
     let week: String?
+    let weekSighting: WeekSighting?
     let browser: String?
     let loginValidity: String?
     let loginAction: String
@@ -39,6 +40,7 @@ struct HatRowState: Identifiable, Equatable {
         self.usage = usage
         self.usageTrouble = usageTrouble
         self.roseWhileParked = roseWhileParked
+        weekSighting = week
         self.week = week.map {
             HatsCopy.weekLine(
                 percent: $0.window.percent,
@@ -143,6 +145,7 @@ protocol HatsActions: AnyObject {
     func updateAutoSwitch(_ policy: AutoSwitchPolicy)
     func updateContextThresholds(_ thresholds: ContextThresholds)
     func updateLimitThresholds(_ thresholds: LimitThresholds)
+    func setUsageDisplay(_ display: UsageDisplay)
     func switchBack()
     func openSessions()
     func showSettings()

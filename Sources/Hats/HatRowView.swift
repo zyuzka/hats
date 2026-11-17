@@ -4,6 +4,8 @@ struct HatRowView: View {
     let row: HatRowState
     let isChanging: Bool
     let handover: String?
+    let display: UsageDisplay
+    let tool: Tool
     let onWear: () -> Void
     let onRelogin: () -> Void
 
@@ -29,7 +31,7 @@ struct HatRowView: View {
 
     private var main: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(row.isWearing ? "✓" : " ").font(.system(size: 12, weight: .semibold)).frame(width: 12)
+            wornMark
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(row.title).font(.system(size: 13, weight: row.isWearing ? .semibold : .regular))
@@ -48,36 +50,25 @@ struct HatRowView: View {
 
     private var secondary: Color { lit ? Color.white.opacity(0.85) : .secondary }
 
-    @ViewBuilder private var detail: some View {
-        if row.isWearing, let usage = row.usage {
-            if let line = HatsCopy.usageLine(usage) {
-                Text(line).font(.system(size: 11)).foregroundStyle(secondary)
-            }
-            weekBelow
-            if let stale = HatsCopy.staleReading(row.usageTrouble) {
-                Text(stale).font(.system(size: 11)).foregroundStyle(secondary)
-            }
-            if let handover { Text(handover).font(.system(size: 11)).foregroundStyle(secondary) }
-        } else if row.isWearing, let trouble = row.usageTrouble {
-            Text(trouble.onTheRow).font(.system(size: 11)).foregroundStyle(secondary)
-            weekBelow
-        } else if !row.isWearing, let usage = row.usage,
-                  let parked = HatsCopy.parkedUsage(usage, rose: row.roseWhileParked) {
-            Text(parked).font(.system(size: 11)).foregroundStyle(secondary)
-            weekBelow
-            if let stale = HatsCopy.staleReading(row.usageTrouble) {
-                Text(stale).font(.system(size: 11)).foregroundStyle(secondary)
-            }
-        } else if let trouble = row.usageTrouble {
-            Text(trouble.onTheRow).font(.system(size: 11)).foregroundStyle(secondary)
-            weekBelow
-        } else {
-            weekBelow
+    @ViewBuilder private var wornMark: some View {
+        switch RowMark.of(row, tool: tool) {
+        case .hat(let tool):
+            HatMarkView(tool: tool)
+        case .blank:
+            Color.clear.frame(width: HatMark.rowWidth, height: 1)
         }
     }
 
-    @ViewBuilder private var weekBelow: some View {
-        if let week = row.week { Text(week).font(.system(size: 11)).foregroundStyle(secondary) }
+    private var detail: some View {
+        let lines = RowDetail.lines(of: row, display: display, handover: handover)
+        return ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+            switch line {
+            case .text(let text):
+                Text(text).font(.system(size: 11)).foregroundStyle(secondary)
+            case .bar(let bar):
+                UsageBarView(bar: bar, secondary: secondary, lit: lit)
+            }
+        }
     }
 
     @ViewBuilder private var trailing: some View {
@@ -100,7 +91,7 @@ struct HatRowView: View {
             Spacer()
             Button(row.loginAction, action: onRelogin).controlSize(.small)
         }
-        .padding(.leading, 28).padding(.trailing, 8).padding(.bottom, 6)
+        .padding(.leading, 30).padding(.trailing, 8).padding(.bottom, 6)
     }
 
     private func tapped() {

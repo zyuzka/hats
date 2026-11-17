@@ -5,6 +5,18 @@ enum ForeignProfileResolution: String, Codable, Equatable {
     case keepMine
 }
 
+enum UsageDisplay: String, Codable, Equatable, CaseIterable {
+    case percent
+    case bars
+
+    var title: String {
+        switch self {
+        case .percent: return "Percent"
+        case .bars: return "Bars"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var gatewayPort = 8787
     var isGatewayEnabled = true
@@ -17,6 +29,7 @@ struct AppSettings: Codable, Equatable {
     var pluginVersionToldAbout: String?
     var contextThresholds = ContextThresholds()
     var limitThresholds = LimitThresholds()
+    var usageDisplay = UsageDisplay.percent
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -42,6 +55,7 @@ struct AppSettings: Codable, Equatable {
             ?? ContextThresholds()
         limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
             ?? LimitThresholds()
+        usageDisplay = (try? c.decodeIfPresent(UsageDisplay.self, forKey: .usageDisplay)) ?? .percent
     }
 
     static var defaultURL: URL {

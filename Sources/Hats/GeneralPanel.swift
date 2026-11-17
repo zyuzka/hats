@@ -46,8 +46,25 @@ struct GeneralPanel: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
+            usageDisplayRow
         }
         .padding(.horizontal, 14)
+    }
+
+    private var usageDisplayRow: some View {
+        HStack {
+            Text("Usage as").font(.system(size: 13))
+            Spacer()
+            Picker("Usage as", selection: Binding(
+                get: { snapshot.settings.usageDisplay },
+                set: { model.actions?.setUsageDisplay($0) }
+            )) {
+                ForEach(UsageDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+        }
     }
 
     private var startAtLoginRow: some View {

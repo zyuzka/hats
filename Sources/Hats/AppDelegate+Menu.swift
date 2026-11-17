@@ -40,6 +40,13 @@ extension AppDelegate {
         redraw()
     }
 
+    func setUsageDisplay(_ display: UsageDisplay) {
+        guard settings.usageDisplay != display else { return }
+        settings.usageDisplay = display
+        saveSettings()
+        redraw()
+    }
+
     func showReleases() {
         popover.close()
         afterThePopoverSettles { [weak self] in

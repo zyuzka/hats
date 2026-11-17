@@ -102,6 +102,12 @@ Click the hat in the menu bar and pick one from the list — that account is the
 with from then on. A hat is a named account: the name is what you read, the email address is the
 detail underneath.
 
+The hat you wear has a small hat drawn left of its name, in the colour of its provider — terracotta
+for Claude, lighter in dark mode. Under each hat Hats shows how much of the 5-hour and the weekly
+limit is used. Settings › General › Usage as picks how: Percent shows the numbers, Bars shows two
+bars, `5h` and `week`, with the reset time beside each. A bar turns orange from 70% and red from 90%;
+a week Hats only remembers is pale, and a week that has already reset is a dashed outline.
+
 ## The one thing to know before using it
 
 A switch takes effect immediately for **new** sessions. A session already running follows only if it
