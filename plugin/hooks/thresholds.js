@@ -1,6 +1,6 @@
 export const DEFAULTS = {
-  warn: 45,
-  save: 55,
+  warn: 60,
+  save: 70,
   after: 'offer_clear',
 }
 export const ACTIONS = [

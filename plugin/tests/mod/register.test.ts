@@ -8,8 +8,17 @@ import {
   STAGE_FILE,
   THRESHOLDS,
   createBashResult,
-  createScene,
+  createScene as createWorldScene,
 } from './world.ts'
+
+const FILE_45_55 = { warn_percent: 45, save_percent: 55, after_save: 'offer_clear' }
+
+const createScene = ($: any, options: any) => {
+  const scene = createWorldScene($, options)
+  if (options.hasStateHome !== false) scene.world.setFile(THRESHOLDS, JSON.stringify(FILE_45_55))
+
+  return scene
+}
 
 const WARNING_47 =
   "Hats context threshold: this session's context window is at 47% (warning threshold 45%). " +
@@ -762,12 +771,33 @@ describe('the thresholds file', () => {
     expect(scene.world.logs[1]).toBe('anchored at 56% of the context window (threshold 55%).')
   })
 
-  test('no file in the Hats folder: 45, 55 and offer_clear', async ($, on) => {
+  test('no file in the Hats folder: the warning at 60%', async ($, on) => {
     const scene = createScene($, { on, hasStateHome: false })
-    await scene.askToAnchor()
+    await scene.start()
+    await scene.startTurn(10)
+
+    const below = await scene.callTool(59, READ)
+    const past = await scene.callTool(61, READ)
+
+    expect(getContext(below)).toEqual([])
+    expect(getContext(past)).toEqual([
+      "Hats context threshold: this session's context window is at 61% (warning threshold 60%). " +
+        'It anchors itself at the end of a turn once it reaches 70%. ' +
+        'Tell the user so in one short line in your reply, in their language, and go on with the task.',
+    ])
+  })
+
+  test('no file in the Hats folder: the anchor at 70% and offer_clear', async ($, on) => {
+    const scene = createScene($, { on, hasStateHome: false })
+    await scene.start()
+    const below = await scene.startTurn(10)
+    await scene.endTurn(below, { percent: 69 })
+    const past = await scene.startTurn(69)
+
+    await scene.endTurn(past, { percent: 71 })
 
     expect(scene.world.logs).toEqual([
-      REQUEST_56,
+      'context 71% (anchor threshold 70%) — anchoring this session.',
     ])
     expect(scene.world.runs).toEqual(ONE_RUN)
   })

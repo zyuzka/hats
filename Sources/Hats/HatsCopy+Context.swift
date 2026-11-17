@@ -7,8 +7,7 @@ extension HatsCopy {
     static let contextThresholdsNote =
         "Needs the session handoff plugin, with mods on in Claude Code 2.1.323 or later. A session is told "
             + "once per threshold, again after its context gets smaller; an idle session hears of it with its "
-            + "next message. A session already past the lower threshold at its first answer, as on a model "
-            + "with a 200k window, gets neither."
+            + "next message. A session already past the lower threshold at its first answer gets neither."
 
     static func getAfterSaveTitle(_ action: AfterSave) -> String {
         switch action {
