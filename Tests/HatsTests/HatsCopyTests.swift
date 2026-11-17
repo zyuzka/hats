@@ -6,7 +6,7 @@ final class HatsCopyTests: XCTestCase {
     private let utc = TimeZone(identifier: "UTC")!
 
     private func hat(credentials: Bool = true, identity: Bool = true, refreshIn: TimeInterval? = 6 * 86400) -> Account {
-        var hat = Account(id: "a", email: "filip@company.com", browser: nil)
+        var hat = Account(id: "a", email: "work@company.com", browser: nil)
         hat.hasStoredCredentials = credentials
         if identity { hat.identity = CLIIdentity(oauthAccount: [:], userID: nil) }
         hat.refreshExpiresAt = refreshIn.map { now.addingTimeInterval($0) }

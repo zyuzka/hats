@@ -13,7 +13,7 @@ final class GatewayEndToEndTests: XCTestCase {
     private var foreign: NIOTestListener!
     private var gateway: GatewayServer!
     private var refusal: GatewayRefusal!
-    private let accountBox = Locked("filip@x.co")
+    private let accountBox = Locked("work@x.co")
 
     private var account: String {
         get { accountBox.value }
