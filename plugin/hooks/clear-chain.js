@@ -39,6 +39,7 @@ let chain = null
 let foreign = null
 let lastClearAt = null
 let lastToolEndAt = 0
+let lastMainToolEndAt = 0
 
 export const watchInputs = () => {
   foreign = null
@@ -54,6 +55,12 @@ export const noteInput = origin => {
 export const noteToolEnd = at => {
   if (at > lastToolEndAt) lastToolEndAt = at
 }
+
+export const noteMainToolEnd = at => {
+  if (at > lastMainToolEndAt) lastMainToolEndAt = at
+}
+
+export const getLastMainToolEnd = () => lastMainToolEndAt
 
 export async function passAgentCall($, e, next) {
   const out = await next(e)

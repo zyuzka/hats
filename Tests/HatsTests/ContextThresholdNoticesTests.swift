@@ -16,7 +16,8 @@ final class ContextThresholdNoticesTests: XCTestCase {
         save: Int,
         session: String = "5a32129e-d019",
         percent: Int? = 56,
-        thresholds: (Int?, Int?) = (45, 55)
+        thresholds: (Int?, Int?) = (45, 55),
+        drainMinutes: Int? = nil
     ) -> SessionStage {
         SessionStage(
             session: session,
@@ -27,7 +28,8 @@ final class ContextThresholdNoticesTests: XCTestCase {
             percent: percent,
             warnPercent: thresholds.0,
             savePercent: thresholds.1,
-            at: at
+            at: at,
+            drainMinutes: drainMinutes
         )
     }
 
@@ -75,12 +77,96 @@ final class ContextThresholdNoticesTests: XCTestCase {
                        "Past the warning threshold of 45%. The session anchors at 55%.")
         XCTAssertEqual(HatsCopy.getWarnNoticeBody(warn: 45, save: nil), "Past the warning threshold of 45%.",
                        "with the anchor threshold off there is no second sentence")
-        XCTAssertEqual(HatsCopy.getAnchorNoticeBody(save: 55), "Past 55%: the session anchors at the end of its turn.")
+        XCTAssertEqual(HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil), "Past 55%: the session anchors at the end of its turn.")
         XCTAssertEqual(
-            HatsCopy.getClearNoticeBody(save: 55),
+            HatsCopy.getClearNoticeBody(save: 55, drainMinutes: nil),
             "Past 55%: the session anchors at the end of its turn and, if nothing stands in the way, clears its context "
                 + "and goes on from its note."
         )
+    }
+
+    func testTheTextsOfTheDrain() {
+        XCTAssertEqual(HatsCopy.drainBackgroundWork, "Drain background work")
+        XCTAssertEqual(HatsCopy.getDrainWaitTitle(minutes: 10), "Wait up to 10 min")
+        XCTAssertEqual(
+            HatsCopy.drainNote,
+            "From the warning on, new subagents, workflows, monitors and background commands are refused. Not refused: "
+                + "a command Claude Code moves to the background itself, after its time limit, and a skill that runs in "
+                + "the background — both are waited for; a command detached with & or nohup is neither waited for nor "
+                + "listed. At the anchor threshold the session waits for running work up to this long, then anchors and "
+                + "lists what still runs. A monitor on a socket and a teammate are listed, not waited for."
+        )
+        XCTAssertEqual(
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: 5),
+            "Past 55%: the session anchors at the end of its turn, after its background work (up to 5 min)."
+        )
+        XCTAssertEqual(
+            HatsCopy.getClearNoticeBody(save: 55, drainMinutes: 5),
+            "Past 55%: the session anchors at the end of its turn, after its background work (up to 5 min), and, "
+                + "if nothing stands in the way, clears its context and goes on from its note."
+        )
+    }
+
+    func testAWaitingStageTellsItsAnchorRoundOnceAndTheRequestOfThatRoundNothingMore() {
+        let notices = createNotices()
+        notices.noteARead(read([]), windows: [])
+
+        notices.noteARead(read([stage(.warned, warn: 1, save: 0, drainMinutes: 5)]), windows: [])
+        notices.noteARead(read([stage(.waiting, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+        notices.noteARead(read([stage(.requested, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+
+        XCTAssertEqual(bodies, [
+            HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: 5),
+        ])
+    }
+
+    func testARequestAfterAWaitingStageHatsNeverSawIsToldOnce() {
+        let notices = createNotices()
+        notices.noteARead(read([]), windows: [])
+
+        notices.noteARead(read([stage(.warned, warn: 1, save: 0, drainMinutes: 5)]), windows: [])
+        notices.noteARead(read([stage(.requested, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+        notices.noteARead(read([stage(.saved, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+
+        XCTAssertEqual(bodies, [
+            HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: 5),
+        ])
+    }
+
+    func testAWarnedStageWithANewAnchorRoundAfterACancelledWaitTellsNothing() {
+        for isWaitingSeen in [true, false] {
+            told = []
+            let notices = createNotices()
+            notices.noteARead(read([]), windows: [])
+            notices.noteARead(read([stage(.warned, warn: 1, save: 0, drainMinutes: 5)]), windows: [])
+            if isWaitingSeen {
+                notices.noteARead(read([stage(.waiting, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+            }
+
+            notices.noteARead(read([stage(.warned, warn: 1, save: 1, drainMinutes: 5)]), windows: [])
+            let afterCancel = bodies.count
+            notices.noteARead(read([stage(.waiting, warn: 1, save: 2, drainMinutes: 5)]), windows: [])
+
+            XCTAssertEqual(afterCancel, isWaitingSeen ? 2 : 1, "the cancelled wait itself tells nothing")
+            XCTAssertEqual(bodies.last, HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: 5), "the next round is told")
+        }
+    }
+
+    func testTheNoticeTakesTheMinutesOfTheStageItselfWithTheClearActionToo() {
+        let notices = createNotices()
+        notices.noteARead(read([]), windows: [])
+        var cleared = stage(.waiting, warn: 0, save: 1, drainMinutes: 25)
+        cleared.afterSave = .clear
+        let plain = stage(.requested, warn: 0, save: 1, session: "other", drainMinutes: nil)
+
+        notices.noteARead(read([cleared, plain]), windows: [])
+
+        XCTAssertEqual(bodies, [
+            HatsCopy.getClearNoticeBody(save: 55, drainMinutes: 25),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil),
+        ])
     }
 
     func testAnAnchorRoundWithTheClearActionSaysTheSessionMayClearAndKeptOrClearedTellNothingMore() {
@@ -99,8 +185,8 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([cleared, kept]), windows: [])
 
         XCTAssertEqual(bodies, [
-            HatsCopy.getClearNoticeBody(save: 55),
-            HatsCopy.getClearNoticeBody(save: 55),
+            HatsCopy.getClearNoticeBody(save: 55, drainMinutes: nil),
+            HatsCopy.getClearNoticeBody(save: 55, drainMinutes: nil),
         ], "one notice per anchor round, the second for the other session; cleared and kept add none")
     }
 
@@ -117,7 +203,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
             notices.noteARead(read([requested]), windows: [])
             notices.noteARead(read([later]), windows: [])
 
-            XCTAssertEqual(bodies, [HatsCopy.getClearNoticeBody(save: 55)], "\(kind.rawValue) of the same session and round")
+            XCTAssertEqual(bodies, [HatsCopy.getClearNoticeBody(save: 55, drainMinutes: nil)], "\(kind.rawValue) of the same session and round")
         }
     }
 
@@ -129,7 +215,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
 
         XCTAssertEqual(titles, ["hats — context 56%"], "the label falls back to the folder of the session")
-        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55)])
+        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)])
     }
 
     func testWhatIsAlreadyThereAtTheFirstReadIsNotTold() {
@@ -180,7 +266,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
         notices.noteARead(read([stage(.warned, warn: 1, save: 0)]), windows: [])
 
-        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55)],
+        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)],
                        "the warning it skipped is not told later, after the request is refused")
     }
 
@@ -192,7 +278,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
 
             notices.noteARead(read([stage(kind, warn: 0, save: 1)]), windows: [])
 
-            XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55)], kind.rawValue)
+            XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)], kind.rawValue)
         }
     }
 
@@ -207,9 +293,9 @@ final class ContextThresholdNoticesTests: XCTestCase {
 
         XCTAssertEqual(bodies, [
             HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
-            HatsCopy.getAnchorNoticeBody(save: 55),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil),
             HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
-            HatsCopy.getAnchorNoticeBody(save: 55),
+            HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil),
         ])
     }
 
@@ -221,7 +307,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.warned, warn: 1, save: 2)]), windows: [])
         notices.noteARead(read([stage(.requested, warn: 1, save: 3)]), windows: [])
 
-        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55)],
+        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)],
                        "a manual anchor keeps its round; a new anchor round is told only from requested on")
     }
 
@@ -232,7 +318,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.saved, warn: 0, save: 0)]), windows: [])
         notices.noteARead(read([stage(.requested, warn: 0, save: 1, session: "other")]), windows: [])
 
-        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55)],
+        XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)],
                        "a session anchored by hand past 55% before any request has round 0, which is no crossing")
     }
 

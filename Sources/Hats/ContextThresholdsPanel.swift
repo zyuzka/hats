@@ -14,6 +14,7 @@ struct ContextThresholdsPanel: View {
                 toggle: { next, isOn in next.setWarn(isOn: isOn) },
                 step: { next, percent in next.setWarn(percent) }
             )
+            drain
             threshold(
                 HatsCopy.anchorAt,
                 percent: thresholds.savePercent,
@@ -64,6 +65,36 @@ struct ContextThresholdsPanel: View {
                 )
                 .font(.system(size: 13))
             }
+        }
+    }
+
+    private var drain: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Toggle(HatsCopy.drainBackgroundWork, isOn: Binding(
+                    get: { thresholds.drain },
+                    set: { isOn in change { $0.drain = isOn } }
+                ))
+                .font(.system(size: 13))
+                Spacer()
+                if thresholds.drain {
+                    Stepper(
+                        HatsCopy.getDrainWaitTitle(minutes: thresholds.drainMinutes),
+                        value: Binding(
+                            get: { thresholds.drainMinutes },
+                            set: { minutes in change { $0.setDrainMinutes(minutes) } }
+                        ),
+                        in: ContextThresholds.drainMinutesRange,
+                        step: 1
+                    )
+                    .font(.system(size: 13))
+                }
+            }
+            .disabled(thresholds.savePercent == nil)
+            Text(HatsCopy.drainNote)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

@@ -3,6 +3,7 @@ import XCTest
 @testable import Hats
 
 final class WindowThresholdsFileTests: XCTestCase {
+    private static let keys: Set<String> = ["warn_percent", "save_percent", "after_save", "drain", "drain_minutes", "written_at"]
     private var root: URL!
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -48,7 +49,25 @@ final class WindowThresholdsFileTests: XCTestCase {
         XCTAssertEqual(fields["save_percent"] as? Int, 55)
         XCTAssertEqual(fields["after_save"] as? String, "offer_clear")
         XCTAssertEqual(fields["written_at"] as? String, "2027-01-15T08:00:00Z")
-        XCTAssertEqual(Set(fields.keys), ["warn_percent", "save_percent", "after_save", "written_at"])
+        XCTAssertEqual(fields["drain"] as? Bool, false)
+        XCTAssertEqual(fields["drain_minutes"] as? Int, 10)
+        XCTAssertEqual(Set(fields.keys), Self.keys)
+    }
+
+    func testTheFileCarriesTheDrainAndItsMinutesAndIsRewrittenWhenTheyChange() throws {
+        var file = WindowThresholdsFile(root: root)
+        var chosen = thresholds(45, 55, .tell)
+        XCTAssertEqual(file.setThresholds(chosen, at: now), .written)
+        chosen.drain = true
+        chosen.drainMinutes = 5
+
+        XCTAssertEqual(file.setThresholds(chosen, at: now), .written)
+
+        let fields = try written(file)
+        XCTAssertEqual(fields["drain"] as? Bool, true)
+        XCTAssertEqual(fields["drain_minutes"] as? Int, 5)
+        let text = try String(contentsOf: file.url, encoding: .utf8)
+        XCTAssertTrue(text.contains(#""drain" : true"#), "a JSON boolean, which the mod takes only as true: \(text)")
     }
 
     func testAnOffThresholdIsAnExplicitNullAndEachActionHasItsName() throws {
@@ -66,7 +85,7 @@ final class WindowThresholdsFileTests: XCTestCase {
             XCTAssertEqual(fields["warn_percent"] as? NSObject, warn as? NSObject, "\(chosen)")
             XCTAssertEqual(fields["save_percent"] as? NSObject, save as? NSObject, "\(chosen)")
             XCTAssertEqual(fields["after_save"] as? String, after)
-            XCTAssertEqual(Set(fields.keys), ["warn_percent", "save_percent", "after_save", "written_at"],
+            XCTAssertEqual(Set(fields.keys), Self.keys,
                            "the key stays when the value is null: the mod reads a missing key as a broken file")
         }
     }
@@ -213,6 +232,12 @@ final class WindowThresholdsFileTests: XCTestCase {
         for action in AfterSave.allCases {
             XCTAssertTrue(mod.contains("  '\(action.rawValue)',\n"), "the mod knows \(action.rawValue)")
         }
+        for key in ["data.drain === true", "data.drain_minutes"] {
+            XCTAssertTrue(mod.contains(key), key)
+        }
+        XCTAssertTrue(mod.contains("const MINUTES_RANGE = { low: 1, high: 60 }"))
+        XCTAssertTrue(mod.contains("drainMinutes: \(ContextThresholds.defaultDrainMinutes),"))
+        XCTAssertEqual(ContextThresholds.drainMinutesRange, 1...60)
         XCTAssertTrue(mod.contains("const WARN_RANGE = { low: 10, high: 94 }"))
         XCTAssertTrue(mod.contains("const SAVE_RANGE = { low: 11, high: 95 }"))
         XCTAssertEqual(ContextThresholds.warnRange, 10...94)

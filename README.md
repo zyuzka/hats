@@ -270,6 +270,28 @@ anchors at 70%.», or «Past 70%: the session anchors at the end of its turn.» 
 note.») — also while Settings is open in front. It says nothing about stages written before it
 started, nothing when mods are off in Claude Code, and removes stage files older than 30 days.
 
+**Drain background work**, under **Warn at**, is off until you turn it on and works only with
+**Anchor at** on. From the warning on, the plugin refuses every new subagent, workflow, monitor and
+command started with `run_in_background` — in the session and in its subagents — and tells the model
+to do the step in the foreground or leave it for the next session; work already running is never
+stopped. Not refused: a command Claude Code moves to the background itself after its time limit, and a
+skill that runs in the background — both are waited for; a command detached with `&` or `nohup` is
+neither waited for nor listed. When a turn ends past the anchor threshold while background commands,
+subagents or workflows still run, the plugin says `Hats drain: anchoring waits for 2 background jobs,
+up to 10 min.` and does not ask to anchor yet; it asks at the end of a later turn, once they have ended
+or **Wait up to** (1 to 60 minutes, 10 until you change it) has passed. It never wakes an idle session:
+the next turn comes with your message or with Claude Code's notice that a job ended. When it asks, it
+gives the model the id, kind and description of everything still running, so the note names each —
+they outlive `/clear`, and the next session is told when one ends but not what it was for. A monitor
+on a socket and a teammate are listed but not waited for. If the list cannot be read it asks at once
+and says `Hats drain: background work could not be checked.` The refusals end once it asks, after an
+«анкор» you said past the threshold, or when the window falls below the lowest threshold; they also end
+when the plugin reloads, when the session changes and during the pause after the plugin's own clear. With
+**Warn at** off they start only when anchoring is put off for running work. Hats writes
+the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that
+waits has the stage `waiting`, and its notification reads «Past 70%: the session anchors at the end of
+its turn, after its background work (up to 10 min).»
+
 With **Clear and go on from the note** the plugin clears the session itself, after a save on the
 threshold that it checked — never after an «анкор» you said. It shows `anchored at 56% — clearing the
 context; the session goes on from its note.`, runs `/clear`, waits up to 5 seconds for its start hook

@@ -24,6 +24,8 @@ struct WindowThresholdsFile {
             "warn_percent": thresholds.warnPercent ?? NSNull(),
             "save_percent": thresholds.savePercent ?? NSNull(),
             "after_save": thresholds.afterSave.rawValue,
+            "drain": thresholds.drain,
+            "drain_minutes": thresholds.drainMinutes,
             "written_at": ISO8601DateFormatter().string(from: writtenAt),
         ]
 

@@ -69,10 +69,11 @@ const NOTE = {
   own: 'x',
   sha: 'x',
 }
-const BOTH = { warn: 45, save: 55, after: 'offer_clear' }
-const ONLY_SAVE = { warn: null, save: 55, after: 'tell' }
-const ONLY_WARN = { warn: 45, save: null, after: 'tell' }
-const NONE = { warn: null, save: null, after: 'tell' }
+const DRAIN_OFF = { drain: false, drainMinutes: 10 }
+const BOTH = { warn: 45, save: 55, after: 'offer_clear', ...DRAIN_OFF }
+const ONLY_SAVE = { warn: null, save: 55, after: 'tell', ...DRAIN_OFF }
+const ONLY_WARN = { warn: 45, save: null, after: 'tell', ...DRAIN_OFF }
+const NONE = { warn: null, save: null, after: 'tell', ...DRAIN_OFF }
 const ASKED_AT = Date.parse('2026-11-14T16:33:17.900Z')
 const HEADINGS = [
   { line: '## NOW', isHeading: true },
@@ -123,7 +124,7 @@ describe('the window percent', () => {
 
 describe('the thresholds file', () => {
   test('is replaced, when there is none, by 60%, 70% and the /clear offer', () => {
-    expect(DEFAULTS).toEqual({ warn: 60, save: 70, after: 'offer_clear' })
+    expect(DEFAULTS).toEqual({ warn: 60, save: 70, after: 'offer_clear', ...DRAIN_OFF })
   })
 
   test('holds two thresholds and the action after the save', () => {
@@ -363,6 +364,7 @@ describe('the stage file', () => {
       warn_percent: 45,
       save_percent: 55,
       after_save: 'offer_clear',
+      drain_minutes: null,
       reason: null,
       marker: null,
       at: '2026-11-14T16:33:17Z',

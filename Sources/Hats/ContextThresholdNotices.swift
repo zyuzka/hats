@@ -50,8 +50,8 @@ final class ContextThresholdNotices {
         if stage.kind != .warned, isNew(save) {
             guard let savePercent = stage.savePercent else { return }
             let body = stage.afterSave == .clear
-                ? HatsCopy.getClearNoticeBody(save: savePercent)
-                : HatsCopy.getAnchorNoticeBody(save: savePercent)
+                ? HatsCopy.getClearNoticeBody(save: savePercent, drainMinutes: stage.drainMinutes)
+                : HatsCopy.getAnchorNoticeBody(save: savePercent, drainMinutes: stage.drainMinutes)
             notify(Notifier.createContentShownInFront(title: heading, body: body))
             told.formUnion(Self.getCrossings(of: stage))
             return
