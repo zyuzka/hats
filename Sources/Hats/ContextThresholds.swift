@@ -8,8 +8,8 @@ enum AfterSave: String, Codable, Equatable, CaseIterable {
 }
 
 struct ContextThresholds: Codable, Equatable {
-    static let defaultWarn = 45
-    static let defaultSave = 55
+    static let defaultWarn = 60
+    static let defaultSave = 70
     static let warnRange = 10...94
     static let saveRange = 11...95
 

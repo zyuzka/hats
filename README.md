@@ -243,28 +243,28 @@ the hat you wear and whether another hat could take over — for the plugin's la
 thresholds; nothing reads it yet.
 
 The plugin also acts on the window, through a part that runs inside Claude Code (a mod; Claude Code
-2.1.323 or newer). When a session's window passes 45%, the model is asked to tell you so in one line.
-When a turn ends past 55%, the plugin shows `● hats: context 56% (anchor threshold 55%) — anchoring
+2.1.323 or newer). When a session's window passes 60%, the model is asked to tell you so in one line.
+When a turn ends past 70%, the plugin shows `● hats: context 71% (anchor threshold 70%) — anchoring
 this session.` and runs `/hats:anchor` itself, your own steps included. It says `anchored at …` and
 offers `/clear` (the note comes back after it) only once it has checked the save: a marker written in
 that turn, and the note rewritten in it and not changed by anyone since. Otherwise it says why the
 session was not anchored, and nothing else happens. A threshold fires once, and again only after the
-window has been below it; a session never seen below 45% — on a model with a 200 thousand token
-window that can be one already fuller at its first answer — gets neither. «анкор» said by you in a
-turn that ends past 55% counts as that save. If the session wrote to another repository, Claude Code
+window has been below it; a session never seen below 60% — one already fuller at its first answer —
+gets neither. «анкор» said by you in a
+turn that ends past 70% counts as that save. If the session wrote to another repository, Claude Code
 may ask your permission to check it, and the save waits for your answer. Subagents and sessions
 without a person (`claude -p`, the SDK) are left alone; a teammate of an agent team that runs in its
 own tmux pane is a session of its own to the plugin, and is warned and anchored like any other. The thresholds and the action are set in Hats, under **Settings › Context**: **Warn at** and
 **Anchor at**, each with a switch that turns it off, and **After anchoring** — only tell you, offer
 `/clear`, offer `/exit` and a new session, or clear and go on from the note. Until you change them they
-are 45%, 55% and the `/clear` offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
+are 60%, 70% and the `/clear` offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
 `~/Library/Application Support/Hats` and puts the file back if it is removed; the plugin reads it at
-every decision, also while Hats is not running, and without it takes 45%, 55% and the `/clear` offer.
+every decision, also while Hats is not running, and without it takes 60%, 70% and the `/clear` offer.
 Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
 Hats made. A running Hats reads those files and shows one notification for each threshold a session
 crosses, titled with the session's name — the title you gave it, else its folder, else the start of
-its id — and its percent: `hats — context 47%` with «Past the warning threshold of 45%. The session
-anchors at 55%.», or «Past 55%: the session anchors at the end of its turn.» (with the clear action:
+its id — and its percent: `hats — context 62%` with «Past the warning threshold of 60%. The session
+anchors at 70%.», or «Past 70%: the session anchors at the end of its turn.» (with the clear action:
 «… at the end of its turn and, if nothing stands in the way, clears its context and goes on from its
 note.») — also while Settings is open in front. It says nothing about stages written before it
 started, nothing when mods are off in Claude Code, and removes stage files older than 30 days.

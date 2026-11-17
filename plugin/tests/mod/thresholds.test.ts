@@ -69,6 +69,7 @@ const NOTE = {
   own: 'x',
   sha: 'x',
 }
+const BOTH = { warn: 45, save: 55, after: 'offer_clear' }
 const ONLY_SAVE = { warn: null, save: 55, after: 'tell' }
 const ONLY_WARN = { warn: 45, save: null, after: 'tell' }
 const NONE = { warn: null, save: null, after: 'tell' }
@@ -121,8 +122,12 @@ describe('the window percent', () => {
 })
 
 describe('the thresholds file', () => {
+  test('is replaced, when there is none, by 60%, 70% and the /clear offer', () => {
+    expect(DEFAULTS).toEqual({ warn: 60, save: 70, after: 'offer_clear' })
+  })
+
   test('holds two thresholds and the action after the save', () => {
-    expect(findThresholds(json({ warn_percent: 45, save_percent: 55, after_save: 'offer_clear' }))).toEqual(DEFAULTS)
+    expect(findThresholds(json({ warn_percent: 60, save_percent: 70, after_save: 'offer_clear' }))).toEqual(DEFAULTS)
     expect(findThresholds(json({ warn_percent: null, save_percent: 55, after_save: 'tell' }))).toEqual(ONLY_SAVE)
     expect(findThresholds(json({ warn_percent: 45, save_percent: null, after_save: 'tell' }))).toEqual(ONLY_WARN)
     expect(findThresholds(json({ warn_percent: null, save_percent: null, after_save: 'tell' }))).toEqual(NONE)
@@ -162,26 +167,26 @@ describe('the thresholds file', () => {
 describe('arming', () => {
   test('arms both thresholds below the lowest and fires each once', () => {
     const arm = createArm()
-    setArm(arm, { thresholds: DEFAULTS, percent: 10 })
+    setArm(arm, { thresholds: BOTH, percent: 10 })
     expect(getFlags(arm)).toEqual({ warn: true, save: true })
-    const past = { thresholds: DEFAULTS, percent: 56 }
+    const past = { thresholds: BOTH, percent: 56 }
     setArm(arm, past)
     expect(isWarnDue(arm, past)).toBe(true)
     expect(isSaveDue(arm, past)).toBe(true)
     arm.warn = false
     arm.save = false
-    setArm(arm, { thresholds: DEFAULTS, percent: 50 })
+    setArm(arm, { thresholds: BOTH, percent: 50 })
     expect(getFlags(arm)).toEqual({ warn: false, save: true })
   })
 
   test('arms nothing while the window was never seen below the lowest threshold', () => {
     const arm = createArm()
-    setArm(arm, { thresholds: DEFAULTS, percent: 50 })
-    const past = { thresholds: DEFAULTS, percent: 60 }
+    setArm(arm, { thresholds: BOTH, percent: 50 })
+    const past = { thresholds: BOTH, percent: 60 }
     setArm(arm, past)
     expect(isWarnDue(arm, past)).toBe(false)
     expect(isSaveDue(arm, past)).toBe(false)
-    setArm(arm, { thresholds: DEFAULTS, percent: 44 })
+    setArm(arm, { thresholds: BOTH, percent: 44 })
     expect(getFlags(arm)).toEqual({ warn: true, save: true })
   })
 
@@ -201,12 +206,12 @@ describe('arming', () => {
 
 describe('the texts', () => {
   test('tell the model the warning and when the session anchors itself', () => {
-    expect(getWarningText({ thresholds: DEFAULTS, percent: 47 })).toBe(
+    expect(getWarningText({ thresholds: BOTH, percent: 47 })).toBe(
       "Hats context threshold: this session's context window is at 47% (warning threshold 45%). " +
         'It anchors itself at the end of a turn once it reaches 55%. ' +
         'Tell the user so in one short line in your reply, in their language, and go on with the task.',
     )
-    expect(getWarningText({ thresholds: DEFAULTS, percent: 56 })).toContain(
+    expect(getWarningText({ thresholds: BOTH, percent: 56 })).toContain(
       '(warning threshold 45%). It anchors itself at the end of this turn. Tell',
     )
     expect(getWarningText({ thresholds: ONLY_WARN, percent: 47 })).toContain('(warning threshold 45%). Tell the user')
@@ -344,7 +349,7 @@ describe('the stage file', () => {
       warnRound: 1,
       saveRound: 2,
       percent: 56,
-      thresholds: DEFAULTS,
+      thresholds: BOTH,
       reason: null,
       marker: null,
     }
@@ -389,7 +394,7 @@ describe('SHA-256', () => {
 })
 
 describe('a refused /hats:anchor', () => {
-  const previous = { stage: 'warned', reason: null, marker: null, saveRound: 1, percent: 47, thresholds: DEFAULTS }
+  const previous = { stage: 'warned', reason: null, marker: null, saveRound: 1, percent: 47, thresholds: BOTH }
 
   test('after Esc, with the text measured in М6, gives back the stage and the round before the request and arms the save again', () => {
     const outcome = findRefusalOutcome('hats: $.command.run: the session was stopped and nobody has sent input since', previous)

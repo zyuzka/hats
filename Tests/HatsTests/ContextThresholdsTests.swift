@@ -31,8 +31,8 @@ final class ContextThresholdsTests: XCTestCase {
         return made
     }
 
-    func testWithoutTheFieldTheThresholdsAre45And55AndTheActionOffersClear() throws {
-        let defaults = thresholds(45, 55, .offerClear)
+    func testWithoutTheFieldTheThresholdsAre60And70AndTheActionOffersClear() throws {
+        let defaults = thresholds(60, 70, .offerClear)
 
         XCTAssertEqual(AppSettings.loaded(from: url).contextThresholds, defaults, "no settings file at all")
         XCTAssertEqual(try load("{}").contextThresholds, defaults, "a settings file from before this version")
@@ -66,8 +66,8 @@ final class ContextThresholdsTests: XCTestCase {
     }
 
     func testAMissingThresholdTakesItsDefaultWhileANullOneIsOff() throws {
-        XCTAssertEqual(try load(#"{"contextThresholds": {"warnPercent": null}}"#).contextThresholds, thresholds(nil, 55))
-        XCTAssertEqual(try load(#"{"contextThresholds": {"savePercent": 70}}"#).contextThresholds, thresholds(45, 70))
+        XCTAssertEqual(try load(#"{"contextThresholds": {"warnPercent": null}}"#).contextThresholds, thresholds(nil, 70))
+        XCTAssertEqual(try load(#"{"contextThresholds": {"savePercent": 80}}"#).contextThresholds, thresholds(60, 80))
         XCTAssertEqual(
             try load(#"{"contextThresholds": {"warnPercent": null, "savePercent": null, "afterSave": "tell"}}"#)
                 .contextThresholds,
@@ -106,8 +106,8 @@ final class ContextThresholdsTests: XCTestCase {
         for pair in unusable {
             let settings = try load(#"{"contextThresholds": {\#(pair), "afterSave": "tell"}}"#)
 
-            XCTAssertEqual(settings.contextThresholds, thresholds(45, 55, .tell),
-                           "\(pair): both thresholds go back to 45 and 55, the action is kept")
+            XCTAssertEqual(settings.contextThresholds, thresholds(60, 70, .tell),
+                           "\(pair): both thresholds go back to 60 and 70, the action is kept")
         }
     }
 
@@ -123,9 +123,9 @@ final class ContextThresholdsTests: XCTestCase {
         let parts: [(String, ContextThresholds)] = [
             (#"{"warnPercent": 30, "savePercent": 40, "afterSave": "clear_all"}"#, thresholds(30, 40, .offerClear)),
             (#"{"warnPercent": 30, "savePercent": 40, "afterSave": "clear"}"#, thresholds(30, 40, .clear)),
-            (#"{"warnPercent": 60, "savePercent": 40, "afterSave": "tell"}"#, thresholds(45, 55, .tell)),
-            (#""anchor at 55""#, thresholds(45, 55, .offerClear)),
-            ("[45, 55]", thresholds(45, 55, .offerClear)),
+            (#"{"warnPercent": 60, "savePercent": 40, "afterSave": "tell"}"#, thresholds(60, 70, .tell)),
+            (#""anchor at 55""#, thresholds(60, 70, .offerClear)),
+            ("[45, 55]", thresholds(60, 70, .offerClear)),
         ]
         for (part, expected) in parts {
             let settings = try load("""
@@ -242,15 +242,15 @@ final class ContextThresholdsTests: XCTestCase {
         XCTAssertNil(off.warnPercent, "a step on an off threshold does not turn it on")
     }
 
-    func testTheTogglesWriteNullAndComeBackAt45And55OrNextToTheOther() {
-        var chosen = thresholds(45, 55)
+    func testTheTogglesWriteNullAndComeBackAt60And70OrNextToTheOther() {
+        var chosen = thresholds(60, 70)
         chosen.setWarn(isOn: false)
-        XCTAssertEqual(chosen, thresholds(nil, 55))
+        XCTAssertEqual(chosen, thresholds(nil, 70))
         chosen.setSave(isOn: false)
         XCTAssertEqual(chosen, thresholds(nil, nil))
         chosen.setWarn(isOn: true)
         chosen.setSave(isOn: true)
-        XCTAssertEqual(chosen, thresholds(45, 55))
+        XCTAssertEqual(chosen, thresholds(60, 70))
 
         var low = thresholds(nil, 11)
         low.setWarn(isOn: true)
@@ -264,12 +264,12 @@ final class ContextThresholdsTests: XCTestCase {
         near.setWarn(isOn: true)
         XCTAssertEqual(near.warnPercent, 29)
 
-        var above = thresholds(60, nil)
+        var above = thresholds(80, nil)
         above.setSave(isOn: true)
-        XCTAssertEqual(above.savePercent, 61)
+        XCTAssertEqual(above.savePercent, 81)
 
         var roomy = thresholds(20, nil)
         roomy.setSave(isOn: true)
-        XCTAssertEqual(roomy.savePercent, 55, "with room, the default comes back")
+        XCTAssertEqual(roomy.savePercent, 70, "with room, the default comes back")
     }
 }
