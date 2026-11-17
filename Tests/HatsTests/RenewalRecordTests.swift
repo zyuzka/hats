@@ -5,7 +5,7 @@ final class RenewalRecordTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func hat() -> Account {
-        var hat = Account(id: "a", email: "filip@company.com", browser: nil)
+        var hat = Account(id: "a", email: "work@company.com", browser: nil)
         hat.accessExpiresAt = now.addingTimeInterval(-60)
         hat.refreshExpiresAt = now.addingTimeInterval(28 * 24 * 3600)
 
@@ -68,7 +68,7 @@ final class RenewalRecordTests: XCTestCase {
         let hat = self.hat()
 
         XCTAssertTrue(hat.allowsARenewalFor(nil), "the answer need not name an account at all")
-        XCTAssertTrue(hat.allowsARenewalFor("FILIP@Company.com"),
+        XCTAssertTrue(hat.allowsARenewalFor("WORK@Company.com"),
                       "the comparison is the one the rest of the app uses, so case and padding "
                           + "must not make a hat disown its own renewal")
         XCTAssertFalse(hat.allowsARenewalFor("someone-else@company.com"),

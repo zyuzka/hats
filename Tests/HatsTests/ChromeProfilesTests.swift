@@ -9,13 +9,13 @@ final class ChromeProfilesTests: XCTestCase {
 
     func testAProfileIsNamedTheWayChromeShowsIt() {
         let names = ChromeProfiles.names(localState: localState(#"""
-        "Profile 6": {"name": "example.com", "gaia_name": "Filip", "user_name": "filip@example.com"},
+        "Profile 6": {"name": "example.com", "gaia_name": "Work", "user_name": "work@example.com"},
         "Default": {"name": "Person 1", "is_using_default_name": true},
         "Profile 2": {"gaia_name": "Dana", "user_name": "dana@example.com"},
         "Profile 3": {"user_name": "only@example.com"},
         "Profile 4": {"name": "  ", "user_name": ""}
         """#))
-        XCTAssertEqual(names["Profile 6"], "example.com (filip@example.com)")
+        XCTAssertEqual(names["Profile 6"], "example.com (work@example.com)")
         XCTAssertEqual(names["Default"], "Person 1", "a name Chrome made up is still the name Chrome shows")
         XCTAssertEqual(names["Profile 2"], "Dana (dana@example.com)", "the account name stands in for a missing local one")
         XCTAssertEqual(names["Profile 3"], "only@example.com")
@@ -36,9 +36,9 @@ final class ChromeProfilesTests: XCTestCase {
     }
 
     func testTheLabelFallsBackToTheDirectoryWhenChromeHasNoName() {
-        let names = [ChromeProfiles.key(.stable, "Profile 6"): "example.com (filip@example.com)"]
+        let names = [ChromeProfiles.key(.stable, "Profile 6"): "example.com (work@example.com)"]
         XCTAssertEqual(BrowserChoice.chromeProfile("Profile 6").label(chromeNames: names),
-                       "Chrome — example.com (filip@example.com)")
+                       "Chrome — example.com (work@example.com)")
         XCTAssertEqual(BrowserChoice.chromeProfile("Profile 7").label(chromeNames: names), "Chrome — Profile 7")
         XCTAssertEqual(BrowserChoice.chromeProfile("Profile 6").label, "Chrome — Profile 6")
         XCTAssertEqual(BrowserChoice.firefox.label(chromeNames: names), "Firefox")

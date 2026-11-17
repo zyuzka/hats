@@ -14,7 +14,7 @@ final class RenewalStepTests: XCTestCase {
         slots.answer = .renewed(RenewedLogin(accessToken: "a-2", refreshToken: "r-2",
                                              expiresAt: now.addingTimeInterval(28800),
                                              refreshExpiresAt: nil, scopes: [],
-                                             account: "filip@example.com"))
+                                             account: "work@example.com"))
 
         let batch = AutoSwitchWatch.fetched([("personal", false)], world: slots.world(now: now))
 

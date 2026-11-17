@@ -3,12 +3,12 @@ import XCTest
 
 final class HatTests: XCTestCase {
     func testTheTitleIsTheNameWhenThereIsOneAndTheAddressOtherwise() {
-        var hat = Account(id: "a", email: "filip@company.com", browser: nil)
-        XCTAssertEqual(hat.title, "filip@company.com", "an unnamed hat is still readable")
+        var hat = Account(id: "a", email: "work@company.com", browser: nil)
+        XCTAssertEqual(hat.title, "work@company.com", "an unnamed hat is still readable")
         hat.name = "Work"
         XCTAssertEqual(hat.title, "Work", "the role is what you read; the address is the detail")
         hat.name = "   "
-        XCTAssertEqual(hat.title, "filip@company.com", "a blank name is no name")
+        XCTAssertEqual(hat.title, "work@company.com", "a blank name is no name")
     }
 
     func testAHatWithoutAToolBelongsToClaudeCode() {
@@ -19,12 +19,12 @@ final class HatTests: XCTestCase {
 
     func testAnAccountWrittenBeforeHatsStillDecodes() throws {
         let legacy = """
-        {"id":"a","email":"filip@company.com","hasStoredCredentials":true}
+        {"id":"a","email":"work@company.com","hasStoredCredentials":true}
         """
         let hat = try JSONDecoder().decode(Account.self, from: Data(legacy.utf8))
         XCTAssertNil(hat.name)
         XCTAssertNil(hat.tool)
-        XCTAssertEqual(hat.title, "filip@company.com")
+        XCTAssertEqual(hat.title, "work@company.com")
         XCTAssertEqual(hat.wornTool, .claudeCode)
     }
 
