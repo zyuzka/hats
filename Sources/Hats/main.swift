@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let sessions = LiveSessionsWindow()
     let releases = ReleasesWindow()
     let settingsWindow = SettingsWindow()
-    let usage = AutoSwitchWatch()
+    let usage = AutoSwitchWatch(wakes: NSWorkspace.shared.notificationCenter)
     lazy var login = LoginFlow(store: store)
 
     var statusItem: NSStatusItem!
@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hatUsage = HatUsageFile()
     var lastHatUsageFailure = NoteOnChange()
     let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
-    let contextChannel = ContextThresholdsChannel()
+    let contextChannel = ContextThresholdsChannel(launchedAt: Date())
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
         sessionWindows.onChange = { [weak self] in self?.showTheContextRows() }
         sessionWindows.start()
-        contextChannel.start { [weak self] in self?.sessionWindows.windows ?? [] }
+        startTheContextChannel()
         startTheUpdater()
         DockPresence.watch()
 

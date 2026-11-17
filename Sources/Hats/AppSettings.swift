@@ -16,6 +16,7 @@ struct AppSettings: Codable, Equatable {
     var blinksTheCursorInTheMenuBar = true
     var pluginVersionToldAbout: String?
     var contextThresholds = ContextThresholds()
+    var limitThresholds = LimitThresholds()
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -39,6 +40,8 @@ struct AppSettings: Codable, Equatable {
         pluginVersionToldAbout = try c.decodeIfPresent(String.self, forKey: .pluginVersionToldAbout)
         contextThresholds = (try? c.decodeIfPresent(ContextThresholds.self, forKey: .contextThresholds))
             ?? ContextThresholds()
+        limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
+            ?? LimitThresholds()
     }
 
     static var defaultURL: URL {

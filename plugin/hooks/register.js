@@ -1,18 +1,10 @@
 import {
   DEFAULTS,
   HOOK_FAILED_DROP,
-  INTERRUPTED_LINE,
   KEPT,
   REASONS,
   createArm,
-  createPrevious,
-  findRefusalOutcome,
   getFailedLine,
-  getPauseLine,
-  getRequestLine,
-  getSavedLine,
-  getTurnFailure,
-  isSaveDue,
   isWarnDue,
   setArm,
 } from './thresholds.js'
@@ -25,7 +17,6 @@ import {
 } from './files.js'
 import {
   createTurn,
-  findVerdict,
   recordHandoffOutput,
   recordOwnWrite,
   recordSnapshot,
@@ -33,12 +24,8 @@ import {
 } from './anchor-check.js'
 import {
   findDenial,
-  findDrainChoice,
   getDrainList,
   isDrainCall,
-  isWaiting,
-  setPaused,
-  setReading,
   settleRound,
 } from './drain.js'
 import {
@@ -48,6 +35,19 @@ import {
   restoreStage,
 } from './stages.js'
 import {
+  finishRequest,
+  isCurrent,
+  judgeTurnEnd,
+  setCurrentGetter,
+} from './requests.js'
+import {
+  findLimitWarning,
+  forgetCell,
+  markWarned,
+  setAskFailed,
+} from './limits.js'
+import { createLimits } from './limit-rules.js'
+import {
   endClearBeforeRun,
   endClearOnSessionEnd,
   failOwnRun,
@@ -55,7 +55,6 @@ import {
   isClearOpen,
   isOwnClear,
   isOwnContinuation,
-  isPausedAfterClear,
   markChainFailed,
   noteInput,
   noteMainToolEnd,
@@ -64,8 +63,6 @@ import {
   passContinuation,
   refuseLostClear,
   runOwnClear,
-  startClear,
-  watchInputs,
 } from './clear-chain.js'
 
 const WRITE_TOOLS = [
@@ -77,7 +74,8 @@ const WRITE_TOOLS = [
 let isActive = false
 let cwd = ''
 let session = null
-let requestCount = 0
+
+setCurrentGetter(() => session)
 
 const createSession = id => ({
   id,
@@ -95,6 +93,7 @@ const createSession = id => ({
   turn: null,
   drain: null,
   drainMinutes: null,
+  limits: createLimits(),
 })
 
 const findState = async $ => {
@@ -108,6 +107,7 @@ const findState = async $ => {
   if (saved !== null) {
     fresh.warnRound = saved.warnRound
     fresh.saveRound = saved.saveRound
+    fresh.limits = saved.limits
   }
   if (old !== null) await endChain($, { state: old, reason: REASONS.sessionChanged })
   if (old !== null) await endClearBeforeRun($, KEPT.sessionChanged)
@@ -124,135 +124,6 @@ const isOwnAnchor = e => e.origin?.kind === 'plugin' && e.origin?.name === 'hats
 
 const isDone = out => out.deny === undefined && out.isError !== true
 
-const isCurrent = state => session === state
-
-const isChainAlive = async ($, job) =>
-  isCurrent(job.state) && job.state.request === job.request && (await $.session.id()) === job.request.sessionId
-
-const finishRequest = async ($, job) => {
-  const { state, reason, turn } = job
-  const request = state.request
-  if (request === null || request.turnId !== job.turnId) return
-  let verdict = reason === 'answer' || reason === 'aborted' ? null : getTurnFailure(reason)
-  if (reason === 'answer' && request.hasHookFailed) verdict = REASONS.hookFailed
-  if (reason === 'answer' && !request.hasHookFailed) verdict = await findVerdict($, { turn, askedAt: request.askedAt })
-  if (!(await isChainAlive($, { state, request }))) return
-  if (reason === 'aborted') {
-    state.request = null
-    setStage(state, { stage: 'interrupted' })
-    await queueStage($, state)
-    tellUser($, INTERRUPTED_LINE)
-    return
-  }
-  if (verdict !== null) {
-    await failRequest($, { state, reason: verdict })
-    return
-  }
-  state.request = null
-  setStage(state, { stage: 'saved', marker: turn.save.path })
-  await queueStage($, state)
-  if (request.after === 'clear') {
-    await startClear($, { state, request, turn })
-    return
-  }
-  tellUser($, getSavedLine(request))
-}
-
-const onRunDone = async ($, job) => {
-  if (job.request.isRaised || !(await isChainAlive($, job))) return
-  await failRequest($, { state: job.state, reason: REASONS.notStarted })
-}
-
-const onRunRefused = async ($, job) => {
-  const { state, request, error } = job
-  if (!(await isChainAlive($, { state, request }))) return
-  const outcome = findRefusalOutcome(String(error?.message ?? error), request.previous)
-  if (outcome.kind === 'failed') {
-    await failRequest($, { state, reason: outcome.reason })
-    return
-  }
-  state.request = null
-  Object.assign(state, outcome.fields)
-  state.arm.save = outcome.isSaveArmed
-  await queueStage($, state)
-}
-
-const createRequest = (state, reading) => {
-  requestCount += 1
-
-  return {
-    n: requestCount,
-    sessionId: state.id,
-    askedAt: 0,
-    percent: reading.percent,
-    save: reading.thresholds.save,
-    after: reading.thresholds.after,
-    turnId: null,
-    isRaised: false,
-    isSubmitted: false,
-    hasHookFailed: false,
-    previous: createPrevious(state),
-  }
-}
-
-const askToAnchor = async ($, job) => {
-  const { state, reading } = job
-  const askedAt = await $.clock.now()
-  if (!isCurrent(state) || state.request !== null) return
-  const request = createRequest(state, reading)
-  request.askedAt = askedAt
-  request.list = job.list ?? null
-  state.arm.save = false
-  state.arm.warn = false
-  state.pending = null
-  if (!isWaiting(state)) state.saveRound += 1
-  setReading(state, reading)
-  state.drain = null
-  setStage(state, { stage: 'requested' })
-  state.request = request
-  watchInputs()
-  await queueStage($, state)
-  tellUser($, getRequestLine(reading.percent, reading.thresholds.save))
-  $.command.run({ command: 'hats:anchor' })
-    .then(() => onRunDone($, { state, request }), error => onRunRefused($, { state, request, error }))
-    .catch(() => {})
-}
-
-const acceptManualSave = async ($, job) => {
-  const { state, turn, reading } = job
-  if (turn === null || turn.save === null) return false
-  if ((await findVerdict($, { turn, askedAt: turn.startedAt })) !== null || !isCurrent(state)) return false
-  state.arm.save = false
-  if (isWarnDue(state.arm, reading)) state.arm.warn = false
-  state.pending = null
-  setReading(state, reading)
-  state.drain = null
-  setStage(state, { stage: 'saved', reason: REASONS.manual, marker: turn.save.path })
-  await queueStage($, state)
-
-  return true
-}
-
-const judgeTurnEnd = async ($, job) => {
-  const { state, turn } = job
-  const reading = await findReading($)
-  if (reading === null || !isCurrent(state)) return
-  setArm(state.arm, reading)
-  await settleRound($, { state, reading })
-  if (isSaveDue(state.arm, reading)) {
-    if (await acceptManualSave($, { state, turn, reading })) return
-    if (isPausedAfterClear(await $.clock.now())) {
-      setPaused(state)
-      tellUser($, getPauseLine(reading.percent, reading.thresholds.save))
-      return
-    }
-    const drain = await findDrainChoice($, { state, turn, reading })
-    if (!drain.isHeld) await askToAnchor($, { state, reading, list: drain.list })
-    return
-  }
-  if (isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
-}
-
 const updateArm = async ($, state) => {
   const reading = await findReading($)
   if (reading !== null) setArm(state.arm, reading)
@@ -265,14 +136,17 @@ const findDelivered = async ($, job) => {
   const { state, out } = job
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
+  const warning = out.deny === undefined ? await findLimitWarning($, state) : null
   const list = getDrainList(state)
   const texts = [
+    warning?.text ?? null,
     state.pending,
     list,
   ].filter(text => text !== null)
   if (out.deny !== undefined || texts.length === 0) return out
   state.pending = null
   if (list !== null) state.request.list = null
+  if (warning !== null) await markWarned($, { state, warning })
 
   return {
     ...out,
@@ -340,8 +214,10 @@ const passOnFailedTurn = (
   const state = session
   endClearBeforeRun($, KEPT.hookFailed).catch(() => {})
   if (state === null || state.request === null || state.request.turnId !== e.turnId) return passOnFailed($, e, next)
+  const isWindow = state.request.isWindow
+  setAskFailed(state.request.limits)
   state.request = null
-  setStage(state, { stage: 'failed', reason: REASONS.hookFailed })
+  if (isWindow) setStage(state, { stage: 'failed', reason: REASONS.hookFailed })
   queueStage($, state)
   tellUser($, getFailedLine(REASONS.hookFailed))
 
@@ -357,6 +233,7 @@ const onSessionStart = async (
   cwd = e.cwd
   if (!isActive) return next(e)
   forgetClear()
+  forgetCell()
   session = createSession(await $.session.id())
   await restoreStage($, session)
 
@@ -389,17 +266,24 @@ const onPromptSubmit = async (
   if (isOwnContinuation(e)) return passContinuation($, e, next)
   const state = await findState($)
   if (isOwnAnchor(e)) return submitOwnAnchor($, { state, e, next })
-  if (state.pending === null || e.origin?.kind === 'plugin' || e.command !== undefined) return next(e)
+  if (e.origin?.kind === 'plugin' || e.command !== undefined) return next(e)
+  const warning = await findLimitWarning($, state)
   const text = state.pending
+  const texts = [
+    warning?.text ?? null,
+    text,
+  ].filter(part => part !== null)
+  if (texts.length === 0) return next(e)
   state.pending = null
   const out = await next({
     ...e,
     context: [
       ...(e.context ?? []),
-      text,
+      ...texts,
     ],
   })
   if (out.drop !== undefined && state.pending === null) state.pending = text
+  if (out.drop === undefined && warning !== null) await markWarned($, { state, warning })
 
   return out
 }
@@ -473,8 +357,8 @@ const onTurnComplete = async (
   const turn = state.turn?.id === e.turnId ? state.turn : null
   state.turn = null
   if (state.request !== null && state.request.turnId === e.turnId) {
-    await updateArm($, state)
-    await finishRequest($, { state, reason: e.reason, turn, turnId: e.turnId })
+    const reading = await updateArm($, state)
+    await finishRequest($, { state, reason: e.reason, turn, turnId: e.turnId, reading })
   } else if (e.reason === 'answer') {
     await judgeTurnEnd($, { state, turn })
   }

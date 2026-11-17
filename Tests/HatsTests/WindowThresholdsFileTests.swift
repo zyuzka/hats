@@ -3,7 +3,16 @@ import XCTest
 @testable import Hats
 
 final class WindowThresholdsFileTests: XCTestCase {
-    private static let keys: Set<String> = ["warn_percent", "save_percent", "after_save", "drain", "drain_minutes", "written_at"]
+    private static let keys: Set<String> = [
+        "warn_percent",
+        "save_percent",
+        "after_save",
+        "drain",
+        "drain_minutes",
+        "limit_warn_percent",
+        "limit_save_percent",
+        "written_at",
+    ]
     private var root: URL!
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -41,7 +50,7 @@ final class WindowThresholdsFileTests: XCTestCase {
     func testTheFileCarriesTheThresholdsTheActionAndTheTimeOfWriting() throws {
         var file = WindowThresholdsFile(root: root)
 
-        XCTAssertEqual(file.setThresholds(thresholds(45, 55, .offerClear), at: now), .written)
+        XCTAssertEqual(file.setThresholds(thresholds(45, 55, .offerClear), limits: LimitThresholds(), at: now), .written)
 
         let fields = try written(file)
         XCTAssertEqual(file.url, root.appendingPathComponent("window-thresholds.json"))
@@ -57,11 +66,11 @@ final class WindowThresholdsFileTests: XCTestCase {
     func testTheFileCarriesTheDrainAndItsMinutesAndIsRewrittenWhenTheyChange() throws {
         var file = WindowThresholdsFile(root: root)
         var chosen = thresholds(45, 55, .tell)
-        XCTAssertEqual(file.setThresholds(chosen, at: now), .written)
+        XCTAssertEqual(file.setThresholds(chosen, limits: LimitThresholds(), at: now), .written)
         chosen.drain = true
         chosen.drainMinutes = 5
 
-        XCTAssertEqual(file.setThresholds(chosen, at: now), .written)
+        XCTAssertEqual(file.setThresholds(chosen, limits: LimitThresholds(), at: now), .written)
 
         let fields = try written(file)
         XCTAssertEqual(fields["drain"] as? Bool, true)
@@ -79,7 +88,7 @@ final class WindowThresholdsFileTests: XCTestCase {
             (thresholds(45, 55, .clear), 45, 55, "clear"),
         ]
         for (chosen, warn, save, after) in cases {
-            XCTAssertEqual(file.setThresholds(chosen, at: now), .written)
+            XCTAssertEqual(file.setThresholds(chosen, limits: LimitThresholds(), at: now), .written)
 
             let fields = try written(file)
             XCTAssertEqual(fields["warn_percent"] as? NSObject, warn as? NSObject, "\(chosen)")
@@ -93,7 +102,7 @@ final class WindowThresholdsFileTests: XCTestCase {
     func testTheStageFolderIsMadeForHatsAloneWhenItIsMissing() throws {
         var file = WindowThresholdsFile(root: root)
 
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now), .written)
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now), .written)
 
         var facts = stat()
         XCTAssertEqual(lstat(root.appendingPathComponent("session-thresholds").path, &facts), 0)
@@ -101,31 +110,31 @@ final class WindowThresholdsFileTests: XCTestCase {
         XCTAssertEqual(facts.st_mode & 0o777, 0o700)
 
         try FileManager.default.removeItem(at: file.stageFolder)
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now), .unchanged)
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now), .unchanged)
         XCTAssertEqual(lstat(file.stageFolder.path, &facts), 0, "a folder removed later is made again on the next write")
     }
 
     func testTheFileIsRewrittenOnlyWhenTheThresholdsChange() throws {
         var file = WindowThresholdsFile(root: root)
-        XCTAssertEqual(file.setThresholds(thresholds(45, 55), at: now), .written)
+        XCTAssertEqual(file.setThresholds(thresholds(45, 55), limits: LimitThresholds(), at: now), .written)
         let inode = try FileManager.default.attributesOfItem(atPath: file.url.path)[.systemFileNumber] as? Int
 
-        XCTAssertEqual(file.setThresholds(thresholds(45, 55), at: now.addingTimeInterval(60)), .unchanged)
+        XCTAssertEqual(file.setThresholds(thresholds(45, 55), limits: LimitThresholds(), at: now.addingTimeInterval(60)), .unchanged)
         XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: file.url.path)[.systemFileNumber] as? Int, inode)
         XCTAssertEqual(try written(file)["written_at"] as? String, "2027-01-15T08:00:00Z")
 
-        XCTAssertEqual(file.setThresholds(thresholds(45, 55, .tell), at: now.addingTimeInterval(120)), .written)
+        XCTAssertEqual(file.setThresholds(thresholds(45, 55, .tell), limits: LimitThresholds(), at: now.addingTimeInterval(120)), .written)
         XCTAssertEqual(try written(file)["after_save"] as? String, "tell")
     }
 
     func testADeletedFileComesBackOnTheNextWrite() throws {
         var file = WindowThresholdsFile(root: root)
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now), .written)
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now), .written)
         try FileManager.default.removeItem(at: file.url)
 
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now.addingTimeInterval(60)), .written)
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now.addingTimeInterval(60)), .written)
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path))
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now.addingTimeInterval(120)), .unchanged)
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now.addingTimeInterval(120)), .unchanged)
     }
 
     func testAStageFolderThatIsAFileIsAFailureWhileTheThresholdsAreStillWritten() throws {
@@ -133,11 +142,11 @@ final class WindowThresholdsFileTests: XCTestCase {
         try Data("x".utf8).write(to: root.appendingPathComponent("session-thresholds"))
         var file = WindowThresholdsFile(root: root)
 
-        let first = file.setThresholds(ContextThresholds(), at: now)
+        let first = file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
 
         XCTAssertEqual(first, .failed("session-thresholds: it is a link or not a folder"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path), "the mod still gets its thresholds")
-        XCTAssertEqual(file.setThresholds(ContextThresholds(), at: now), first, "the same trouble is reported again")
+        XCTAssertEqual(file.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now), first, "the same trouble is reported again")
     }
 
     func testAFailedWriteIsJournaledOncePerReasonAndForgottenOnSuccess() throws {
@@ -145,20 +154,20 @@ final class WindowThresholdsFileTests: XCTestCase {
         let blocked = root.appendingPathComponent("window-thresholds.json")
         try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
         var lines: [[String: String]] = []
-        let channel = ContextThresholdsChannel(root: root, notify: { _ in }, log: { event, details in
+        let channel = ContextThresholdsChannel(root: root, launchedAt: now, notify: { _ in }, log: { event, details in
             if event == "windowThresholds.notSaved" { lines.append(details) }
         })
 
-        channel.setThresholds(ContextThresholds(), at: now)
-        channel.setThresholds(ContextThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
         XCTAssertEqual(lines.count, 1, "every redraw writes, so the same reason is told once")
 
         try FileManager.default.removeItem(at: blocked)
-        channel.setThresholds(ContextThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
         XCTAssertTrue(FileManager.default.fileExists(atPath: blocked.path))
         try FileManager.default.removeItem(at: blocked)
         try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
-        channel.setThresholds(thresholds(30, 40), at: now)
+        channel.setThresholds(thresholds(30, 40), limits: LimitThresholds(), at: now)
 
         XCTAssertEqual(lines.count, 2, "a success forgets the reason, so the same failure later is told again")
         XCTAssertNotNil(lines.first?["reason"])
@@ -177,17 +186,17 @@ final class WindowThresholdsFileTests: XCTestCase {
         let blocked = root.appendingPathComponent("window-thresholds.json")
         try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
         var reasons: [String] = []
-        let channel = ContextThresholdsChannel(root: root, notify: { _ in }, log: { event, details in
+        let channel = ContextThresholdsChannel(root: root, launchedAt: now, notify: { _ in }, log: { event, details in
             if event == "windowThresholds.notSaved" { reasons.append(details["reason"] ?? "") }
         })
 
-        channel.setThresholds(ContextThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
         try FileManager.default.removeItem(at: blocked)
         try FileManager.default.removeItem(at: root.appendingPathComponent("session-thresholds"))
         try Data("x".utf8).write(to: root.appendingPathComponent("session-thresholds"))
-        channel.setThresholds(ContextThresholds(), at: now)
-        channel.setThresholds(ContextThresholds(), at: now)
-        channel.setThresholds(ContextThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
 
         XCTAssertEqual(reasons.count, 2, "\(reasons)")
         XCTAssertNotEqual(reasons.first, "", "the write failure names its reason")
@@ -196,12 +205,12 @@ final class WindowThresholdsFileTests: XCTestCase {
     }
 
     func testAThresholdsFileDeletedBetweenTwoRedrawsComesBackFromTheChannel() throws {
-        let channel = ContextThresholdsChannel(root: root, notify: { _ in }, log: { _, _ in })
+        let channel = ContextThresholdsChannel(root: root, launchedAt: now, notify: { _ in }, log: { _, _ in })
         let file = root.appendingPathComponent("window-thresholds.json")
-        channel.setThresholds(ContextThresholds(), at: now)
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now)
         try FileManager.default.removeItem(at: file)
 
-        channel.setThresholds(ContextThresholds(), at: now.addingTimeInterval(60))
+        channel.setThresholds(ContextThresholds(), limits: LimitThresholds(), at: now.addingTimeInterval(60))
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
     }
@@ -212,13 +221,14 @@ final class WindowThresholdsFileTests: XCTestCase {
         let main = source("Sources/Hats/main.swift")
 
         XCTAssertTrue(redraw.contains("        writeTheHatUsage()\n"
-                                          + "        contextChannel.setThresholds(settings.contextThresholds, at: Date())\n"),
+                                          + "        contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())\n"),
                       "the file is written on every redraw, unconditionally, next to the hat usage")
         XCTAssertEqual(redraw.components(separatedBy: "contextChannel.setThresholds(").count, 2,
                        "once per redraw, and in redraw itself rather than elsewhere in the file")
         XCTAssertTrue(update.contains("settings.contextThresholds = thresholds\n        saveSettings()\n        redraw()"))
-        XCTAssertTrue(main.contains("let contextChannel = ContextThresholdsChannel()"))
-        XCTAssertTrue(main.contains("contextChannel.start { [weak self] in self?.sessionWindows.windows ?? [] }"))
+        XCTAssertTrue(main.contains("let contextChannel = ContextThresholdsChannel(launchedAt: Date())"))
+        XCTAssertTrue(main.contains("        startTheContextChannel()\n"))
+        XCTAssertTrue(update.contains("contextChannel.start { [weak self] in self?.sessionWindows.windows ?? [] }"))
     }
 
     func testTheNamesHatsWritesAreTheNamesTheModReads() {

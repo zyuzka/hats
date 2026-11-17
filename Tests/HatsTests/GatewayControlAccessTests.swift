@@ -45,8 +45,10 @@ final class GatewayControlAccessTests: XCTestCase {
             .appendingPathComponent("Sources/Hats/AutoSwitchWatch.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
         let inside = try NSRegularExpression(
-            pattern: #"queue\.async[\s\S]{0,200}?UsageWorld\.real"#
+            pattern: #"queue\.async[\s\S]{0,200}?makeWorld\(osAccount\)"#
         )
+        XCTAssertTrue(text.contains("var makeWorld: (String) -> UsageWorld = UsageWorld.real(osAccount:)"),
+                      "the world the poll builds is the real one unless a test puts in its own")
         XCTAssertEqual(inside.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text)), 1,
                        "the timer fires on .main, so a world built before the hop is built on the "
                            + "main thread. The slot inside it is a closure now, which is what makes "

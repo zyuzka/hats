@@ -21,6 +21,7 @@ struct SessionThresholdsScan {
 
     private var seen: [String: Seen] = [:]
     private var toldSkipped: Set<String> = []
+    private var toldLimitTrouble: Set<String> = []
     private var toldSweepFailure = NoteOnChange()
     private var toldUnlisted = NoteOnChange()
     private let list: Lister
@@ -52,6 +53,9 @@ struct SessionThresholdsScan {
             let read = readFile(name, folder)
             next[name] = Seen(stamp: stamp, read: read)
             if case .skipped(let reason) = read { tellSkipped(name, reason: reason) }
+            if case .read(let stage) = read, let trouble = stage.limitTrouble {
+                tellLimitTrouble(name, trouble: trouble)
+            }
         }
         var listed = Set(listing.map(\.0))
         sweepExpired(findExpired(listing, reads: next, now: now), in: folder, from: &listed)
@@ -94,6 +98,16 @@ struct SessionThresholdsScan {
             ])
         }
         if !hasFailed { toldSweepFailure.clear() }
+    }
+
+    private mutating func tellLimitTrouble(_ name: String, trouble: String) {
+        let isFull = toldLimitTrouble.count >= SessionWindowsScan.skippedNameLimit
+        guard !toldLimitTrouble.contains(name), !isFull else { return }
+        toldLimitTrouble.insert(name)
+        log("sessionThresholds.limitsSkipped", [
+            "name": String(name.prefix(SessionWindowsScan.nameShownLimit)),
+            "reason": trouble,
+        ])
     }
 
     private mutating func tellSkipped(_ name: String, reason: String) {

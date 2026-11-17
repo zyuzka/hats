@@ -29,7 +29,9 @@ final class ContextThresholdNoticesTests: XCTestCase {
             warnPercent: thresholds.0,
             savePercent: thresholds.1,
             at: at,
-            drainMinutes: drainMinutes
+            drainMinutes: drainMinutes,
+            limitEpisodes: [],
+            limitTrouble: nil
         )
     }
 

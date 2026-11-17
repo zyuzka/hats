@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 final class AutoSwitchWatch {
     typealias Hats = [(id: String, isWearing: Bool)]
@@ -10,6 +10,8 @@ final class AutoSwitchWatch {
     private var inFlight = false
     private var pending: (hats: Hats, source: PollSource)?
     private var provider: (() -> Hats)?
+    private let wakes: NotificationCenter
+    private var wakeObserver: NSObjectProtocol?
 
     private(set) var readings: [String: UsageReading] = [:]
     private(set) var parked = ParkedRises()
@@ -19,13 +21,19 @@ final class AutoSwitchWatch {
     private(set) var missed = MissedPolls()
     private(set) var freshInTheLastPoll: Set<String> = []
     private(set) var liveCredential: LiveCredential?
+    private(set) var lastPoll: LastPoll?
+    private(set) var aliveAt: Date?
 
     var interval: TimeInterval = 300
+    var makeWorld: (String) -> UsageWorld = UsageWorld.real(osAccount:)
     var onReadings: ([String: UsageReading]) -> Void = { _ in Journal.log("usage.readingsIgnored") }
     var onAuthObservation: (Set<String>, Set<String>) -> Void = { _, _ in Journal.log("usage.authIgnored") }
     var onRenewals: ([String: RenewedLogin]) -> Void = { _ in Journal.log("usage.renewalsIgnored") }
 
-    init(osAccount: String = NSUserName()) { self.osAccount = osAccount }
+    init(osAccount: String = NSUserName(), wakes: NotificationCenter) {
+        self.osAccount = osAccount
+        self.wakes = wakes
+    }
 
     func start(hats: @escaping () -> Hats) {
         stop()
@@ -35,11 +43,18 @@ final class AutoSwitchWatch {
         timer.setEventHandler { [weak self] in self?.poll(hats(), from: .timer) }
         timer.resume()
         self.timer = timer
+        wakeObserver = wakes.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in self?.poll(hats(), from: .outOfBand) }
     }
 
     func stop() {
         timer?.cancel()
         timer = nil
+        if let wakeObserver { wakes.removeObserver(wakeObserver) }
+        wakeObserver = nil
     }
 
     func poll(_ hats: Hats, from source: PollSource = .outOfBand) {
@@ -49,9 +64,10 @@ final class AutoSwitchWatch {
         }
         inFlight = true
         let osAccount = osAccount
+        let makeWorld = makeWorld
         let allowed = backoff.allowing(hats.map(\.id), at: Date())
         queue.async { [weak self] in
-            var world = UsageWorld.real(osAccount: osAccount)
+            var world = makeWorld(osAccount)
             world.mayRenew = { allowed.contains($0) }
             let batch = Self.fetched(hats, world: world)
             DispatchQueue.main.async { self?.landed(batch, polled: hats, from: source) }
@@ -89,6 +105,8 @@ final class AutoSwitchWatch {
         liveCredential = batch.liveCredential
         let fresh = Set(batch.readings.keys)
         let stamp = Date()
+        lastPoll = LastPoll(at: stamp, liveSlot: batch.liveSlot)
+        if polled.contains(where: { $0.isWearing && fresh.contains($0.id) }) { aliveAt = stamp }
         parked = parked.settled(
             after: PollObservation(
                 readings: readings,

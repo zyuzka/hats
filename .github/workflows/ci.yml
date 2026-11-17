@@ -86,6 +86,9 @@ jobs:
       - name: Stop snapshot hook
         run: bash plugin/tests/stop-snapshot.test.sh
 
+      - name: Keychain item name of the mod
+        run: bash plugin/tests/credential-services.test.sh
+
       - name: Plugin tests under the system Python
         run: |
           export PATH="/usr/bin:$PATH"
@@ -95,3 +98,4 @@ jobs:
           bash plugin/tests/anchor-steps.test.sh
           bash plugin/tests/window-fill.test.sh
           bash plugin/tests/stop-snapshot.test.sh
+          bash plugin/tests/credential-services.test.sh

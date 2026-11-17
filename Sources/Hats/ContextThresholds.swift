@@ -120,7 +120,7 @@ extension ContextThresholds {
     }
 }
 
-private extension ClosedRange where Bound == Int {
+extension ClosedRange where Bound == Int {
     func getClamped(_ value: Int) -> Int {
         Swift.min(upperBound, Swift.max(lowerBound, value))
     }

@@ -368,6 +368,7 @@ describe('the stage file', () => {
       reason: null,
       marker: null,
       at: '2026-11-14T16:33:17Z',
+      limits: { five_hour: null, seven_day: null },
     }
     expect(json(createStageRecord(state, ASKED_AT))).toBe(json(record))
   })

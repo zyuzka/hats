@@ -6,6 +6,12 @@ struct ContextThresholdsPanel: View {
     private var thresholds: ContextThresholds { model.snapshot.settings.contextThresholds }
 
     var body: some View {
+        ScrollView {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             threshold(
                 HatsCopy.warnAt,
@@ -27,6 +33,7 @@ struct ContextThresholdsPanel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            HatLimitSection(model: model)
             Spacer()
         }
         .padding(.horizontal, 14)

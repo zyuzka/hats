@@ -5,6 +5,11 @@ struct LiveCredential: Equatable {
     let fingerprint: String
 }
 
+struct LastPoll: Equatable {
+    let at: Date
+    let liveSlot: String?
+}
+
 struct UsagePollBatch {
     var readings: [String: UsageReading] = [:]
     var troubles: [String: UsageTrouble] = [:]
@@ -12,6 +17,7 @@ struct UsagePollBatch {
     var waiting: Set<String> = []
     var renewals: [String: RenewedLogin] = [:]
     var liveCredential: LiveCredential?
+    var liveSlot: String?
 
     mutating func record(_ outcome: UsageFetch, for id: String, isWearing: Bool) {
         if let reading = outcome.reading { readings[id] = reading }

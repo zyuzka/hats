@@ -240,8 +240,9 @@ to five sessions measured in the last hour, the fullest first: the percent, the 
 model's window size is not known, or `compacted` right after a compaction. A session is named by the
 title you gave it with `/rename`, else by its folder; two rows with the same name get the first four
 characters of their session id. Hats writes back `hat-usage.json` beside that folder — the usage of
-the hat you wear and whether another hat could take over — for the plugin's later window and limit
-thresholds; nothing reads it yet.
+the hat you wear, whether another hat could take over, the keychain item of the worn hat, whether
+Hats would switch away from each limit by itself, and when it last read the worn hat's usage — which the plugin's
+limit thresholds read (below).
 
 The plugin also acts on the window, through a part that runs inside Claude Code (a mod; Claude Code
 2.1.323 or newer). When a session's window passes 60%, the model is asked to tell you so in one line.
@@ -291,6 +292,41 @@ when the plugin reloads, when the session changes and during the pause after the
 the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that
 waits has the stage `waiting`, and its notification reads «Past 70%: the session anchors at the end of
 its turn, after its background work (up to 10 min).»
+
+**Hat limit**, the second section of **Settings › Context**, acts on the 5-hour and weekly limits when
+Hats will not move you off a limit itself: no other hat is free, auto-switch is off, the switch
+threshold of that limit is off, or Hats has not read the worn hat's usage for 15 minutes (it checks every 5
+minutes and at once after the Mac wakes). Each session reads the usage of
+its own account from Claude Code with every answer and compares it with **Warn at** and **Anchor at**
+(70% and 80% until you change them, each with its own switch; one pair for both limits). Past the first,
+the model is asked to tell you in one line — in the next tool result or with your next message; past
+the second, at the end of the turn the plugin shows `● hats: hat limit: 5-hour 81% (anchor threshold
+80%) — anchoring this session.`, runs `/hats:anchor`, and after the checked save says `anchored: this
+session's account is at 81% of its 5-hour limit (threshold 80%), which resets at 17:00.` The action
+after anchoring is not run for a limit — `/clear` does not give a limit back. When the window and a
+limit are both due at one turn end there is one anchor, the limit line first and then the window's
+action; a save that is due anyway — your «анкор», or one for the window — counts for a limit that is
+past its anchor threshold. Each stage comes once per session for each limit and reset time: a reset
+less than an hour from the first one seen is the same episode, and a new session (also after `/clear`)
+is warned and anchored again. An anchor for a limit that did not save — the check failed, you pressed
+Esc, the command did not start, a hook failed — is asked once more at the end of the next turn, and not
+again in that episode if it fails a second time. The plugin acts only in a session whose keychain item is the one of the
+worn hat (`credential_service` in `hat-usage.json`); Hats writes the thresholds to
+`window-thresholds.json` as `limit_warn_percent` and `limit_save_percent`. The stage file of each
+session carries the limit events, and a running Hats shows one notification for each hat, limit, reset
+and stage, titled with the hat and the percent — `work — 5-hour 81%` with «No other hat to switch to. Sessions anchor at the end of their
+turn.» — whatever **Notify me when it changes** says, and never for events from before it started.
+Hats remembers what it told in `limit-notices.json` beside the stage files — the hat, limit, reset and
+stage of each notification — for 8 days; deleting it does not bring old notifications back, since Hats
+never tells events from before its start and keeps what it told in memory while it runs.
+Not promised: a turn spends on until its end, so the warning may come late, a session at 100% cannot
+anchor, and an idle session hears nothing. Not supported: Claude Code does not tell the plugin which
+account a session spends, so "nowhere to go" is judged by the worn hat while the percent is the
+session's own — a session without the gateway before its pass is renewed, or a gateway session before
+it takes the new pass, may spend another account; a change of account whose reset is less than an hour
+from the old one counts as the same episode; sessions with different settings, when Hats does not know
+its keychain item, get nothing; and a session with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set empty never
+matches, because Hats counts its keychain item with a hash and Claude Code without one.
 
 With **Clear and go on from the note** the plugin clears the session itself, after a save on the
 threshold that it checked — never after an «анкор» you said. It shows `anchored at 56% — clearing the

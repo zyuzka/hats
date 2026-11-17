@@ -28,7 +28,7 @@ final class AutoSwitchWatchTests: XCTestCase {
     }
 
     private func watching(_ hats: AutoSwitchWatch.Hats) -> AutoSwitchWatch {
-        let watch = AutoSwitchWatch()
+        let watch = AutoSwitchWatch(wakes: NotificationCenter())
         watch.start(hats: { hats })
         return watch
     }

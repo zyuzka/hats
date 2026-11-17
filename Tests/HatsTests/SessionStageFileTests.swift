@@ -59,7 +59,9 @@ final class SessionStageFileTests: XCTestCase {
             savePercent: 55,
             at: now,
             afterSave: .offerClear,
-            drainMinutes: nil
+            drainMinutes: nil,
+            limitEpisodes: [],
+            limitTrouble: nil
         )))
     }
 
@@ -89,7 +91,7 @@ final class SessionStageFileTests: XCTestCase {
                 XCTFail("\(stage) was skipped")
                 continue
             }
-            XCTAssertEqual(record.kind.rawValue, stage)
+            XCTAssertEqual(record.kind?.rawValue, stage)
         }
     }
 

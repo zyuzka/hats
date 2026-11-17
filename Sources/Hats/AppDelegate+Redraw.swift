@@ -46,7 +46,7 @@ extension AppDelegate {
         snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
         popover.model.snapshot = snapshot
         writeTheHatUsage()
-        contextChannel.setThresholds(settings.contextThresholds, at: Date())
+        contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())
 
         if let blink {
             blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)

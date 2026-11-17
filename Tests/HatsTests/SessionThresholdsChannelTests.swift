@@ -98,6 +98,7 @@ final class SessionThresholdsChannelTests: XCTestCase {
         let speaker = expectation(description: "another session's request is told")
         let channel = ContextThresholdsChannel(
             root: root,
+            launchedAt: Date(),
             notify: { content in
                 told.append(content.title)
                 if told.count == 1 { second.fulfill() }

@@ -6,10 +6,12 @@ final class ContextThresholdsChannel {
     private var lastFileFailure = NoteOnChange()
     private let stages: SessionThresholds
     private let notices: ContextThresholdNotices
+    private let limitNotices: LimitThresholdNotices
     private let log: SessionThresholdsScan.Log
 
     init(
         root: URL = StateDirectory.url,
+        launchedAt: Date,
         notify: @escaping (UNMutableNotificationContent) -> Void = Notifier.deliver,
         pollEvery: TimeInterval = SessionThresholds.pollSpell,
         log: @escaping SessionThresholdsScan.Log = Journal.log
@@ -17,11 +19,18 @@ final class ContextThresholdsChannel {
         file = WindowThresholdsFile(root: root)
         stages = SessionThresholds(folder: file.stageFolder, pollEvery: pollEvery, log: log)
         notices = ContextThresholdNotices(notify: notify)
+        limitNotices = LimitThresholdNotices(
+            root: root,
+            launchedAt: launchedAt,
+            notify: notify,
+            log: log,
+            now: Date.init
+        )
         self.log = log
     }
 
-    func setThresholds(_ thresholds: ContextThresholds, at now: Date) {
-        switch file.setThresholds(thresholds, at: now) {
+    func setThresholds(_ thresholds: ContextThresholds, limits: LimitThresholds, at now: Date) {
+        switch file.setThresholds(thresholds, limits: limits, at: now) {
         case .failed(let reason):
             guard lastFileFailure.shouldWrite(reason) else { return }
             log("windowThresholds.notSaved", [
@@ -32,8 +41,16 @@ final class ContextThresholdsChannel {
         }
     }
 
+    var hatTitle: (String) -> String {
+        get { limitNotices.hatTitle }
+        set { limitNotices.hatTitle = newValue }
+    }
+
     func start(windows: @escaping () -> [SessionWindow]) {
-        stages.onRead = { [notices] found in notices.noteARead(found, windows: windows()) }
+        stages.onRead = { [notices, limitNotices] found in
+            notices.noteARead(found, windows: windows())
+            limitNotices.noteARead(found)
+        }
         stages.start()
     }
 

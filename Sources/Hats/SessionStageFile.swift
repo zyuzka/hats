@@ -15,7 +15,7 @@ enum SessionStageKind: String, Equatable {
 struct SessionStage: Equatable {
     let session: String
     let cwd: String?
-    let kind: SessionStageKind
+    let kind: SessionStageKind?
     let warnRound: Int
     let saveRound: Int
     let percent: Int?
@@ -24,6 +24,8 @@ struct SessionStage: Equatable {
     let at: Date
     var afterSave: AfterSave?
     let drainMinutes: Int?
+    let limitEpisodes: [LimitEpisode]
+    let limitTrouble: String?
 }
 
 enum SessionStageRead: Equatable {
@@ -60,8 +62,10 @@ enum SessionStageFile {
         guard raw.session.range(of: sessionPattern, options: .regularExpression) != nil,
               name == raw.session + ".json"
         else { return .skipped("its name is not its session") }
-        guard let kind = raw.stage.flatMap(SessionStageKind.init(rawValue:)) else {
-            return .skipped("its stage is unknown")
+        let limits = SessionStageLimits.findEpisodes(in: data)
+        let kind = raw.stage.flatMap(SessionStageKind.init(rawValue:))
+        guard kind != nil || limits.hasEpisodes else {
+            return .skipped(limits.getTrouble() ?? "its stage is unknown")
         }
         guard let at = UsageReading.date(from: raw.at) else { return .skipped("at is not a time") }
         if let trouble = findTroubleWithTheNumbers(raw) { return .skipped(trouble) }
@@ -77,7 +81,9 @@ enum SessionStageFile {
             savePercent: raw.savePercent,
             at: at,
             afterSave: raw.afterSave.flatMap(AfterSave.init(rawValue:)),
-            drainMinutes: raw.drainMinutes?.value.flatMap(getDrainMinutes)
+            drainMinutes: raw.drainMinutes?.value.flatMap(getDrainMinutes),
+            limitEpisodes: limits.getEpisodes(),
+            limitTrouble: limits.getTrouble()
         ))
     }
 
