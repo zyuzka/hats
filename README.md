@@ -316,6 +316,26 @@ worn hat (`credential_service` in `hat-usage.json`); Hats writes the thresholds 
 session carries the limit events, and a running Hats shows one notification for each hat, limit, reset
 and stage, titled with the hat and the percent — `work — 5-hour 81%` with «No other hat to switch to. Sessions anchor at the end of their
 turn.» — whatever **Notify me when it changes** says, and never for events from before it started.
+**Early signal.** A limit can run from 70% to 80% in three minutes. So each session also keeps, in memory
+only, the time it first saw each new top whole percent of each limit (a point keeps that first time and
+is not moved by later readings of the same percent; a lower reading in the same episode means another
+account and starts the points again from it), and works out the pace: the rise since the
+newest point at least 5 points lower and at least a minute old, divided by the time from that point to
+now. If at that pace the limit reaches **Anchor at** within the lead — the drain minutes plus 82 seconds
+(the average cost of a save) with drain on, 10 minutes and 82 seconds with it off — the session gets
+its warning early, below **Warn at**: «… at 58% of its 5-hour limit and spending fast: at the pace of
+the last minutes it reaches 80% in about 11 minutes …». It is checked again when it is delivered; once
+told, it is the warning of that episode, and the anchor at **Anchor at** stays as it was. The lead is
+an aim, not a promise: a session that saw too few points, or reloaded the plugin, or has just started,
+warns later or not early at all, and a pace that is fast for a minute and then stops can warn for
+nothing. Hats tells it as `work — 5-hour 58%` with «Spending fast: 80% in about 11 min. No other hat
+to switch to.» in place of the usual warning. Each `limit.alert` line in the journal carries `episode`
+(the reset time of the episode), `early` (`1` or `0`), `target` (the anchor threshold) and
+`lead_seconds`, and an early one `minutes_to_save`: with the lines of one episode you can count signals
+that came true (the anchor line within twice the minutes), false ones (no anchor line, or later) and
+misses (an anchor line with no early signal, less than the lead after its warning). Leave out an episode
+whose lines carry different `target` values: the thresholds were changed inside it. The journal keeps
+its last 500 lines, and episodes while Hats was not running are not in it.
 Hats remembers what it told in `limit-notices.json` beside the stage files — the hat, limit, reset and
 stage of each notification — for 8 days; deleting it does not bring old notifications back, since Hats
 never tells events from before its start and keeps what it told in memory while it runs.

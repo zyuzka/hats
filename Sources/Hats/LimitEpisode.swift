@@ -23,6 +23,10 @@ struct LimitEvent: Equatable {
     let percent: Double
     let worn: String
     let reason: LimitReason
+    var early = false
+    var minutesToSave: Int?
+    var target: Int?
+    var leadSeconds: Int?
 }
 
 struct LimitEpisode: Equatable {

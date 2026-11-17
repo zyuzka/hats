@@ -108,7 +108,144 @@ final class LimitThresholdNoticesTests: XCTestCase {
         XCTAssertEqual(titles, ["Work — 5-hour 72%"], "the hat's title, the limit word and the percent floored")
         XCTAssertEqual(bodies, ["No other hat to switch to. Sessions anchor at 80%."])
         let alerts = lines.filter { $0.0 == "limit.alert" }.map(\.1)
-        XCTAssertEqual(alerts, [["hat": "work", "limit": "five_hour", "stage": "warned", "percent": "72"]])
+        XCTAssertEqual(alerts, [
+            [
+                "hat": "work",
+                "limit": "five_hour",
+                "stage": "warned",
+                "percent": "72",
+                "episode": ISO8601DateFormatter().string(from: resets),
+                "at": "2027-01-15T08:01:00.250Z",
+                "early": "0",
+            ],
+        ])
+    }
+
+    private func earlyEvent(after seconds: TimeInterval = 60, percent: Double = 58) -> LimitEvent {
+        LimitEvent(
+            stage: .warned,
+            at: launch.addingTimeInterval(seconds),
+            percent: percent,
+            worn: "work",
+            reason: .noHat,
+            early: true,
+            minutesToSave: 11,
+            target: 80,
+            leadSeconds: 682
+        )
+    }
+
+    private var alerts: [[String: String]] { lines.filter { $0.0 == "limit.alert" }.map(\.1) }
+
+    func testAnEarlySignalIsToldInsteadOfTheUsualWarningWithItsPaceInTheJournal() {
+        let notices = createNotices()
+        var usual = event(.warned, after: 300, percent: 72)
+        usual.target = 80
+        usual.leadSeconds = 682
+
+        notices.noteARead(read(["a": [episode([earlyEvent()])]]))
+        notices.noteARead(read(["b": [episode([usual])]]))
+
+        XCTAssertEqual(titles, ["Work — 5-hour 58%"])
+        XCTAssertEqual(bodies, ["Spending fast: 80% in about 11 min. No other hat to switch to."])
+        XCTAssertEqual(alerts, [
+            [
+                "hat": "work",
+                "limit": "five_hour",
+                "stage": "warned",
+                "percent": "58",
+                "episode": ISO8601DateFormatter().string(from: resets),
+                "at": "2027-01-15T08:01:00.250Z",
+                "early": "1",
+                "target": "80",
+                "lead_seconds": "682",
+                "minutes_to_save": "11",
+            ],
+        ])
+    }
+
+    func testTheAnchorLineOfAnEpisodeCarriesTheEpisodeOfItsWarningAndNoMinutes() {
+        let notices = createNotices()
+        var asked = event(.asked, after: 600, percent: 81)
+        asked.target = 80
+        asked.leadSeconds = 682
+
+        notices.noteARead(read(["a": [episode([earlyEvent()])]]))
+        notices.noteARead(read(["b": [episode([asked], resetsAt: resets.addingTimeInterval(120))]]))
+
+        XCTAssertEqual(alerts.map { $0["episode"] }, [
+            ISO8601DateFormatter().string(from: resets),
+            ISO8601DateFormatter().string(from: resets),
+        ])
+        XCTAssertEqual(alerts.map { $0["early"] }, ["1", "0"])
+        XCTAssertEqual(alerts.map { $0["target"] }, ["80", "80"])
+        XCTAssertEqual(alerts.map { $0["lead_seconds"] }, ["682", "682"])
+        XCTAssertEqual(alerts.map { $0["minutes_to_save"] }, ["11", nil])
+    }
+
+    func testAnEarlySignalToldBeforeARestartIsNotToldOrJournaledAgain() {
+        let first = createNotices()
+        first.noteARead(read(["a": [episode([earlyEvent()])]]))
+
+        createNotices().noteARead(read(["a": [episode([earlyEvent()])]]))
+
+        XCTAssertEqual(told.count, 1)
+        XCTAssertEqual(alerts.count, 1)
+    }
+
+    func testAnEarlyEventWithoutItsMinutesFallsBackToTheUsualBody() {
+        let notices = createNotices()
+        var partial = earlyEvent()
+        partial.minutesToSave = nil
+
+        notices.noteARead(read(["a": [episode([partial])]]))
+
+        XCTAssertEqual(bodies, ["No other hat to switch to. Sessions anchor at 80%."])
+    }
+
+    func testAnEarlyEventWithoutItsTargetIsJournaledAsTheUsualWarningLikeItsBody() {
+        let notices = createNotices()
+        var partial = earlyEvent()
+        partial.target = nil
+
+        notices.noteARead(read(["a": [episode([partial])]]))
+
+        XCTAssertEqual(bodies, ["No other hat to switch to. Sessions anchor at 80%."])
+        XCTAssertEqual(alerts.map { $0["early"] }, ["0"])
+        XCTAssertEqual(alerts.map { $0["minutes_to_save"] }, [nil])
+    }
+
+    func testAWarningBeforeARestartAndAnAnchorAfterItShareTheEpisodeInTheJournal() {
+        createNotices().noteARead(read(["a": [episode([earlyEvent()])]]))
+        var asked = event(.asked, after: 600, percent: 81)
+        asked.target = 80
+
+        createNotices().noteARead(read(["b": [episode([asked], resetsAt: resets.addingTimeInterval(120))]]))
+
+        XCTAssertEqual(alerts.map(\.["stage"]), ["warned", "asked"])
+        XCTAssertEqual(alerts.map { $0["episode"] }, [
+            ISO8601DateFormatter().string(from: resets),
+            ISO8601DateFormatter().string(from: resets),
+        ])
+    }
+
+    func testAWeeklyEarlySignalIsTitledWithTheWeeklyLimit() {
+        let notices = createNotices()
+
+        notices.noteARead(read(["a": [episode([earlyEvent()], limit: .sevenDay)]]))
+
+        XCTAssertEqual(titles, ["Work — weekly 58%"])
+        XCTAssertEqual(bodies, ["Spending fast: 80% in about 11 min. No other hat to switch to."])
+        XCTAssertEqual(alerts.map { $0["limit"] }, ["seven_day"])
+    }
+
+    func testBothLimitsSignalledEarlyAtOnceAreTwoNotices() {
+        let notices = createNotices()
+
+        notices.noteARead(read(["a": [episode([earlyEvent()]), episode([earlyEvent()], limit: .sevenDay)]]))
+
+        XCTAssertEqual(Set(titles), ["Work — 5-hour 58%", "Work — weekly 58%"])
+        XCTAssertEqual(alerts.map { $0["early"] }, ["1", "1"])
     }
 
     func testWarnedAndAskedSeenInOneReadAreTwoNoticesInThatOrder() {

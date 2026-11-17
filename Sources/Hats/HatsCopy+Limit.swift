@@ -32,6 +32,10 @@ extension HatsCopy {
         "\(hat) — \(getLimitWord(limit)) \(percent)%"
     }
 
+    static func getEarlyLimitNoticeBody(reason: LimitReason, target: Int, minutes: Int) -> String {
+        "Spending fast: \(target)% in about \(minutes) min. \(getLimitReason(reason))."
+    }
+
     static func getLimitNoticeBody(stage: LimitStage, reason: LimitReason, save: Int?) -> String {
         let why = getLimitReason(reason)
         switch stage {

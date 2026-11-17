@@ -76,54 +76,16 @@ enum SessionStageLimits {
               let reason = LimitReason(rawValue: fields.reason)
         else { return nil }
 
-        return LimitEvent(stage: stage, at: at, percent: fields.percent, worn: fields.worn, reason: reason)
+        return LimitEvent(
+            stage: stage,
+            at: at,
+            percent: fields.percent,
+            worn: fields.worn,
+            reason: reason,
+            early: fields.early ?? false,
+            minutesToSave: fields.minutesToSave,
+            target: fields.target,
+            leadSeconds: fields.leadSeconds
+        )
     }
-}
-
-private struct LimitsEnvelope: Decodable {
-    let limits: LimitsFields?
-}
-
-private struct LimitsFields: Decodable {
-    let fiveHour: EpisodeFields?
-    let sevenDay: EpisodeFields?
-
-    enum CodingKeys: String, CodingKey {
-        case fiveHour = "five_hour"
-        case sevenDay = "seven_day"
-    }
-
-    func getEpisode(_ limit: StageLimit) -> EpisodeFields? {
-        switch limit {
-        case .fiveHour: return fiveHour
-        case .sevenDay: return sevenDay
-        }
-    }
-}
-
-private final class EpisodeFields: Decodable {
-    let resetsAt: String
-    let percent: Double
-    let warnPercent: Int?
-    let savePercent: Int?
-    let warned: EventFields?
-    let asked: EventFields?
-    let previous: EpisodeFields?
-
-    enum CodingKeys: String, CodingKey {
-        case resetsAt = "resets_at"
-        case percent
-        case warnPercent = "warn_percent"
-        case savePercent = "save_percent"
-        case warned
-        case asked
-        case previous
-    }
-}
-
-private struct EventFields: Decodable {
-    let at: String
-    let percent: Double
-    let worn: String
-    let reason: String
 }

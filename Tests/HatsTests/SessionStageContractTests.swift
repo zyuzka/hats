@@ -236,6 +236,73 @@ final class SessionStageContractTests: XCTestCase {
         )
     }
 
+    func testAnEarlySignalTheModWritesIsReadByHatsWithItsPaceFieldsAndToldOnce() throws {
+        let session = "5a32129e-d019-4c3e-9f7a-2b1c0d9e8f71"
+        let resets = now.addingTimeInterval(3 * 3600)
+        let early: [String: Any] = ["target": 80, "lead": 682, "minutes": 11]
+        let warned: [String: Any] = [
+            "now": now.timeIntervalSince1970 * 1000 + 800,
+            "percent": 58,
+            "worn": "work",
+            "reason": "no_hat",
+            "early": early,
+        ]
+        let asked: [String: Any] = [
+            "now": now.timeIntervalSince1970 * 1000 + 60_115,
+            "percent": 81.5,
+            "worn": "work",
+            "reason": "no_hat",
+            "target": 80,
+            "lead": 682,
+        ]
+        let reading: [String: Any] = [
+            "kind": "five_hour",
+            "percent": 81.5,
+            "resetsMs": resets.timeIntervalSince1970 * 1000,
+            "warn": 70,
+            "save": 80,
+            "warned": warned,
+            "asked": asked,
+        ]
+        var input = record(session, stage: "warned", rounds: (0, 0), percent: nil)
+        input["stage"] = NSNull()
+        input["limitReadings"] = [reading]
+
+        let written = try runTheMod([input], env: [StateDirectory.overrideName: work.path])
+
+        let file = try XCTUnwrap(written.first)
+        let name = URL(fileURLWithPath: file.path).lastPathComponent
+        try Data(file.text.utf8).write(to: work.appendingPathComponent(name))
+        guard case .read(let stage) = SessionStageFile.getRecord(name, in: work) else {
+            return XCTFail("Hats did not read the mod's record: \(file.text)")
+        }
+        let events = stage.limitEpisodes.flatMap(\.events)
+        XCTAssertEqual(events.map(\.early), [true, false], file.text)
+        XCTAssertEqual(events.map(\.minutesToSave), [11, nil])
+        XCTAssertEqual(events.map(\.target), [80, 80])
+        XCTAssertEqual(events.map(\.leadSeconds), [682, 682])
+        var lines: [[String: String]] = []
+        var bodies: [String] = []
+        let notices = LimitThresholdNotices(
+            root: work,
+            launchedAt: now,
+            notify: { bodies.append($0.body) },
+            log: { event, details in if event == "limit.alert" { lines.append(details) } },
+            now: { self.now.addingTimeInterval(120) }
+        )
+        notices.noteARead(SessionStagesRead(stages: [stage], listed: [session]))
+        XCTAssertEqual(bodies, [
+            "Spending fast: 80% in about 11 min. No other hat to switch to.",
+            "No other hat to switch to. Sessions anchor at the end of their turn.",
+        ])
+        XCTAssertEqual(lines.map { $0["early"] }, ["1", "0"])
+        XCTAssertEqual(lines.map { $0["minutes_to_save"] }, ["11", nil])
+        XCTAssertEqual(lines.map { $0["episode"] }, [
+            ISO8601DateFormatter().string(from: resets),
+            ISO8601DateFormatter().string(from: resets),
+        ])
+    }
+
     func testTheModWritesStagesIntoTheFolderHatsMakesAndReads() throws {
         let stateHome = try XCTUnwrap(
             ProcessInfo.processInfo.environment[StateDirectory.overrideName],

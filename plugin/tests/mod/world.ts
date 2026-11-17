@@ -293,6 +293,7 @@ const answerEngine = (world: World, options: SceneOptions) => {
   on('session.end', (_: any, e: any) => ({ sessionId: e.sessionId }))
   on('turn.start', (_: any, e: any) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
+  on('session.measure', (_: any, e: any) => ({ changed: e.changed }))
   on('prompt.submit', (_: any, e: any) => {
     world.prompts.push(e)
     const drop = world.dropNextPrompt

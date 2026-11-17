@@ -44,9 +44,12 @@ import {
   findLimitWarning,
   forgetCell,
   markWarned,
+  notePace,
   setAskFailed,
+  setPacePoints,
 } from './limits.js'
 import { createLimits } from './limit-rules.js'
+import { createPace } from './pace.js'
 import {
   endClearBeforeRun,
   endClearOnSessionEnd,
@@ -94,6 +97,7 @@ const createSession = id => ({
   drain: null,
   drainMinutes: null,
   limits: createLimits(),
+  pace: createPace(),
 })
 
 const findState = async $ => {
@@ -136,6 +140,7 @@ const findDelivered = async ($, job) => {
   const { state, out } = job
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
+  if (out.deny !== undefined) await notePace($, state)
   const warning = out.deny === undefined ? await findLimitWarning($, state) : null
   const list = getDrainList(state)
   const texts = [
@@ -300,6 +305,7 @@ const onTurnStart = async (
   if (request !== null && request.isSubmitted && request.turnId === null) request.turnId = e.turnId
   state.turn = createTurn(e.turnId, startedAt)
   await updateArm($, state)
+  await notePace($, state)
 
   return next(e)
 }
@@ -366,6 +372,18 @@ const onTurnComplete = async (
   return next(e)
 }
 
+const onMeasure = async (
+  $,
+  e,
+  next,
+) => {
+  if (!isActive) return next(e)
+  const state = await findState($)
+  setPacePoints(state, { rateLimits: e.rateLimits, now: await $.clock.now() })
+
+  return next(e)
+}
+
 export const register = on => {
   on('session.start', onSessionStart).catch(passOn)
   on('session.end', onSessionEnd).catch(passOn)
@@ -374,4 +392,5 @@ export const register = on => {
   on('tool.call', onToolCall).catch(passOnFailed)
   on('turn.complete', onTurnComplete).catch(passOnFailedTurn)
   on('command.run', onCommandRun).catch(passOnFailedRun)
+  on('session.measure', onMeasure).catch(passOn)
 }

@@ -95,6 +95,7 @@ const createEpisode = (job, previous) => ({
   percent: job.reading.percent,
   warn: job.thresholds.warn,
   save: job.thresholds.save,
+  lead: job.thresholds.lead,
   warned: null,
   asked: null,
   failedAsks: 0,
@@ -111,6 +112,7 @@ export const setEpisode = (limits, job) => {
     current.lastResetsMs = reading.resetsMs
     current.warn = thresholds.warn
     current.save = thresholds.save
+    current.lead = thresholds.lead
     return current
   }
   limits[kind] = createEpisode(job, current === null ? null : { ...current, previous: null })
@@ -180,12 +182,20 @@ export const getCredentialService = async env => {
   return `Claude Code${custom === '' ? '' : '-custom-oauth'}-credentials${await getHashSuffix(env)}`
 }
 
-export const createEvent = job => ({
-  at: new Date(job.now).toISOString(),
-  percent: job.percent,
-  worn: job.worn,
-  reason: job.reason,
-})
+export const createEvent = job => {
+  const early = job.early ?? null
+
+  return {
+    at: new Date(job.now).toISOString(),
+    percent: job.percent,
+    worn: job.worn,
+    reason: job.reason,
+    early: early !== null,
+    target: early === null ? (job.target ?? null) : early.target,
+    lead_seconds: early === null ? (job.lead ?? null) : early.lead,
+    ...(early === null ? {} : { minutes_to_save: early.minutes }),
+  }
+}
 
 const getWhole = percent => Math.floor(percent)
 
@@ -208,9 +218,15 @@ const getAnchorPart = items => {
   return `This session anchors at the end of a turn once it reaches ${Math.min(...asking.map(item => item.episode.save))}%. `
 }
 
-const getWarningPart = item =>
-  `at ${getWhole(item.episode.percent)}% of its ${LIMIT_WORDS[item.kind]} limit ` +
-  `(warning threshold ${item.episode.warn}%) and ${WHY[item.why]}`
+const getWarningPart = item => {
+  const at = `at ${getWhole(item.episode.percent)}% of its ${LIMIT_WORDS[item.kind]} limit `
+  if ((item.early ?? null) === null) return `${at}(warning threshold ${item.episode.warn}%) and ${WHY[item.why]}`
+
+  return (
+    `${at}and spending fast: at the pace of the last minutes it reaches ${item.early.target}% ` +
+    `in about ${item.early.minutes} minutes, and ${WHY[item.why]}`
+  )
+}
 
 export const getLimitWarningText = items =>
   `Hats limit threshold: this session's account is ${items.map(getWarningPart).join('; it is also ')}. ` +
@@ -259,7 +275,23 @@ const isEventShape = value =>
   typeof value.worn === 'string' &&
   Object.hasOwn(WHY, value.reason)
 
-const findEvent = value => (isEventShape(value) ? { at: value.at, percent: value.percent, worn: value.worn, reason: value.reason } : null)
+const isCount = value => Number.isInteger(value) && value >= 0
+
+const PACE_FIELDS = {
+  early: value => typeof value === 'boolean',
+  target: isLimitThreshold,
+  lead_seconds: value => value === null || isCount(value),
+  minutes_to_save: isCount,
+}
+
+const getPaceFields = value => {
+  const kept = Object.entries(PACE_FIELDS).filter(([name, isKept]) => Object.hasOwn(value, name) && isKept(value[name]))
+
+  return Object.fromEntries(kept.map(([name]) => [name, value[name]]))
+}
+
+const findEvent = value =>
+  isEventShape(value) ? { at: value.at, percent: value.percent, worn: value.worn, reason: value.reason, ...getPaceFields(value) } : null
 
 const isEpisodeShape = value =>
   isObject(value) &&
@@ -278,6 +310,7 @@ const findEpisode = (value, isOuter) => {
     percent: value.percent,
     warn: value.warn_percent,
     save: value.save_percent,
+    lead: null,
     warned: findEvent(value.warned),
     asked: findEvent(value.asked),
     failedAsks: Number.isInteger(value.failed_asks) && value.failed_asks > 0 ? value.failed_asks : 0,

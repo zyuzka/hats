@@ -21,6 +21,13 @@ import {
   getStateRoot,
   queueStage,
 } from './files.js'
+import {
+  createPace,
+  findEarly,
+  findLeadSeconds,
+  getLeadSeconds,
+  setPoints,
+} from './pace.js'
 
 let cell = null
 
@@ -41,10 +48,11 @@ async function findCell($) {
 
 async function findThresholdsNow($, root) {
   const path = `${root}/${THRESHOLDS_FILE}`
-  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS }
+  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS, lead: getLeadSeconds(null) }
   const text = await findSmallText($, path)
+  const thresholds = text === null ? null : findLimitThresholds(text)
 
-  return text === null ? null : findLimitThresholds(text)
+  return thresholds === null ? null : { ...thresholds, lead: findLeadSeconds(text) }
 }
 
 async function findHatUsageNow($, root) {
@@ -62,15 +70,31 @@ function setEpisodes(state, job) {
   }))
 }
 
+export const setPacePoints = (state, job) => {
+  if (state.pace === undefined) state.pace = createPace()
+  setPoints(state.pace, job)
+}
+
+export async function notePace($, state) {
+  const usage = await $.session.usage().catch(() => null)
+  setPacePoints(state, { rateLimits: usage?.rateLimits, now: await $.clock.now() })
+}
+
+const isWorthReading = (episodes, lowest) =>
+  lowest !== null && episodes.some(item => item.episode.percent >= lowest || item.early !== null)
+
 async function findView($, state) {
   const usage = await $.session.usage().catch(() => null)
   const now = await $.clock.now()
+  setPacePoints(state, { rateLimits: usage?.rateLimits, now })
   const root = await getStateRoot($)
   const thresholds = root === null ? null : await findThresholdsNow($, root)
   if (thresholds === null) return { now, items: [] }
-  const episodes = setEpisodes(state, { readings: findLimitReadings(usage?.rateLimits, now), thresholds })
-  const lowest = getLimitLowest(thresholds)
-  if (lowest === null || !episodes.some(item => item.episode.percent >= lowest)) return { now, items: [] }
+  const episodes = setEpisodes(state, { readings: findLimitReadings(usage?.rateLimits, now), thresholds }).map(item => ({
+    ...item,
+    early: findEarly(state.pace, { kind: item.kind, episode: item.episode, now }),
+  }))
+  if (!isWorthReading(episodes, getLimitLowest(thresholds))) return { now, items: [] }
   const hat = await findHatUsageNow($, root)
   if (hat === null || !isUnderHats(hat, await findCell($))) return { now, items: [] }
   const items = episodes.map(item => ({ ...item, why: findWhy(hat, item.kind, now), worn: hat.worn }))
@@ -78,9 +102,11 @@ async function findView($, state) {
   return { now, items: items.filter(item => item.why !== null) }
 }
 
+const isWarningDue = item => isLimitWarnDue(item.episode) || (item.early !== null && item.episode.warned === null)
+
 export async function findLimitWarning($, state) {
   const view = await findView($, state)
-  const items = view.items.filter(item => isLimitWarnDue(item.episode))
+  const items = view.items.filter(isWarningDue)
 
   return items.length === 0 ? null : { text: getLimitWarningText(items), items, now: view.now }
 }
@@ -93,7 +119,14 @@ export async function findLimitAsks($, state) {
 
 export const setAsked = (items, now) => {
   for (const item of items) {
-    item.event = createEvent({ now, percent: item.episode.percent, worn: item.worn, reason: item.why })
+    item.event = createEvent({
+      now,
+      percent: item.episode.percent,
+      worn: item.worn,
+      reason: item.why,
+      target: item.episode.save,
+      lead: item.episode.lead,
+    })
     item.episode.asked = item.event
   }
 }
@@ -114,7 +147,15 @@ export async function markWarned($, job) {
   const { state, warning } = job
   for (const item of warning.items) {
     if (item.episode.warned !== null) continue
-    item.episode.warned = createEvent({ now: warning.now, percent: item.episode.percent, worn: item.worn, reason: item.why })
+    item.episode.warned = createEvent({
+      now: warning.now,
+      percent: item.episode.percent,
+      worn: item.worn,
+      reason: item.why,
+      target: item.episode.save,
+      lead: item.episode.lead,
+      early: item.early,
+    })
   }
   await queueStage($, state)
 }
