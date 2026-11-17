@@ -292,7 +292,15 @@ reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 printf '{"key":"x","session":"n1"}' >"$markers/a.handed"
 has "передача: файл передачи не трогает список новой сессии" "\"закрытая\"" "$(start startup)"
 reset; save "$proj" "$note" "задача А" >/dev/null
-sid=n1; start clear >/dev/null; sid=n2; empty "передача через save: вторая сессия — модели ничего" "$(start clear)"
+sid=n1; start clear >/dev/null
+handed_form=$(python3 -I -c 'import glob,json,os,sys
+handed_path, = glob.glob(os.path.join(sys.argv[1], "*.handed"))
+handed = json.load(open(handed_path, encoding="utf-8"))
+marker = json.load(open(handed_path[:-len(".handed")] + ".json", encoding="utf-8"))
+want = {"key": "%s|%s" % (marker["saved_at"], marker["note"]), "session": "n1"}
+print("ok" if handed == want else "%r != %r" % (handed, want))' "$markers" 2>&1)
+same "передача через save: файл передачи — ровно ключ «saved_at|note» из файла отметки и номер сессии, их сверяет мод" "ok" "$handed_form"
+sid=n2; empty "передача через save: вторая сессия — модели ничего" "$(start clear)"
 same "передача через save: вторая сессия — пользователю, кому отдан якорь" "Hats handoff: anchor \"задача А\" was already given to session n1" "$(told)"
 sleep 1; save "$proj" "$note" "задача Б" >/dev/null
 has "передача через save: новое сохранение отдаёт снова" "continues the note \"задача Б\"" "$(start clear)"
@@ -1427,7 +1435,7 @@ words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
 script = [w for w in words if w.endswith("anchor-nudge.py")][0]
 print("script=%s exists=%s timeout=%s" % (script, os.path.isfile(script), hook.get("timeout")))' "$1" "$plugin_root" 2>&1
 }
-has "hooks.json: все восемь хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=8 py.sh=True" "$(hooked wrapper)"
+has "hooks.json: все девять хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=9 py.sh=True" "$(hooked wrapper)"
 read_hook=$(python3 -I -c 'import json,os,shlex,sys
 root = sys.argv[1]
 groups = json.load(open(os.path.join(root, "hooks", "hooks.json"), encoding="utf-8"))["hooks"]["PostToolUse"]

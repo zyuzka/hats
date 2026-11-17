@@ -15,6 +15,10 @@ export const OTHER_SESSION = '0f1e2d3c-4b5a-4968-8778-695a4b3c2d1e'
 export const START = Date.parse('2026-11-14T12:00:00Z')
 export const NOTE_TEXT = '# Task\n\n## NOW\n\nnext step\n'
 export const STAGE_FILE = `${STAGES}/${SESSION}.json`
+export const SNAPSHOTS = `${STATE}/stop-snapshots`
+export const SNAPSHOT = `${SNAPSHOTS}/${SESSION}.json`
+export const NEXT_SESSION = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f'
+export const HANDED = `${CONFIG}/state/handoff/42-Sat-Nov-14-12-00-00-2026.handed`
 
 type Entry = { text: string; mtimeMs: number; kind: 'file' | 'dir' | 'other' }
 
@@ -36,6 +40,7 @@ export const createPaths = (config: string) => {
     handoff,
     marker: `${handoff}/42-Sat-Nov-14-12-00-00-2026.json`,
     newCommand: `sh "${PLUGIN}/scripts/py.sh" "${PLUGIN}/scripts/handoff.py" new --slug task --memory "${memory}"`,
+    stepsCommand: `sh "${PLUGIN}/scripts/py.sh" "${PLUGIN}/scripts/anchor-steps.py"`,
     saveCommand: `sh "${PLUGIN}/scripts/py.sh" "${PLUGIN}/scripts/handoff.py" save --note "${note}" --topic "task"`,
   }
 }
@@ -50,6 +55,7 @@ const getFolders = (paths: ReturnType<typeof createPaths>) => [
   paths.handoff,
   STATE,
   STAGES,
+  SNAPSHOTS,
 ]
 
 const getStamp = (ms: number) => `${new Date(ms).toISOString().slice(0, 19)}Z`
@@ -99,6 +105,22 @@ const createWorld = (options: SceneOptions) => {
     pendingRuns: [] as ((value: unknown) => void)[],
     prompts: [] as any[],
     nextToolAnswer: null as any,
+    box: { text: '', cursor: 0 } as unknown,
+    boxes: [] as unknown[],
+    boxReads: 0,
+    onBoxRead: null as null | ((count: number) => Promise<unknown>),
+    isPluginGone: false,
+    isExistsDenied: false,
+    existsAsked: [] as string[],
+    idReads: 0,
+    onIdRead: null as null | ((count: number) => Promise<unknown>),
+    handedAfterMs: 0,
+    onStageWrite: null as null | ((stage: string) => Promise<unknown>),
+    isHandedBack: true,
+    clearAnswer: 'clear' as 'clear' | 'throw' | 'same',
+    nextSessionId: NEXT_SESSION,
+    onClear: null as null | (() => Promise<unknown>),
+    endSession: async (_reason: string) => {},
     savedAt: null as string | null,
     setFile: (path: string, text: string, extra: Partial<Entry> = {}) => {
       files.set(resolve(path), { text, mtimeMs: clock.now(), kind: 'file', ...extra })
@@ -134,7 +156,13 @@ type World = ReturnType<typeof createWorld>
 
 const answerFiles = (world: World, on: any) => {
   const { files } = world
-  on('fs.exists', (_: any, e: any) => ({ value: files.has(world.resolve(e.path)) }))
+  on('fs.exists', (_: any, e: any) => {
+    world.existsAsked.push(e.path)
+    const isPluginFile = e.path.endsWith('/plugin/scripts/handoff.py') && !world.isPluginGone
+    if (isPluginFile && world.isExistsDenied) return { deny: 'EACCES: permission denied' }
+
+    return { value: files.has(world.resolve(e.path)) || isPluginFile }
+  })
   on('fs.stat', (_: any, e: any) => {
     const real = world.resolve(e.path)
     const entry = files.get(real)
@@ -153,11 +181,12 @@ const answerFiles = (world: World, on: any) => {
 
     return isReadable ? { value: entry.text } : { deny: `ENOENT: no such file or directory, open '${e.path}'` }
   })
-  on('fs.write', (_: any, e: any) => {
+  on('fs.write', async (_: any, e: any) => {
     world.writeAttempts += 1
     if (world.isWriteDenied) return { deny: 'EACCES: permission denied' }
     world.writes.push({ path: e.path, text: e.text })
     world.setFile(e.path, e.text)
+    if (e.path === STAGE_FILE && world.onStageWrite !== null) await world.onStageWrite(JSON.parse(e.text).stage)
 
     return { value: undefined }
   })
@@ -199,6 +228,24 @@ const answerTool = (world: World, e: any) => {
   return e.tool === 'Bash' ? answerBash(world, e.command) : { result: {} }
 }
 
+const runClear = async (world: World) => {
+  if (world.clearAnswer === 'throw') throw new Error('the test refuses /clear')
+  if (world.onClear !== null) await world.onClear()
+  if (world.clearAnswer === 'same') return { text: '' }
+  await world.endSession('clear')
+  world.sessionId = world.nextSessionId
+  const marker = world.files.get(world.resolve(world.paths.marker))
+  if (world.isHandedBack && marker !== undefined) {
+    const { saved_at, note } = JSON.parse(marker.text)
+    const handed = { key: `${saved_at}|${note}`, session: world.sessionId }
+    const writeHanded = () => world.setFile(world.paths.marker.replace(/\.json$/, '.handed'), JSON.stringify(handed))
+    if (world.handedAfterMs === 0) writeHanded()
+    else world.clock.sleep(world.handedAfterMs).then(writeHanded)
+  }
+
+  return { text: '' }
+}
+
 const answerEngine = (world: World, options: SceneOptions) => {
   const { on } = options
   on('session.usage', () => {
@@ -206,7 +253,9 @@ const answerEngine = (world: World, options: SceneOptions) => {
 
     return { value: { startedAt: 0, context: { window: 1000000, ...fill }, rateLimits: [] } }
   })
-  on('session.id', () => {
+  on('session.id', async () => {
+    world.idReads += 1
+    if (world.onIdRead !== null) await world.onIdRead(world.idReads)
     if (world.sessionIdDenials === 0) return { value: world.sessionId }
     world.sessionIdDenials -= 1
 
@@ -219,9 +268,16 @@ const answerEngine = (world: World, options: SceneOptions) => {
   if (options.hasRunHook !== false) {
     on('command.run', (_: any, e: any) => {
       world.runs.push(e.command)
+      if (e.command === 'clear') return runClear(world)
       return new Promise(release => world.pendingRuns.push(release))
     })
   }
+  on('prompt.read', async () => {
+    world.boxReads += 1
+    if (world.onBoxRead !== null) await world.onBoxRead(world.boxReads)
+
+    return { value: world.boxes.length > 0 ? world.boxes.shift() : world.box }
+  })
   on('session.start', (_: any, e: any) => ({ cwd: e.cwd }))
   on('session.end', (_: any, e: any) => ({ sessionId: e.sessionId }))
   on('turn.start', (_: any, e: any) => ({ turnId: e.turnId }))
@@ -238,8 +294,23 @@ const answerEngine = (world: World, options: SceneOptions) => {
 
 let turnCount = 0
 
+const completeTurn = ($: any, turnId: string, ending: Ending) => {
+  const reason = ending.reason ?? 'answer'
+
+  return $.turn.complete({
+    answer: '',
+    durationMs: 1000,
+    isAborted: reason === 'aborted',
+    turnId,
+    reason,
+    ...(reason === 'refusal' ? { refusal: { category: null, explanation: null } } : {}),
+    ...(ending.agentId === undefined ? {} : { agentId: ending.agentId }),
+  })
+}
+
 export const createScene = ($: any, options: SceneOptions) => {
   const world = createWorld(options)
+  world.endSession = reason => $.session.end({ reason, sessionId: world.sessionId, resume: { id: world.sessionId } })
   answerFiles(world, options.on)
   answerEngine(world, options)
   const scene = {
@@ -256,18 +327,9 @@ export const createScene = ($: any, options: SceneOptions) => {
       return turnId
     },
     endTurn: async (turnId: string, ending: Ending) => {
-      const reason = ending.reason ?? 'answer'
       world.percent = ending.percent
       await world.clock.advance(500)
-      await $.turn.complete({
-        answer: '',
-        durationMs: 1000,
-        isAborted: reason === 'aborted',
-        turnId,
-        reason,
-        ...(reason === 'refusal' ? { refusal: { category: null, explanation: null } } : {}),
-        ...(ending.agentId === undefined ? {} : { agentId: ending.agentId }),
-      })
+      await completeTurn($, turnId, ending)
       await world.clock.settle()
     },
     callTool: async (percent: number | undefined, input: any) => {
@@ -292,6 +354,23 @@ export const createScene = ($: any, options: SceneOptions) => {
       const turnId = await scene.startTurn(10)
       await scene.endTurn(turnId, { percent: 56 })
     },
+    holdTurnEnd: async (turnId: string, ending: Ending) => {
+      world.percent = ending.percent
+      await world.clock.advance(500)
+      const done = completeTurn($, turnId, ending)
+      await world.clock.settle()
+
+      return { done }
+    },
+    holdAnchorTurn: async (anchor: AnchorTurn) => {
+      await scene.ownAnchor()
+      world.releaseRuns()
+      await world.clock.settle()
+      const turnId = await scene.startTurn(56)
+      for (const step of anchor.steps) await step()
+
+      return scene.holdTurnEnd(turnId, { percent: anchor.endPercent ?? 58 })
+    },
     runAnchorTurn: async (anchor: AnchorTurn) => {
       await scene.ownAnchor()
       world.releaseRuns()
@@ -303,6 +382,15 @@ export const createScene = ($: any, options: SceneOptions) => {
     createNote: () => scene.callTool(57, { tool: 'Bash', command: world.paths.newCommand }),
     writeNote: (text = NOTE_TEXT) => scene.callTool(57, { tool: 'Write', file_path: world.paths.note, content: text }),
     runSave: () => scene.callTool(58, { tool: 'Bash', command: world.paths.saveCommand }),
+    runSteps: (stdout = 'no own steps\n', tail = '') => {
+      world.nextToolAnswer = createBashResult(stdout)
+
+      return scene.callTool(58, { tool: 'Bash', command: `${world.paths.stepsCommand}${tail}` })
+    },
+    setSnapshot: (fields: Record<string, unknown> = {}) => {
+      const snapshot = { session: SESSION, at_ms: world.clock.now(), ok: true, tasks: [], crons: 0, ...fields }
+      world.setFile(SNAPSHOT, JSON.stringify(snapshot))
+    },
   }
 
   return scene

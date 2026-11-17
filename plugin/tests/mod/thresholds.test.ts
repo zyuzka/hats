@@ -10,9 +10,17 @@ import {
   findNewNote,
   findNoteVerdict,
   findRefusalOutcome,
+  findMissingIds,
   findRounds,
   findSaveOutcome,
+  findSnapshot,
+  findStepsOutcome,
+  findStepsReason,
   findThresholds,
+  getClearRefusal,
+  getHandedKey,
+  getHandedPath,
+  getInputKind,
   getFailedLine,
   getPercent,
   getRequestLine,
@@ -25,10 +33,13 @@ import {
   hasNowHeading,
   isMarkerFresh,
   isMarkerPlace,
+  isHandedTo,
   isMarkerShape,
   isNoteCandidate,
   isSaveDue,
+  isExactStepsCommand,
   isSessionId,
+  isStepsCommand,
   isWarnDue,
   setArm,
 } from '../../hooks/thresholds.js'
@@ -355,8 +366,9 @@ describe('the stage file', () => {
   })
 
   test('gives back its rounds only for the same session', () => {
-    const text = json({ session: 's1', stage: 'warned', warn_round: 2, save_round: 1 })
-    expect(findRounds(text, 's1')).toEqual({ warnRound: 2, saveRound: 1, stage: 'warned' })
+    const text = json({ session: 's1', stage: 'warned', warn_round: 2, save_round: 1, percent: 47 })
+    expect(findRounds(text, 's1')).toEqual({ warnRound: 2, saveRound: 1, stage: 'warned', percent: 47 })
+    expect(findRounds(json({ session: 's1', warn_round: 0, save_round: 1, percent: 101 }), 's1')?.percent).toBe(null)
     expect(findRounds(text, 's2')).toBe(null)
     expect(findRounds(json({ session: 's1', warn_round: -1, save_round: 0 }), 's1')).toBe(null)
     expect(findRounds('{', 's1')).toBe(null)
@@ -398,5 +410,146 @@ describe('an anchor turn that did not answer', () => {
     expect(getTurnFailure('refusal')).toBe('the anchor turn was refused')
     expect(getTurnFailure('error')).toBe('the anchor turn ended in an error')
     expect(getTurnFailure('cancelled')).toBe('the anchor turn ended: cancelled')
+  })
+})
+
+describe('a refused own /clear', () => {
+  test('names the refusal after Esc, with the text measured in М6', () => {
+    expect(getClearRefusal('hats: $.command.run: the session was stopped and nobody has sent input since')).toBe(
+      'the session was stopped and nobody has sent input since',
+    )
+  })
+
+  test('names a /clear dropped from the queue, with the text of api.md', () => {
+    expect(getClearRefusal('hats: $.command.run: the command was removed from the queue before it ran')).toBe(
+      'the command was removed from the queue before it ran',
+    )
+  })
+
+  test('quotes any other refusal', () => {
+    expect(getClearRefusal('no implementation for command.run')).toBe('the clear command was refused: no implementation for command.run')
+  })
+})
+
+describe('the output of the own steps command', () => {
+  const ROOTED = `sh "${ROOT}/scripts/py.sh" "${ROOT}/scripts/anchor-steps.py"`
+
+  test('is the steps command only with one root for both paths', () => {
+    expect(isStepsCommand(ROOTED)).toBe(true)
+    expect(isStepsCommand(`${ROOTED} --cwd "/w"`)).toBe(true)
+    expect(isStepsCommand(`${ROOTED}; echo hi`)).toBe(true)
+    expect(isStepsCommand(`sh "/a/scripts/py.sh" "/b/scripts/anchor-steps.py"`)).toBe(false)
+    expect(isStepsCommand(SAVE)).toBe(false)
+    expect(isStepsCommand(undefined)).toBe(false)
+  })
+
+  test('is read only as the exact command: anything after it makes its output unreadable', () => {
+    expect(isExactStepsCommand(ROOTED)).toBe(true)
+    expect(isExactStepsCommand(`${ROOTED}  `)).toBe(true)
+    expect(isExactStepsCommand(`${ROOTED} | grep -v after`)).toBe(false)
+    expect(isExactStepsCommand(`${ROOTED} > /tmp/x`)).toBe(false)
+    expect(isExactStepsCommand(`${ROOTED}; echo hi`)).toBe(false)
+    expect(isExactStepsCommand(`${ROOTED} --cwd "/w"`)).toBe(false)
+    expect(isExactStepsCommand(`sh "/a/scripts/py.sh" "/b/scripts/anchor-steps.py"`)).toBe(false)
+  })
+
+  test('reads an after list, none, no own steps and anything else', () => {
+    expect(findStepsOutcome('before anchor: none\nafter anchor:\n1. [general] push\n')).toBe('after')
+    expect(findStepsOutcome('before anchor:\n1. [general] hi\nafter anchor: none\n')).toBe('none')
+    expect(findStepsOutcome('no own steps\n')).toBe('none')
+    expect(findStepsOutcome('anchor-steps: OSError: boom\n')).toBe('unread')
+    expect(findStepsOutcome('')).toBe('unread')
+    expect(findStepsOutcome(undefined)).toBe('unread')
+  })
+
+  test('keeps the session for an after list or an unread output, and for none at all', () => {
+    expect(findStepsReason([
+      'none',
+      'after',
+    ])).toBe('own after-steps ran')
+    expect(findStepsReason([
+      'none',
+      'unread',
+    ])).toBe('own steps could not be read')
+    expect(findStepsReason([])).toBe('own steps could not be read')
+    expect(findStepsReason([
+      'none',
+      'none',
+    ])).toBeNull()
+  })
+})
+
+describe('the stop snapshot as the mod reads it', () => {
+  const TASKS = [
+    { id: 'b1', type: 'shell' },
+  ]
+  const UNNAMED = [
+    { type: 'shell' },
+  ]
+  const SNAP = { session: 's-1', at_ms: 1000, ok: true, tasks: TASKS, crons: 0 }
+
+  test('takes a whole snapshot of its own session', () => {
+    expect(findSnapshot(JSON.stringify(SNAP), 's-1')).toMatchObject({ kind: 'snapshot', at: 1000, ok: true, crons: 0 })
+    expect(findSnapshot(JSON.stringify(SNAP), 's-1').ids).toEqual(TASKS.map(task => task.id))
+  })
+
+  test('calls a snapshot of another session or shape bad', () => {
+    expect(findSnapshot(JSON.stringify(SNAP), 's-2')).toEqual({ kind: 'bad' })
+    expect(findSnapshot(JSON.stringify({ ...SNAP, crons: -1 }), 's-1')).toEqual({ kind: 'bad' })
+    expect(findSnapshot(JSON.stringify({ ...SNAP, at_ms: '1000' }), 's-1')).toEqual({ kind: 'bad' })
+    expect(findSnapshot(JSON.stringify({ ...SNAP, tasks: UNNAMED }), 's-1')).toEqual({ kind: 'bad' })
+    expect(findSnapshot('{', 's-1')).toEqual({ kind: 'bad' })
+  })
+})
+
+describe('a background id named in the note', () => {
+  const NAMINGS = [
+    { note: 'x_10 runs', id: 'x_1', isNamed: false },
+    { note: 'b-10 runs', id: 'b-1', isNamed: false },
+    { note: 'ab7x and b7xя', id: 'b7x', isNamed: false },
+    { note: 'axb', id: 'a.b', isNamed: false },
+    { note: 'anything', id: '', isNamed: false },
+    { note: 'b7x_2 runs', id: 'b7x', isNamed: false },
+    { note: 'old_b7x runs', id: 'b7x', isNamed: false },
+    { note: 'b7x-old runs', id: 'b7x', isNamed: false },
+    { note: 'pre-b7x runs', id: 'b7x', isNamed: false },
+    { note: 'b7x\n- (b7x) and «b7x»', id: 'b7x', isNamed: true },
+    { note: '- x_1: sleep', id: 'x_1', isNamed: true },
+    { note: 'ends with a.b', id: 'a.b', isNamed: true },
+  ]
+
+  test('counts only as a word of its own', () => {
+    const found = NAMINGS.map(row => ({ ...row, isNamed: findMissingIds(row.note, Array.of(row.id)).length === 0 }))
+
+    expect(found).toEqual(NAMINGS)
+  })
+})
+
+describe('the note given back after /clear', () => {
+  const MARKER_PATH = '/c/state/handoff/42-Sat.json'
+  const HANDED = { path: getHandedPath(MARKER_PATH), key: getHandedKey({ saved_at: '2026-11-14T12:00:00Z', note: '/n.md' }), session: 'n1' }
+
+  test('sits beside the marker and is keyed by the save time and the note, as handoff.py writes it', () => {
+    expect(HANDED.path).toBe('/c/state/handoff/42-Sat.handed')
+    expect(HANDED.key).toBe('2026-11-14T12:00:00Z|/n.md')
+  })
+
+  test('counts only with that key and that session', () => {
+    expect(isHandedTo('{"key": "2026-11-14T12:00:00Z|/n.md", "session": "n1"}', HANDED)).toBe(true)
+    expect(isHandedTo('{"key": "2026-11-14T12:00:00Z|/n.md", "session": "n0"}', HANDED)).toBe(false)
+    expect(isHandedTo('{"key": "x", "session": "n1"}', HANDED)).toBe(false)
+    expect(isHandedTo('not json', HANDED)).toBe(false)
+    expect(isHandedTo('null', HANDED)).toBe(false)
+  })
+})
+
+describe('the kind of an input', () => {
+  test('is null for the plugin itself and the kind for everyone else', () => {
+    expect(getInputKind({ kind: 'plugin', name: 'hats', asUser: true })).toBeNull()
+    expect(getInputKind({ kind: 'plugin', name: 'other' })).toBe('plugin')
+    expect(getInputKind({ kind: 'composer' })).toBe('composer')
+    expect(getInputKind({})).toBe('unexpected')
+    expect(getInputKind(null)).toBe('unexpected')
+    expect(getInputKind(undefined)).toBe('unexpected')
   })
 })

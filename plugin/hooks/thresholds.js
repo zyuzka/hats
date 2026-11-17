@@ -7,13 +7,36 @@ export const ACTIONS = [
   'tell',
   'offer_clear',
   'offer_exit',
+  'clear',
 ]
 export const FILE_LIMIT = 64 * 1024
 export const THRESHOLDS_FILE = 'window-thresholds.json'
 export const STAGE_FOLDER = 'session-thresholds'
 export const HATS_FOLDER = 'Library/Application Support/Hats'
 export const NOTES_FOLDER = 'Library/Application Support/Hats/notes'
+export const SNAPSHOT_FOLDER = 'stop-snapshots'
 export const STOPPED = 'the session was stopped and nobody has sent input since'
+export const REMOVED = 'the command was removed from the queue before it ran'
+export const CLEAR_PAUSE_MS = 10 * 60 * 1000
+export const SNAPSHOT_WAIT_MS = 2000
+export const SNAPSHOT_STEP_MS = 100
+export const HANDED_WAIT_MS = 5000
+export const HANDED_STEP_MS = 200
+export const KEPT = {
+  hookFailed: 'a plugin hook failed',
+  draft: 'a draft is in the prompt',
+  unexpected: 'unexpected input from Claude Code',
+  afterSteps: 'own after-steps ran',
+  stepsUnread: 'own steps could not be read',
+  noSnapshot: 'background work could not be checked',
+  noteUnread: 'the note could not be read',
+  noteChanged: 'the note changed after this session wrote it',
+  noPlugin: 'the plugin files are not in place',
+  sessionChanged: 'the session changed',
+  notCleared: 'the session did not change after /clear',
+}
+export const CONTINUE_DROPPED = 'hats: other input came after /clear, so the session does not go on by itself'
+export const HOOK_FAILED_DROP = 'hats: a plugin hook failed, so the session does not go on by itself'
 export const REASONS = {
   off: 'handoff is off',
   noMarker: 'no marker this turn',
@@ -36,6 +59,8 @@ const SESSION_ID = /^[0-9A-Za-z_-]{1,128}$/
 const STAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/
 const NOW_HEADING = /^##\s+(?:СЕЙЧАС(?![\p{L}\p{N}_])|[Nn][Oo][Ww]\s*(?:$|[—–:(,]|-\s|\d))/u
 const HANDOFF_COMMAND = /^sh "([^"]*)\/scripts\/py\.sh" "([^"]*)\/scripts\/handoff\.py" (new|save)(?:\s|$)/
+const STEPS_COMMAND = /^sh "([^"]*)\/scripts\/py\.sh" "([^"]*)\/scripts\/anchor-steps\.py"/
+const STEPS_EXACT = /^sh "[^"]*\/scripts\/py\.sh" "[^"]*\/scripts\/anchor-steps\.py"\s*$/
 const SERVICE_NAMES = [
   'resume-index.md',
   'memory.md',
@@ -139,6 +164,117 @@ export const getFailedLine = reason => `the session was not anchored: ${reason}.
 export const INTERRUPTED_LINE = 'anchoring was stopped; nothing else happens until you say "anchor".'
 
 export const RELOADED_LINE = 'anchoring was not checked: the plugin reloaded. Say "anchor" to save again.'
+
+export const getClearingLine = percent => `anchored at ${percent}% — clearing the context; the session goes on from its note.`
+
+export const getKeptLine = (percent, reason) =>
+  `anchored at ${percent}%, not cleared: ${reason}. Type /clear when ready: the plugin gives the note back.`
+
+export const getNotBackLine = path => `cleared, but the note did not come back to this session; it is at ${path}.`
+
+export const DRAFT_AFTER_LINE = 'cleared; the note is in context — send your message.'
+
+export const getPauseLine = (percent, save) =>
+  `context ${percent}% (anchor threshold ${save}%): not anchoring within 10 minutes of the last automatic clear. Say "anchor" to save.`
+
+export const getContinueText = percent =>
+  `Hats: this session reached ${percent}% of its context window, was anchored and cleared. ` +
+  'Continue the task from the resume note the plugin gave you after /clear: read the whole note with the Read tool, ' +
+  'tell the user in one short line, in their language, which note you picked up, then go on with its next step.'
+
+export const UNEXPECTED_INPUT = 'unexpected'
+
+export const isOwnOrigin = origin => origin?.kind === 'plugin' && origin?.name === 'hats'
+
+export const getInputKind = origin => {
+  if (origin === null || typeof origin !== 'object' || typeof origin.kind !== 'string') return UNEXPECTED_INPUT
+
+  return isOwnOrigin(origin) ? null : origin.kind
+}
+
+export const getInputReason = kind => (kind === UNEXPECTED_INPUT ? KEPT.unexpected : `input arrived during anchoring (${kind})`)
+
+export const getWakeReason = count => `scheduled wake-ups: ${count}`
+
+export const getMissingReason = ids => `background work not in the note: ${ids.join(', ')}`
+
+export const getClearRefusal = message => {
+  if (message.includes(STOPPED)) return STOPPED
+  if (message.includes(REMOVED)) return REMOVED
+
+  return `the clear command was refused: ${message}`
+}
+
+export const isStepsCommand = command => {
+  const parts = typeof command === 'string' ? STEPS_COMMAND.exec(command) : null
+
+  return parts !== null && parts[1] === parts[2]
+}
+
+export const isExactStepsCommand = command => isStepsCommand(command) && STEPS_EXACT.test(command)
+
+export const findStepsOutcome = stdout => {
+  const lines = typeof stdout === 'string' ? stdout.split('\n').map(line => line.trimEnd()) : []
+  if (lines.some(line => line.startsWith('anchor-steps:'))) return 'unread'
+  if (lines.includes('after anchor:')) return 'after'
+  if (lines.includes('after anchor: none') || lines.includes('no own steps')) return 'none'
+
+  return 'unread'
+}
+
+export const findStepsReason = outcomes => {
+  if (outcomes.includes('after')) return KEPT.afterSteps
+  if (outcomes.length === 0 || outcomes.includes('unread')) return KEPT.stepsUnread
+
+  return null
+}
+
+const isTaskShape = task => task !== null && typeof task === 'object' && typeof task.id === 'string'
+
+const isSnapshotShape = (data, id) =>
+  data !== null &&
+  typeof data === 'object' &&
+  data.session === id &&
+  Number.isInteger(data.at_ms) &&
+  typeof data.ok === 'boolean' &&
+  Array.isArray(data.tasks) &&
+  data.tasks.every(isTaskShape) &&
+  isWholeIn(data.crons, ROUND_RANGE)
+
+export const findSnapshot = (text, id) => {
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return { kind: 'bad' }
+  }
+  if (!isSnapshotShape(data, id)) return { kind: 'bad' }
+
+  return { kind: 'snapshot', at: data.at_ms, ok: data.ok, ids: data.tasks.map(task => task.id), crons: data.crons }
+}
+
+const getEscaped = text => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+
+const isNamedIn = (text, id) => id !== '' && new RegExp(`(?<![\\p{L}\\p{N}_-])${getEscaped(id)}(?![\\p{L}\\p{N}_-])`, 'u').test(text)
+
+export const findMissingIds = (text, ids) => ids.filter(id => !isNamedIn(text, id))
+
+export const isBoxShape = box => box !== null && typeof box === 'object' && typeof box.text === 'string'
+
+export const getHandedPath = markerPath => `${markerPath.slice(0, -'.json'.length)}.handed`
+
+export const getHandedKey = marker => `${marker.saved_at}|${marker.note}`
+
+export const isHandedTo = (text, handed) => {
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return false
+  }
+
+  return data !== null && typeof data === 'object' && data.key === handed.key && data.session === handed.session
+}
 
 export const isSessionId = id => typeof id === 'string' && SESSION_ID.test(id)
 
@@ -304,5 +440,7 @@ export const findRounds = (text, id) => {
   if (data === null || typeof data !== 'object' || data.session !== id) return null
   if (!isWholeIn(data.warn_round, ROUND_RANGE) || !isWholeIn(data.save_round, ROUND_RANGE)) return null
 
-  return { warnRound: data.warn_round, saveRound: data.save_round, stage: data.stage }
+  const percent = isWholeIn(data.percent, PERCENT_RANGE) ? data.percent : null
+
+  return { warnRound: data.warn_round, saveRound: data.save_round, stage: data.stage, percent }
 }

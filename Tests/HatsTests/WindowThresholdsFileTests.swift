@@ -57,6 +57,7 @@ final class WindowThresholdsFileTests: XCTestCase {
             (thresholds(30, nil, .tell), 30, NSNull(), "tell"),
             (thresholds(nil, 70, .offerExit), NSNull(), 70, "offer_exit"),
             (thresholds(nil, nil, .offerClear), NSNull(), NSNull(), "offer_clear"),
+            (thresholds(45, 55, .clear), 45, 55, "clear"),
         ]
         for (chosen, warn, save, after) in cases {
             XCTAssertEqual(file.setThresholds(chosen, at: now), .written)

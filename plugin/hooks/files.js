@@ -12,6 +12,29 @@ import {
   isSessionId,
 } from './thresholds.js'
 
+let writes = Promise.resolve()
+
+export const setStage = (state, stage) => {
+  state.stage = stage.stage
+  state.reason = stage.reason ?? null
+  state.marker = stage.marker ?? null
+}
+
+export function queueStage($, state) {
+  const record = { ...state }
+  writes = writes.then(() => writeStage($, record)).catch(() => {})
+
+  return writes
+}
+
+export function tellUser($, text) {
+  try {
+    Promise.resolve($.ui.log(text)).catch(() => {})
+  } catch {
+    return
+  }
+}
+
 export async function getHome($) {
   return (await $.env.get('HOME')) || null
 }

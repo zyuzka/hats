@@ -4,6 +4,7 @@ enum AfterSave: String, Codable, Equatable, CaseIterable {
     case tell
     case offerClear = "offer_clear"
     case offerExit = "offer_exit"
+    case clear
 }
 
 struct ContextThresholds: Codable, Equatable {

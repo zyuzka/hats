@@ -21,6 +21,7 @@ struct SessionStage: Equatable {
     let warnPercent: Int?
     let savePercent: Int?
     let at: Date
+    var afterSave: AfterSave?
 }
 
 enum SessionStageRead: Equatable {
@@ -72,7 +73,8 @@ enum SessionStageFile {
             percent: raw.percent,
             warnPercent: raw.warnPercent,
             savePercent: raw.savePercent,
-            at: at
+            at: at,
+            afterSave: raw.afterSave.flatMap(AfterSave.init(rawValue:))
         ))
     }
 

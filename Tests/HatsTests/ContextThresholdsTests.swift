@@ -47,6 +47,7 @@ final class ContextThresholdsTests: XCTestCase {
             ("only anchor", thresholds(nil, 70, .offerExit)),
             ("both off", thresholds(nil, nil, .offerClear)),
             ("both on, moved", thresholds(20, 21, .tell)),
+            ("clear and go on", thresholds(45, 55, .clear)),
         ]
         for (name, chosen) in cases {
             var settings = AppSettings()
@@ -111,7 +112,7 @@ final class ContextThresholdsTests: XCTestCase {
     }
 
     func testAnUnknownOrMistypedActionOffersClearAndKeepsTheThresholds() throws {
-        for action in [#""clear""#, #""offer_new""#, "5", "null", #"{"tell": true}"#] {
+        for action in [#""clear_all""#, #""offer_new""#, "5", "null", #"{"tell": true}"#] {
             let settings = try load(#"{"contextThresholds": {"warnPercent": 30, "savePercent": 40, "afterSave": \#(action)}}"#)
 
             XCTAssertEqual(settings.contextThresholds, thresholds(30, 40, .offerClear), action)
@@ -120,7 +121,8 @@ final class ContextThresholdsTests: XCTestCase {
 
     func testABadContextPartFallsBackByPartAndLeavesTheGatewayPortAndAutoSwitchAlone() throws {
         let parts: [(String, ContextThresholds)] = [
-            (#"{"warnPercent": 30, "savePercent": 40, "afterSave": "clear"}"#, thresholds(30, 40, .offerClear)),
+            (#"{"warnPercent": 30, "savePercent": 40, "afterSave": "clear_all"}"#, thresholds(30, 40, .offerClear)),
+            (#"{"warnPercent": 30, "savePercent": 40, "afterSave": "clear"}"#, thresholds(30, 40, .clear)),
             (#"{"warnPercent": 60, "savePercent": 40, "afterSave": "tell"}"#, thresholds(45, 55, .tell)),
             (#""anchor at 55""#, thresholds(45, 55, .offerClear)),
             ("[45, 55]", thresholds(45, 55, .offerClear)),
