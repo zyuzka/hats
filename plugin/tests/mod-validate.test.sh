@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Мод плагина глазами `claude plugin validate`: плагин и маркетплейс проходят проверку, а в том, что
-# модуль слушает и зовёт, нет запрещённого планом задачи 9 — `$.process`, `$.http`, `$.model`,
-# `$.store`, `$.env.set`, `$.prompt.submit`, таймеров `$.clock.after` и `$.clock.every` (будят
-# сессию), хуков `classic.*` и `session.compact`, записи переменных окружения. Проверяется
-# запрещённое, а не точный список вызовов. Сама проверка сломана руками в конце: копия плагина с
-# каждым запрещённым вызовом или хуком обязана упасть.
+# модуль слушает и зовёт, нет запрещённого планами задач 9 и 9b — `$.process`, `$.http`, `$.model`,
+# `$.store`, `$.env.set`, таймера `$.clock.every` (будит сессию), хуков `classic.*` и
+# `session.compact`, записи переменных окружения. `$.prompt.submit` и `$.clock.after` с задачи 9b
+# разрешены: продолжение после своей /clear и ожидание снимка и передачи записки внутри цепочки
+# очистки. Проверяется запрещённое, а не точный список вызовов. Сама проверка сломана руками в
+# конце: копия плагина с каждым запрещённым вызовом или хуком обязана упасть.
 #   bash plugin/tests/mod-validate.test.sh
 set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +31,7 @@ forbidden() {  # forbidden <output file>: печатает запрещённо�
 import re
 import sys
 
-TIMERS = ("$.clock.after", "$.clock.every")
+TIMERS = ("$.clock.every",)
 text = open(sys.argv[1], encoding="utf-8").read()
 calls = re.findall(r"register\.js calls: (.*)", text)
 hooks = re.findall(r"register\.js hooks: (.*)", text)
@@ -40,7 +41,7 @@ if not calls or not hooks:
     found.append("no calls or hooks line")
 for line in calls:
     for name in re.findall(r"\$\.[A-Za-z]+(?:\.[A-Za-z]+)?", line):
-        if name.split(".")[1] in ("process", "http", "model", "store") or name in TIMERS + ("$.env.set", "$.prompt.submit"):
+        if name.split(".")[1] in ("process", "http", "model", "store") or name in TIMERS + ("$.env.set",):
             found.append(name)
 for line in hooks:
     for name in (part.strip() for part in line.split(",")):
@@ -60,6 +61,8 @@ elif [ -z "$found" ]; then ok
 else bad "в модуле нет запрещённого" "$found"; fi
 if grep -q "register.js calls: .*\$.command.run" "$out"; then ok
 else bad "строка calls: видна и называет \$.command.run" "$(grep 'calls:' "$out")"; fi
+if grep -q "register.js calls: .*\$.prompt.read.*\$.prompt.submit" "$out" && grep -q 'register.js hooks: .*command.run' "$out"; then ok
+else bad "строки calls: и hooks: называют \$.prompt.read, \$.prompt.submit и хук command.run" "$(grep 'calls:\|hooks:' "$out")"; fi
 
 out="$work/market.txt"
 if validate "$repo" "$out" && grep -q "Validation passed" "$out"; then ok; else bad "маркетплейс проходит validate" "$(tail -5 "$out")"; fi
@@ -87,8 +90,6 @@ broken '$.process.spawn' "on('session.measure', async (\$, e, next) => { await \
 broken '$.http.fetch' "on('session.measure', async (\$, e, next) => { await \$.http.fetch({ url: 'https://a.b' }); return next(e) })"
 broken '$.model.complete' "on('session.measure', async (\$, e, next) => { await \$.model.complete({ messages: [] }); return next(e) })"
 broken '$.env.set' "on('session.measure', async (\$, e, next) => { await \$.env.set('X', '1'); return next(e) })"
-broken '$.prompt.submit' "on('session.measure', async (\$, e, next) => { await \$.prompt.submit({ text: 'x' }); return next(e) })"
-broken '$.clock.after' "on('session.measure', async (\$, e, next) => { \$.clock.after(1000, () => {}); return next(e) })"
 broken '$.clock.every' "on('session.measure', async (\$, e, next) => { \$.clock.every(1000, () => {}); return next(e) })"
 broken 'classic.Stop' "on('classic.Stop', (\$, e, next) => next(e))"
 broken 'session.compact' "on('session.compact', (\$, e, next) => next(e))"

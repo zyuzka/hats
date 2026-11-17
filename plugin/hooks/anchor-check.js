@@ -5,6 +5,7 @@ import {
   findNewNote,
   findNoteVerdict,
   findSaveOutcome,
+  findStepsOutcome,
   getMemoryLinkPaths,
   getNormalPath,
   getSha256,
@@ -12,7 +13,9 @@ import {
   isMarkerPlace,
   isMarkerShape,
   isMemoryLinkNote,
+  isExactStepsCommand,
   isNoteCandidate,
+  isStepsCommand,
 } from './thresholds.js'
 import {
   findRealPath,
@@ -29,7 +32,18 @@ export const createTurn = (id, startedAt) => ({
   snapshots: new Map(),
   ownWrites: new Map(),
   save: null,
+  steps: [],
 })
+
+const isReadableStepsCall = call =>
+  call.out.deny === undefined &&
+  call.out.isError !== true &&
+  isExactStepsCommand(call.command)
+
+export const recordStepsOutput = (turn, call) => {
+  if (!isStepsCommand(call.command)) return
+  turn.steps.push(isReadableStepsCall(call) ? findStepsOutcome(call.out.result?.stdout ?? call.out.text) : 'unread')
+}
 
 async function findNoteRoots($) {
   const home = await getHome($)
@@ -110,6 +124,21 @@ async function findNote($, path) {
   const text = await $.fs.read(path).catch(() => null)
 
   return text === null ? null : { stat, text }
+}
+
+export async function findAnchorFacts($, turn) {
+  const marker = turn.save?.kind === 'marker' ? await findMarker($, turn.save.path) : null
+  if (marker === null) return null
+  const note = await findNote($, marker.note)
+  const key = note?.stat.realPath ?? marker.note
+
+  return { markerPath: turn.save.path, marker, notePath: marker.note, own: turn.ownWrites.get(key) }
+}
+
+export async function findNoteText($, path) {
+  const note = await findNote($, path)
+
+  return note === null ? null : note.text
 }
 
 export async function findVerdict($, check) {

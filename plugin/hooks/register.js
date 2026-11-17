@@ -1,11 +1,14 @@
 import {
   DEFAULTS,
+  HOOK_FAILED_DROP,
   INTERRUPTED_LINE,
+  KEPT,
   REASONS,
   RELOADED_LINE,
   createArm,
   findRefusalOutcome,
   getFailedLine,
+  getPauseLine,
   getRequestLine,
   getSavedLine,
   getTurnFailure,
@@ -17,7 +20,9 @@ import {
 import {
   findReading,
   findStageFile,
-  writeStage,
+  queueStage,
+  setStage,
+  tellUser,
 } from './files.js'
 import {
   createTurn,
@@ -25,7 +30,27 @@ import {
   recordHandoffOutput,
   recordOwnWrite,
   recordSnapshot,
+  recordStepsOutput,
 } from './anchor-check.js'
+import {
+  endClearBeforeRun,
+  endClearOnSessionEnd,
+  failOwnRun,
+  forgetClear,
+  isClearOpen,
+  isOwnClear,
+  isOwnContinuation,
+  isPausedAfterClear,
+  markChainFailed,
+  noteInput,
+  noteToolEnd,
+  passAgentCall,
+  passContinuation,
+  refuseLostClear,
+  runOwnClear,
+  startClear,
+  watchInputs,
+} from './clear-chain.js'
 
 const WRITE_TOOLS = [
   'Write',
@@ -37,7 +62,6 @@ let isActive = false
 let cwd = ''
 let session = null
 let requestCount = 0
-let writes = Promise.resolve()
 
 const createSession = id => ({
   id,
@@ -54,27 +78,6 @@ const createSession = id => ({
   request: null,
   turn: null,
 })
-
-const queueStage = ($, state) => {
-  const record = { ...state }
-  writes = writes.then(() => writeStage($, record)).catch(() => {})
-
-  return writes
-}
-
-const tellUser = ($, text) => {
-  try {
-    Promise.resolve($.ui.log(text)).catch(() => {})
-  } catch {
-    return
-  }
-}
-
-const setStage = (state, stage) => {
-  state.stage = stage.stage
-  state.reason = stage.reason ?? null
-  state.marker = stage.marker ?? null
-}
 
 const endChain = async ($, job) => {
   const { state, reason } = job
@@ -105,12 +108,14 @@ const findState = async $ => {
     fresh.saveRound = saved.saveRound
   }
   if (old !== null) await endChain($, { state: old, reason: REASONS.sessionChanged })
+  if (old !== null) await endClearBeforeRun($, KEPT.sessionChanged)
 
   return fresh
 }
 
 const markHookFailed = () => {
   if (session?.request?.isSubmitted) session.request.hasHookFailed = true
+  markChainFailed()
 }
 
 const isOwnAnchor = e => e.origin?.kind === 'plugin' && e.origin?.name === 'hats' && e.command?.name === 'hats:anchor'
@@ -156,6 +161,10 @@ const finishRequest = async ($, job) => {
   state.request = null
   setStage(state, { stage: 'saved', marker: turn.save.path })
   await queueStage($, state)
+  if (request.after === 'clear') {
+    await startClear($, { state, request, turn })
+    return
+  }
   tellUser($, getSavedLine(request))
 }
 
@@ -217,6 +226,7 @@ const askToAnchor = async ($, job) => {
   state.thresholds = reading.thresholds
   setStage(state, { stage: 'requested' })
   state.request = request
+  watchInputs()
   await queueStage($, state)
   tellUser($, getRequestLine(reading.percent, reading.thresholds.save))
   $.command.run({ command: 'hats:anchor' })
@@ -246,6 +256,11 @@ const judgeTurnEnd = async ($, job) => {
   setArm(state.arm, reading)
   if (isSaveDue(state.arm, reading)) {
     if (await acceptManualSave($, { state, turn, reading })) return
+    if (isPausedAfterClear(await $.clock.now())) {
+      state.arm.save = false
+      tellUser($, getPauseLine(reading.percent, reading.thresholds.save))
+      return
+    }
     await askToAnchor($, { state, reading })
     return
   }
@@ -315,12 +330,34 @@ const passOnFailed = (
   return next(e)
 }
 
+const passOnFailedPrompt = (
+  $,
+  e,
+  next,
+) => {
+  markHookFailed()
+  if (!next.called && isOwnContinuation(e)) return { drop: HOOK_FAILED_DROP }
+
+  return next(e)
+}
+
+const passOnFailedRun = (
+  $,
+  e,
+  next,
+) => {
+  markHookFailed()
+
+  return failOwnRun($, e, next)
+}
+
 const passOnFailedTurn = (
   $,
   e,
   next,
 ) => {
   const state = session
+  endClearBeforeRun($, KEPT.hookFailed).catch(() => {})
   if (state === null || state.request === null || state.request.turnId !== e.turnId) return passOnFailed($, e, next)
   state.request = null
   setStage(state, { stage: 'failed', reason: REASONS.hookFailed })
@@ -338,6 +375,7 @@ const onSessionStart = async (
   isActive = e.isInteractive === true
   cwd = e.cwd
   if (!isActive) return next(e)
+  forgetClear()
   session = createSession(await $.session.id())
   await restoreStage($, session)
 
@@ -354,6 +392,7 @@ const onSessionEnd = async (
     const state = session
     session = null
     await endChain($, { state, reason: REASONS.sessionChanged })
+    await endClearOnSessionEnd($, e.reason)
   }
 
   return next(e)
@@ -365,6 +404,8 @@ const onPromptSubmit = async (
   next,
 ) => {
   if (!isActive) return next(e)
+  noteInput(e.origin)
+  if (isOwnContinuation(e)) return passContinuation($, e, next)
   const state = await findState($)
   if (isOwnAnchor(e)) return submitOwnAnchor($, { state, e, next })
   if (state.pending === null || e.origin?.kind === 'plugin' || e.command !== undefined) return next(e)
@@ -403,16 +444,30 @@ const onToolCall = async (
   e,
   next,
 ) => {
-  if (!isActive || e.agentId !== undefined) return next(e)
+  if (!isActive) return next(e)
+  if (e.agentId !== undefined) return passAgentCall($, e, next)
   const state = await findState($)
   const turn = state.turn
   const isWrite = turn !== null && WRITE_TOOLS.includes(e.tool)
   const target = isWrite ? await recordSnapshot($, { turn, path: e.file_path }) : null
   const out = await next(e)
+  noteToolEnd(await $.clock.now())
   if (target !== null && isDone(out)) await recordOwnWrite($, { turn, target })
+  if (turn !== null && e.tool === 'Bash') recordStepsOutput(turn, { command: e.command, out })
   if (turn !== null && e.tool === 'Bash' && isDone(out)) await recordHandoffOutput($, { turn, command: e.command, out })
 
   return findDelivered($, { state, out })
+}
+
+const onCommandRun = async (
+  $,
+  e,
+  next,
+) => {
+  if (!isActive || !isOwnClear(e, next)) return next(e)
+  if (isClearOpen()) return runOwnClear($, e, next)
+
+  return refuseLostClear($, await findState($))
 }
 
 const onTurnComplete = async (
@@ -437,8 +492,9 @@ const onTurnComplete = async (
 export const register = on => {
   on('session.start', onSessionStart).catch(passOn)
   on('session.end', onSessionEnd).catch(passOn)
-  on('prompt.submit', onPromptSubmit).catch(passOnFailed)
+  on('prompt.submit', onPromptSubmit).catch(passOnFailedPrompt)
   on('turn.start', onTurnStart).catch(passOnFailed)
   on('tool.call', onToolCall).catch(passOnFailed)
   on('turn.complete', onTurnComplete).catch(passOnFailedTurn)
+  on('command.run', onCommandRun).catch(passOnFailedRun)
 }

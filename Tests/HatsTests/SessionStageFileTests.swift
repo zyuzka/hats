@@ -57,8 +57,27 @@ final class SessionStageFileTests: XCTestCase {
             percent: 56,
             warnPercent: 45,
             savePercent: 55,
-            at: now
+            at: now,
+            afterSave: .offerClear
         )))
+    }
+
+    func testTheActionOfTheRecordIsReadAndAnUnknownOneIsNone() throws {
+        let actions: [(Any, AfterSave?)] = [
+            ("clear", .clear),
+            ("tell", .tell),
+            ("explode", nil),
+            (NSNull(), nil),
+        ]
+        for (action, expected) in actions {
+            try write(Self.fields(["after_save": action]))
+
+            guard case .read(let record) = read() else {
+                XCTFail("\(action) was skipped")
+                continue
+            }
+            XCTAssertEqual(record.afterSave, expected, "\(action)")
+        }
     }
 
     func testEveryStageTheModNamesIsRead() throws {

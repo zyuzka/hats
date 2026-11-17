@@ -59,6 +59,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
             "Only tell me",
             "Tell me and offer /clear",
             "Tell me and offer /exit and a new session",
+            "Clear and go on from the note",
         ])
         XCTAssertEqual(
             HatsCopy.contextThresholdsNote,
@@ -76,6 +77,49 @@ final class ContextThresholdNoticesTests: XCTestCase {
         XCTAssertEqual(HatsCopy.getWarnNoticeBody(warn: 45, save: nil), "Past the warning threshold of 45%.",
                        "with the anchor threshold off there is no second sentence")
         XCTAssertEqual(HatsCopy.getAnchorNoticeBody(save: 55), "Past 55%: the session anchors at the end of its turn.")
+        XCTAssertEqual(
+            HatsCopy.getClearNoticeBody(save: 55),
+            "Past 55%: the session anchors at the end of its turn and, if nothing stands in the way, clears its context "
+                + "and goes on from its note."
+        )
+    }
+
+    func testAnAnchorRoundWithTheClearActionSaysTheSessionMayClearAndKeptOrClearedTellNothingMore() {
+        let notices = createNotices()
+        notices.noteARead(read([]), windows: [])
+        var requested = stage(.requested, warn: 0, save: 1)
+        requested.afterSave = .clear
+        var cleared = stage(.cleared, warn: 0, save: 1)
+        cleared.afterSave = .clear
+        var kept = stage(.kept, warn: 0, save: 1, session: "other")
+        kept.afterSave = .clear
+
+        notices.noteARead(read([requested]), windows: [])
+        notices.noteARead(read([cleared]), windows: [])
+        notices.noteARead(read([cleared, kept]), windows: [])
+        notices.noteARead(read([cleared, kept]), windows: [])
+
+        XCTAssertEqual(bodies, [
+            HatsCopy.getClearNoticeBody(save: 55),
+            HatsCopy.getClearNoticeBody(save: 55),
+        ], "one notice per anchor round, the second for the other session; cleared and kept add none")
+    }
+
+    func testKeptOrClearedAfterTheRequestOfTheSameRoundTellNothingMore() {
+        for kind in [SessionStageKind.kept, .cleared] {
+            told = []
+            let notices = createNotices()
+            notices.noteARead(read([]), windows: [])
+            var requested = stage(.requested, warn: 0, save: 1)
+            requested.afterSave = .clear
+            var later = stage(kind, warn: 0, save: 1)
+            later.afterSave = .clear
+
+            notices.noteARead(read([requested]), windows: [])
+            notices.noteARead(read([later]), windows: [])
+
+            XCTAssertEqual(bodies, [HatsCopy.getClearNoticeBody(save: 55)], "\(kind.rawValue) of the same session and round")
+        }
     }
 
     func testTheFirstReadIsTheBaselineEvenWhenEmptyAndAnAnchorRequestAfterItIsToldOnce() {

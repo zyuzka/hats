@@ -256,17 +256,39 @@ may ask your permission to check it, and the save waits for your answer. Subagen
 without a person (`claude -p`, the SDK) are left alone; a teammate of an agent team that runs in its
 own tmux pane is a session of its own to the plugin, and is warned and anchored like any other. The thresholds and the action are set in Hats, under **Settings › Context**: **Warn at** and
 **Anchor at**, each with a switch that turns it off, and **After anchoring** — only tell you, offer
-`/clear`, or offer `/exit` and a new session. Until you change them they are 45%, 55% and the `/clear`
-offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
+`/clear`, offer `/exit` and a new session, or clear and go on from the note. Until you change them they
+are 45%, 55% and the `/clear` offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
 `~/Library/Application Support/Hats` and puts the file back if it is removed; the plugin reads it at
 every decision, also while Hats is not running, and without it takes 45%, 55% and the `/clear` offer.
 Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
 Hats made. A running Hats reads those files and shows one notification for each threshold a session
 crosses, titled with the session's name — the title you gave it, else its folder, else the start of
 its id — and its percent: `hats — context 47%` with «Past the warning threshold of 45%. The session
-anchors at 55%.», or «Past 55%: the session anchors at the end of its turn.» —
-also while Settings is open in front. It says nothing about stages written before it started, nothing
-when mods are off in Claude Code, and removes stage files older than 30 days.
+anchors at 55%.», or «Past 55%: the session anchors at the end of its turn.» (with the clear action:
+«… at the end of its turn and, if nothing stands in the way, clears its context and goes on from its
+note.») — also while Settings is open in front. It says nothing about stages written before it
+started, nothing when mods are off in Claude Code, and removes stage files older than 30 days.
+
+With **Clear and go on from the note** the plugin clears the session itself, after a save on the
+threshold that it checked — never after an «анкор» you said. It shows `anchored at 56% — clearing the
+context; the session goes on from its note.`, runs `/clear`, waits up to 5 seconds for its start hook
+to give the note back to the new session, and then sends `Hats: this session reached 56% of its
+context window, was anchored and cleared. Continue the task from the resume note …` as your prompt;
+Claude Code marks it as a prompt from the plugin, and the model names the note it picked up and goes
+on with its next step. It clears only when nothing stands in the way: nobody but the plugin sent input
+since it asked to anchor — you, a notice of a background task, a `/loop`, another session or a channel;
+the prompt holds no draft; your own steps had nothing to run after the anchor; the note is still what
+the session wrote; every background task still running is named in the note by its id; and nothing is
+scheduled to wake the session. When `/clear` starts to run, three of these are checked once more: no
+input arrived, the prompt holds no draft, and the session is still the same one. Otherwise it says `anchored at 56%, not cleared: <why>. Type /clear when ready: the plugin
+gives the note back.` When the note does not come back, or something was typed after `/clear`, it
+sends no prompt and says so. For 10 minutes after its own clear it does not ask to anchor again; it
+says so, and «анкор» still works. To see the background work it reads
+`stop-snapshots/<session>.json` beside the stage files, which a hook on Claude Code's `Stop` writes at
+the end of every turn — the id, kind, state and description of each background task still running and
+the number of scheduled wake-ups. That hook runs before the turn ends, only where Hats has run, and
+removes its files older than 7 days. Background commands and subagents survive `/clear`, and the new
+session is told when one ends.
 
 ## Supported CLIs
 

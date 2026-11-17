@@ -84,12 +84,13 @@ final class SessionStageContractTests: XCTestCase {
         rounds: (Int, Int),
         percent: Int?,
         thresholds: (Int?, Int?) = (45, 55),
-        reason: String? = nil
+        reason: String? = nil,
+        after: AfterSave = .offerClear
     ) -> [String: Any] {
         let limits: [String: Any] = [
             "warn": thresholds.0 ?? NSNull(),
             "save": thresholds.1 ?? NSNull(),
-            "after": "offer_clear",
+            "after": after.rawValue,
         ]
 
         return [
@@ -119,6 +120,10 @@ final class SessionStageContractTests: XCTestCase {
              expect(session, .interrupted, (1, 2), nil)),
             (record("warn-only", stage: "warned", rounds: (1, 0), percent: 47, thresholds: (45, nil)),
              expect("warn-only", .warned, (1, 0), 47, save: nil)),
+            (record(session, stage: "cleared", rounds: (1, 3), percent: 56, after: .clear),
+             expect(session, .cleared, (1, 3), 56, after: .clear)),
+            (record(session, stage: "kept", rounds: (1, 3), percent: 56, reason: "a draft is in the prompt", after: .clear),
+             expect(session, .kept, (1, 3), 56, after: .clear)),
         ]
 
         let written = try runTheMod(cases.map(\.0), env: [StateDirectory.overrideName: work.path])
@@ -137,7 +142,8 @@ final class SessionStageContractTests: XCTestCase {
         _ kind: SessionStageKind,
         _ rounds: (Int, Int),
         _ percent: Int?,
-        save: Int? = 55
+        save: Int? = 55,
+        after: AfterSave = .offerClear
     ) -> SessionStage {
         SessionStage(
             session: session,
@@ -148,7 +154,8 @@ final class SessionStageContractTests: XCTestCase {
             percent: percent,
             warnPercent: 45,
             savePercent: save,
-            at: now
+            at: now,
+            afterSave: after
         )
     }
 

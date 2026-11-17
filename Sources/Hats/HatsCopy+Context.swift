@@ -18,6 +18,8 @@ extension HatsCopy {
             return "Tell me and offer /clear"
         case .offerExit:
             return "Tell me and offer /exit and a new session"
+        case .clear:
+            return "Clear and go on from the note"
         }
     }
 
@@ -34,5 +36,10 @@ extension HatsCopy {
 
     static func getAnchorNoticeBody(save: Int) -> String {
         "Past \(save)%: the session anchors at the end of its turn."
+    }
+
+    static func getClearNoticeBody(save: Int) -> String {
+        "Past \(save)%: the session anchors at the end of its turn and, if nothing stands in the way, clears its "
+            + "context and goes on from its note."
     }
 }
