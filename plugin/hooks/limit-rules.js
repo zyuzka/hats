@@ -22,7 +22,7 @@ export const WHY = {
 }
 
 const LIMIT_RANGE = { low: 10, high: 95 }
-const LIMIT_WORDS = { five_hour: '5-hour', seven_day: 'weekly' }
+export const LIMIT_WORDS = { five_hour: '5-hour', seven_day: 'weekly' }
 const DAYS = [
   'Sun',
   'Mon',
@@ -261,8 +261,16 @@ export const getLimitWarningText = (items, drain = null) => {
 
 const getDenyPart = item => `${LIMIT_WORDS[item.kind]} limit and ${WHY[item.why]}`
 
+const isOneWhy = items => items.length > 1 && items.every(item => item.why === items[0].why)
+
+const getDenyCause = items => {
+  if (!isOneWhy(items)) return items.map(getDenyPart).join(', and to its ')
+
+  return `${items.map(item => LIMIT_WORDS[item.kind]).join(' and ')} limits and ${WHY[items[0].why]}`
+}
+
 export const getLimitDenyText = items =>
-  `Hats drain: this session's account is close to its ${items.map(getDenyPart).join(', and to its ')}, ` +
+  `Hats drain: this session's account is close to its ${getDenyCause(items)}, ` +
   'so new background work — subagents, workflows, monitors and background commands — is refused until the session is asked to anchor. ' +
   'Do this step in the foreground (a Bash call without run_in_background and with a timeout long enough for it, ' +
   'or the work yourself) or leave it for the next session, and tell the user in one line.'

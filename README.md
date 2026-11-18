@@ -278,16 +278,22 @@ to do the step in the foreground or leave it for the next session; work already 
 stopped. Not refused: a command Claude Code moves to the background itself after its time limit, and a
 skill that runs in the background — both are waited for; a command detached with `&` or `nohup` is
 neither waited for nor listed. When a turn ends past the anchor threshold while background commands,
-subagents or workflows still run, the plugin says `Hats drain: anchoring waits for 2 background jobs,
-up to 10 min.` and does not ask to anchor yet; it asks at the end of a later turn, once they have ended
+subagents or workflows still run, the plugin says `anchoring waits for 2 background jobs, up to 10 min
+(drain).` and does not ask to anchor yet; it asks at the end of a later turn, once they have ended
 or **Wait up to** (1 to 60 minutes, 10 until you change it) has passed. It never wakes an idle session:
 the next turn comes with your message or with Claude Code's notice that a job ended. When it asks, it
 gives the model the id, kind and description of everything still running, so the note names each —
 they outlive `/clear`, and the next session is told when one ends but not what it was for. A monitor
-on a socket and a teammate are listed but not waited for. If the list cannot be read it asks at once
-and says `Hats drain: background work could not be checked.` The refusals end once it asks, after an
+that runs a command is a background command to Claude Code (2.1.327) and is waited for like one; a
+monitor on a socket and a teammate are listed but not waited for. If the list cannot be read it asks at
+once and says `background work could not be checked (drain).` The refusals end once it asks, after an
 «анкор» you said past the threshold, or when the window falls below the lowest threshold; they also end
-when the plugin reloads, when the session changes and during the pause after the plugin's own clear. With
+when the plugin reloads, when the session changes and during the pause after the plugin's own clear.
+When they end while no anchor is asked — the window fell below its lowest threshold, **Drain background
+work** was turned off, or, for a hat limit, Hats moves the session again, the limit resets, its
+**Anchor at** is turned off, the hat changes or the session is no longer under Hats — and the model has
+had a drain text, the plugin tells the model once that background work is allowed again and why. It
+waits while anything else still refuses, and while a limit warning with the drain words goes out. With
 **Warn at** off they start only when anchoring is put off for running work. Hats writes
 the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that
 waits has the stage `waiting`, and its notification reads «Past 70%: the session anchors at the end of
@@ -298,7 +304,8 @@ they stop the automatic clear.`
 **Drain by a hat limit.** The same switch acts on every session on the worn hat when Hats will not move
 it off a limit (the rules of **Hat limit** below): from the limit warning on — or, with **Warn at** off,
 from the first turn end whose anchor is put off — new background work is refused with `Hats drain: this
-session's account is close to its 5-hour limit and …`, until that limit's anchor is asked, a save counts
+session's account is close to its 5-hour limit and …` (two limits with the same reason name it once:
+`close to its 5-hour and weekly limits and …`), until that limit's anchor is asked, a save counts
 for it, its episode ends or its reset passes, or Hats can move the session again. The anchor of the
 limit waits for running work up to **Wait up to**, counted from the first warning of that limit on that
 hat in that episode — one deadline for all its sessions. Hats finds that time in the stage files and

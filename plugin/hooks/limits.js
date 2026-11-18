@@ -35,6 +35,7 @@ import {
   getLeadSeconds,
   setPoints,
 } from './pace.js'
+import { noteLimitsTold } from './drain-release.js'
 
 let cell = null
 
@@ -90,7 +91,17 @@ export async function notePace($, state) {
 const isWorthReading = (episodes, lowest) =>
   lowest !== null && episodes.some(item => item.episode.percent >= lowest || item.early !== null || isLimitDrainCause(item.episode))
 
-const createView = (now, fields) => ({ now, items: [], all: [], hat: null, isUnder: null, thresholds: null, drain: DRAIN_OFF, ...fields })
+const createView = (now, fields) => ({
+  now,
+  items: [],
+  all: [],
+  seen: [],
+  hat: null,
+  isUnder: null,
+  thresholds: null,
+  drain: DRAIN_OFF,
+  ...fields,
+})
 
 export async function findLimitView($, state) {
   const usage = await $.session.usage().catch(() => null)
@@ -103,7 +114,7 @@ export async function findLimitView($, state) {
     ...item,
     early: findEarly(state.pace, { kind: item.kind, episode: item.episode, now }),
   }))
-  const known = { thresholds, drain: thresholds.drain }
+  const known = { thresholds, drain: thresholds.drain, seen: episodes.map(item => item.kind) }
   if (!isWorthReading(episodes, getLimitLowest(thresholds))) return createView(now, known)
   const hat = await findHatUsageNow($, root)
   if (hat === null || !isUnderHats(hat, await findCell($))) return createView(now, { ...known, hat, isUnder: false })
@@ -114,12 +125,20 @@ export async function findLimitView($, state) {
 
 const isWarningDue = item => isLimitWarnDue(item.episode) || (item.early !== null && item.episode.warned === null)
 
-export async function findLimitWarning($, state) {
-  const view = await findLimitView($, state)
+const isAskAhead = item => item.episode.save !== null && item.episode.asked === null
+
+const getLimitWarning = view => {
   const items = view.items.filter(isWarningDue)
   const drain = view.drain.isOn ? view.drain : null
+  if (items.length === 0) return null
 
-  return items.length === 0 ? null : { text: getLimitWarningText(items, drain), items, now: view.now }
+  return { text: getLimitWarningText(items, drain), items, told: drain === null ? [] : items.filter(isAskAhead), now: view.now }
+}
+
+export async function findLimitNews($, state) {
+  const view = await findLimitView($, state)
+
+  return { view, warning: getLimitWarning(view) }
 }
 
 export async function findLimitDenial($, state) {
@@ -127,8 +146,10 @@ export async function findLimitDenial($, state) {
   const view = await findLimitView($, state)
   if (!view.drain.isOn) return null
   const items = view.items.filter(item => isLimitDrainCause(item.episode))
+  if (items.length === 0) return null
+  noteLimitsTold(state, items)
 
-  return items.length === 0 ? null : getLimitDenyText(items)
+  return getLimitDenyText(items)
 }
 
 export async function findLimitAsks($, state) {
@@ -179,5 +200,6 @@ export async function markWarned($, job) {
       early: item.early,
     })
   }
+  noteLimitsTold(state, warning.told)
   await queueStage($, state)
 }

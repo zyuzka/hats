@@ -35,6 +35,10 @@ import {
   settleRound,
 } from './drain.js'
 import {
+  forgetCounted,
+  forgetReleased,
+} from './drain-release.js'
+import {
   findPlan,
   getLiveDeadlines,
   setLimitWaiting,
@@ -126,6 +130,7 @@ export async function finishRequest($, job) {
   state.request = null
   setAsked(counted, now)
   countWindow(state, { request, reading })
+  forgetCounted(state, { isWindow: request.isWindow, kinds: [...request.limits, ...counted].map(item => item.kind) })
   if (request.isWindow) setStage(state, { stage: 'saved', marker: turn.save.path })
   await queueStage($, state)
   const limits = [
@@ -198,6 +203,7 @@ async function askToAnchor($, job) {
   request.askedAt = askedAt
   request.list = job.list ?? null
   setAsked(limits, askedAt)
+  forgetReleased(state)
   if (isWindow) {
     state.arm.save = false
     state.arm.warn = false
@@ -222,6 +228,7 @@ async function acceptManualSave($, job) {
   if (turn === null || turn.save === null) return false
   if ((await findVerdict($, { turn, askedAt: turn.startedAt })) !== null || !isCurrent(state)) return false
   setAsked(limits, await $.clock.now())
+  forgetCounted(state, { isWindow, kinds: limits.map(item => item.kind) })
   if (isWindow) setWindowSaved(state, reading)
   if (isWindow) setStage(state, { stage: 'saved', reason: REASONS.manual, marker: turn.save.path })
   await queueStage($, state)

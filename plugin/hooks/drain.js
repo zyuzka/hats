@@ -10,6 +10,10 @@ import {
 } from './files.js'
 import { waitForSnapshot } from './clear-check.js'
 import { getLastMainToolEnd } from './clear-chain.js'
+import {
+  noteDenialTold,
+  noteWindowBelow,
+} from './drain-release.js'
 
 const DRAIN_TOOLS = [
   'Agent',
@@ -39,7 +43,7 @@ export const DENY_TEXT =
   'Do this step in the foreground (a Bash call without run_in_background and with a timeout long enough for it, ' +
   'or the work yourself) or leave it for the next session, and tell the user in one line.'
 
-export const UNCHECKED_LINE = 'Hats drain: background work could not be checked.'
+export const UNCHECKED_LINE = 'background work could not be checked (drain).'
 
 export const RELOADED_WAIT_LINE = 'anchoring waited for background work and the plugin reloaded; say "anchor" to save.'
 
@@ -48,7 +52,7 @@ const LIST_HEAD =
   'but not what it was for, so list each in the note:'
 
 export const getWaitLine = (count, minutes) =>
-  `Hats drain: anchoring waits for ${count} background ${count === 1 ? 'job' : 'jobs'}, up to ${minutes} min.`
+  `anchoring waits for ${count} background ${count === 1 ? 'job' : 'jobs'}, up to ${minutes} min (drain).`
 
 const isBackgroundFlag = value =>
   value === true ||
@@ -120,8 +124,10 @@ export const setPaused = state => {
 export async function findDenial($, state) {
   if (!isRequestAhead(state)) return null
   const thresholds = await findCurrentThresholds($)
+  if (thresholds === null || !isDrainOn(thresholds)) return null
+  noteDenialTold(state)
 
-  return thresholds !== null && isDrainOn(thresholds) ? DENY_TEXT : null
+  return DENY_TEXT
 }
 
 async function cancelWait($, state) {
@@ -139,7 +145,9 @@ export async function settleRound($, job) {
   const isBelow = lowest === null || reading.percent < lowest
   const isStillDue = !isBelow && isSaveDue(state.arm, reading)
   if (state.drain.isWaiting && !isStillDue) await cancelWait($, state)
-  if (isBelow) state.drain = null
+  if (!isBelow) return
+  noteWindowBelow(state, lowest)
+  state.drain = null
 }
 
 export function holdWindow(state, job) {

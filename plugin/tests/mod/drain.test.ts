@@ -267,9 +267,9 @@ describe('the texts of the drain', () => {
   })
 
   test('say the wait, the unchecked work and the reload to the user', () => {
-    expect(getWaitLine(2, 5)).toBe('Hats drain: anchoring waits for 2 background jobs, up to 5 min.')
-    expect(getWaitLine(1, 10)).toBe('Hats drain: anchoring waits for 1 background job, up to 10 min.')
-    expect(UNCHECKED_LINE).toBe('Hats drain: background work could not be checked.')
+    expect(getWaitLine(2, 5)).toBe('anchoring waits for 2 background jobs, up to 5 min (drain).')
+    expect(getWaitLine(1, 10)).toBe('anchoring waits for 1 background job, up to 10 min (drain).')
+    expect(UNCHECKED_LINE).toBe('background work could not be checked (drain).')
     expect(RELOADED_WAIT_LINE).toBe('anchoring waited for background work and the plugin reloaded; say "anchor" to save.')
     expect(WAIT_CANCELLED).toBe('wait cancelled')
   })

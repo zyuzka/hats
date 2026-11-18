@@ -21,6 +21,7 @@ import {
   settleLimitWaits,
 } from '../../hooks/limit-drain.js'
 import { findListText, getWaitLine, getWakeLine } from '../../hooks/drain.js'
+import { DRAIN_OFF_REASON, getReleaseText, getWindowReason } from '../../hooks/drain-release.js'
 import { setAsked } from '../../hooks/limits.js'
 import { STOPPED, createPrevious, findRefusalOutcome } from '../../hooks/thresholds.js'
 import { hasLimitDrainCause } from '../../hooks/limit-drain.js'
@@ -374,7 +375,7 @@ describe('the end of a turn with a limit to drain', () => {
     await endTurnAt(scene, { five: 81 }, { noSnapshot: true })
 
     expect(scene.world.runs).toEqual(['hats:anchor'])
-    expect(scene.world.logs[0]).toBe('Hats drain: background work could not be checked.')
+    expect(scene.world.logs[0]).toBe('background work could not be checked (drain).')
   })
 
   test('wake-ups and no holders: the request, and the list names the wake-ups', async ($, on) => {
@@ -773,6 +774,16 @@ describe('the rules of the drain by a limit', () => {
     )
   })
 
+  test('the refusal of two limits with one reason names the reason once', () => {
+    expect(getLimitDenyText([
+      { kind: 'five_hour', why: 'auto_switch_off' },
+      { kind: 'seven_day', why: 'auto_switch_off' },
+    ])).toBe(
+      "Hats drain: this session's account is close to its 5-hour and weekly limits and " +
+        `Hats does not change hats by itself (auto-switch is off), ${REFUSAL_TAIL}`,
+    )
+  })
+
   test('the list carries the wake-ups line, alone or after the jobs', () => {
     expect(getWakeLine(2)).toBe('Scheduled wake-ups: 2 — they are not listed here, and they stop the automatic clear.')
     expect(findListText([], 1)).toBe(getWakeLine(1))
@@ -1092,5 +1103,406 @@ describe('Esc on a joint request, by the functions the refusal path calls', () =
     expect(week.asked).not.toBe(null)
     expect(hasLimitDrainCause(state)).toBe(false)
     expect(state.stage).toBe('waiting')
+  })
+})
+
+const getReleased = (reason: string) => getReleaseText([reason])
+
+const hasRelease = (out: any) => getContext(out).some((text: string) => text.startsWith('Hats drain: background work is allowed again'))
+
+const COVERED = { has_a_hat_to_switch_to: true, switch_covers: { five_hour: true, seven_day: true } }
+
+const warnWindow = async (scene: any, limits: Parameters<typeof setLimits>[1] = {}) => {
+  const first = await scene.startTurn(10)
+  await scene.endTurn(first, { percent: 10 })
+  await scene.startTurn(61)
+
+  return toolAt(scene, limits, READ, 61)
+}
+
+describe('the drain released', () => {
+  test('the text says what is allowed again and why', () => {
+    expect(getReleaseText([
+      'Hats now changes hats on its 5-hour limit',
+      'its context window fell below 60%',
+    ])).toBe(
+      'Hats drain: background work is allowed again — Hats now changes hats on its 5-hour limit, and its context window fell below 60%, ' +
+        'so this session no longer anchors for it. Tell the user so in one short line in your reply, in their language.',
+    )
+  })
+
+  test('the limit wait cancelled because Hats changes hats again: the subagent runs and carries the release once', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    await endTurnAt(scene, { five: 81 })
+    setHat(scene, COVERED)
+    await endTurnAt(scene, { five: 81 })
+    expect(getWaiting(scene).cancelled_at).not.toBe(null)
+    await scene.startTurn(10)
+
+    const agent = await toolAt(scene, { five: 81 }, AGENT)
+    const next = await toolAt(scene, { five: 81 }, READ)
+
+    expect(agent.deny).toBe(undefined)
+    expect(getContext(agent)).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+    expect(hasRelease(next)).toBe(false)
+  })
+
+  test('the refusal ended without a wait: the release comes with the next prompt, once', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setLimits(scene, { five: 73 })
+    setHat(scene, COVERED)
+
+    await scene.prompt('go on')
+    await scene.prompt('and more')
+
+    expect(scene.world.prompts[0].context).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+    expect(scene.world.prompts[1].context ?? []).toEqual([])
+  })
+
+  test('a dropped prompt keeps the release for the next one', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setLimits(scene, { five: 73 })
+    setHat(scene, COVERED)
+    scene.world.dropNextPrompt = 'no'
+
+    await scene.prompt('go on')
+    await scene.prompt('and more')
+
+    expect(scene.world.prompts[1].context).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+  })
+
+  test('the episode ended: the release names the reset', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+
+    const out = await toolAt(scene, { five: 3, fiveResets: '2026-11-14T20:00:00.000Z' }, AGENT)
+
+    expect(out.deny).toBe(undefined)
+    expect(getContext(out)).toEqual([getReleased('its 5-hour limit reset')])
+  })
+
+  test('the anchor threshold of the limit turned off: the release names it', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setThresholds(scene, { limit_save_percent: null })
+
+    const out = await toolAt(scene, { five: 73 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('the anchor threshold of its 5-hour limit is off')])
+  })
+
+  test('told only by a refusal: the release comes all the same', async ($, on) => {
+    const scene = await startScene($, on, { thresholds: { limit_warn_percent: null } })
+    await endTurnAt(scene, { five: 81 })
+    await scene.startTurn(10)
+    expect(await toolAt(scene, { five: 81 }, AGENT)).toEqual({ deny: FIVE_DENIAL })
+    setHat(scene, COVERED)
+    await endTurnAt(scene, { five: 81 })
+    await scene.startTurn(10)
+
+    const out = await toolAt(scene, { five: 81 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+  })
+
+  test('drain off: no drain text, so no release', async ($, on) => {
+    const scene = await startScene($, on, { thresholds: { drain: false } })
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setHat(scene, COVERED)
+
+    const out = await toolAt(scene, { five: 73 }, AGENT)
+
+    expect(hasRelease(out)).toBe(false)
+  })
+
+  test('a wait that was never told: cancelled silently', async ($, on) => {
+    const scene = await startScene($, on, { thresholds: { limit_warn_percent: null } })
+    await endTurnAt(scene, { five: 81 })
+    setHat(scene, COVERED)
+    await endTurnAt(scene, { five: 81 })
+    await scene.startTurn(10)
+
+    const out = await toolAt(scene, { five: 81 }, AGENT)
+
+    expect(getWaiting(scene).cancelled_at).not.toBe(null)
+    expect(hasRelease(out)).toBe(false)
+  })
+
+  test('the refusal ended by the request to anchor: nothing new', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    await endTurnAt(scene, { five: 81 }, { tasks: [] })
+    expect(scene.world.runs).toEqual(['hats:anchor'])
+    setHat(scene, COVERED)
+    await scene.startTurn(10)
+
+    const out = await toolAt(scene, { five: 81 }, AGENT)
+
+    expect(hasRelease(out)).toBe(false)
+  })
+
+  test('the window fell below its lowest threshold: the release names it', async ($, on) => {
+    const scene = await startScene($, on)
+    const warned = await warnWindow(scene)
+    expect(getContext(warned)[0].endsWith(DRAIN_ON)).toBe(true)
+
+    const out = await toolAt(scene, {}, AGENT, 50)
+    const next = await toolAt(scene, {}, READ, 50)
+
+    expect(out.deny).toBe(undefined)
+    expect(getContext(out)).toEqual([getReleased('its context window fell below 60%')])
+    expect(hasRelease(next)).toBe(false)
+  })
+
+  test('the window fell below while the limit still refuses: no release, the refusal stays', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene, { five: 72 })
+
+    const out = await toolAt(scene, { five: 73 }, READ, 50)
+    const agent = await toolAt(scene, { five: 73 }, AGENT, 50)
+
+    expect(hasRelease(out)).toBe(false)
+    expect(agent).toEqual({ deny: FIVE_DENIAL })
+  })
+
+  test('the window fell below and the limit released after: one release with both reasons', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene, { five: 72 })
+    await toolAt(scene, { five: 73 }, READ, 50)
+    setHat(scene, COVERED)
+
+    const out = await toolAt(scene, { five: 73 }, AGENT, 50)
+
+    expect(getContext(out)).toEqual([
+      getReleaseText([
+        'its context window fell below 60%',
+        'Hats now changes hats on its 5-hour limit',
+      ]),
+    ])
+  })
+
+  test('a window drain told before an anchor does not count for the next round', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+    await endTurnAt(scene, {}, { tasks: [], window: 71 })
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+    const quiet = await scene.startTurn(50)
+    await scene.endTurn(quiet, { percent: 61 })
+    await scene.startTurn(50)
+
+    const out = await toolAt(scene, {}, READ, 50)
+
+    expect(scene.world.runs).toEqual(['hats:anchor'])
+    expect(hasRelease(out)).toBe(false)
+  })
+
+  test('the window back above its lowest threshold but below the warning: refusals go on, no release', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+
+    const out = await toolAt(scene, {}, READ, 65)
+    const agent = await toolAt(scene, {}, AGENT, 65)
+
+    expect(hasRelease(out)).toBe(false)
+    expect(agent.deny).not.toBe(undefined)
+  })
+
+  test('the reasons of the window, by their exact words', () => {
+    expect(getWindowReason(60)).toBe('its context window fell below 60%')
+    expect(getWindowReason(null)).toBe('the thresholds of its context window are off')
+    expect(DRAIN_OFF_REASON).toBe('the drain was turned off in Hats')
+  })
+
+  test('the window fell below as the first limit warning with drain arrives: only the warning, the refusal stands', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+
+    const both = await toolAt(scene, { five: 72 }, READ, 50)
+    const agent = await toolAt(scene, { five: 73 }, AGENT, 50)
+
+    expect(getContext(both)).toHaveLength(1)
+    expect(getContext(both)[0].endsWith(DRAIN_ON)).toBe(true)
+    expect(agent).toEqual({ deny: FIVE_DENIAL })
+  })
+
+  test('the hat changed and the new one is moved by Hats: the release names the change of hat', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setHat(scene, { worn: 'personal', ...COVERED })
+
+    const out = await toolAt(scene, { five: 73 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('the hat changed')])
+  })
+
+  test('the session is no longer under Hats: the release says so', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setHat(scene, { credential_service: 'Claude Code-credentials-0eaa50e6' })
+
+    const out = await toolAt(scene, { five: 73 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('this session is no longer under Hats')])
+  })
+
+  test('the hat file cannot be read: the told limit is kept and nothing is said until it is read', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    scene.world.files.delete(HAT_USAGE)
+
+    const unread = await toolAt(scene, { five: 73 }, AGENT)
+    setHat(scene, COVERED)
+    const read = await toolAt(scene, { five: 73 }, READ)
+
+    expect(hasRelease(unread)).toBe(false)
+    expect(getContext(read)).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+  })
+
+  test('the weekly limit released: the release names the weekly limit', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await toolAt(scene, { week: 72 })
+    setHat(scene, COVERED)
+
+    const out = await toolAt(scene, { week: 73 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('Hats now changes hats on its weekly limit')])
+  })
+
+  test('the thresholds of the window turned off while its drain was told: the release names them', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+    setThresholds(scene, { warn_percent: null, save_percent: null })
+
+    const out = await toolAt(scene, {}, AGENT, 61)
+
+    expect(getContext(out)).toEqual([getReleased('the thresholds of its context window are off')])
+  })
+
+  test('the drain switch turned off while a limit refused: the release says so, once', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    setThresholds(scene, { drain: false })
+
+    const out = await toolAt(scene, { five: 73 }, AGENT)
+    const next = await toolAt(scene, { five: 73 }, READ)
+
+    expect(getContext(out)).toEqual([getReleased(DRAIN_OFF_REASON)])
+    expect(hasRelease(next)).toBe(false)
+  })
+
+  test('the drain switch turned off while the window refused: the release says so', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+    setThresholds(scene, { drain: false })
+
+    const out = await toolAt(scene, {}, AGENT, 61)
+
+    expect(getContext(out)).toEqual([getReleased(DRAIN_OFF_REASON)])
+  })
+
+  test('the drain switch turned off while the window refused: the next prompt carries the release', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene)
+    setThresholds(scene, { drain: false })
+
+    await scene.prompt('go on')
+
+    expect(scene.world.prompts[0].context).toEqual([getReleased(DRAIN_OFF_REASON)])
+  })
+
+  test('a queued reason, then the request to anchor: no release after it', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene, { five: 72 })
+    await toolAt(scene, { five: 73 }, READ, 50)
+    await endTurnAt(scene, { five: 81 }, { tasks: [], window: 50 })
+    expect(scene.world.runs).toEqual(['hats:anchor'])
+    const outs: any[] = []
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene).map(step => async () => outs.push(await step())) })
+    await scene.startTurn(50)
+
+    const after = await toolAt(scene, { five: 81 }, AGENT, 50)
+
+    expect(outs.some(hasRelease)).toBe(false)
+    expect(hasRelease(after)).toBe(false)
+  })
+
+  test('the window told only by a refusal (warning off): the release comes once when it falls below', async ($, on) => {
+    const scene = await startScene($, on, { thresholds: { warn_percent: null } })
+    const first = await scene.startTurn(10)
+    await scene.endTurn(first, { percent: 10 })
+    await endTurnAt(scene, {}, { window: 71 })
+    await scene.startTurn(71)
+    expect((await toolAt(scene, {}, AGENT, 71)).deny).not.toBe(undefined)
+
+    const out = await toolAt(scene, {}, READ, 50)
+    const next = await toolAt(scene, {}, READ, 50)
+
+    expect(getContext(out)).toEqual([getReleased('its context window fell below 70%')])
+    expect(hasRelease(next)).toBe(false)
+  })
+
+  test('a queued reason, then a verified manual anchor: no release after it', async ($, on) => {
+    const scene = await startScene($, on)
+    await warnWindow(scene, { five: 72 })
+    await toolAt(scene, { five: 73 }, READ, 50)
+    const turnId = await scene.startTurn(50)
+    setLimits(scene, { five: 79 })
+    for (const step of getSaveSteps(scene)) await step()
+    setLimits(scene, { five: 81 })
+    setSnapshot(scene, { tasks: HOLDERS })
+    await scene.endTurn(turnId, { percent: 50 })
+    expect(getLimitStage(scene).five_hour.asked).toMatchObject({ percent: 81 })
+    await scene.startTurn(50)
+
+    const out = await toolAt(scene, { five: 81 }, AGENT, 50)
+
+    expect(hasRelease(out)).toBe(false)
+  })
+
+  test('Esc in the anchor turn gives the refusal back: its later lift is told', async ($, on) => {
+    const scene = await startScene($, on)
+    await scene.startTurn(10)
+    await warnFive(scene)
+    await endTurnAt(scene, { five: 81 }, { tasks: [] })
+    await scene.runAnchorTurn({ steps: [() => scene.runSteps()], reason: 'aborted' })
+    expect(getLimitStage(scene).five_hour.asked).toBe(null)
+    await scene.startTurn(10)
+    expect(await toolAt(scene, { five: 81 }, AGENT)).toEqual({ deny: FIVE_DENIAL })
+    setHat(scene, COVERED)
+
+    const out = await toolAt(scene, { five: 81 }, AGENT)
+
+    expect(getContext(out)).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
+  })
+
+  test('the window risen back to its lowest threshold before delivery: its queued reason is dropped', async ($, on) => {
+    const scene = await startScene($, on, { thresholds: { warn_percent: null } })
+    const first = await scene.startTurn(10)
+    await scene.endTurn(first, { percent: 10 })
+    await endTurnAt(scene, {}, { window: 71 })
+    await scene.startTurn(71)
+    expect((await toolAt(scene, {}, AGENT, 71)).deny).not.toBe(undefined)
+    await toolAt(scene, { five: 72 }, READ, 71)
+    expect(hasRelease(await toolAt(scene, { five: 73 }, READ, 50))).toBe(false)
+    setHat(scene, COVERED)
+
+    const out = await toolAt(scene, { five: 73 }, AGENT, 72)
+
+    expect(getContext(out)).toEqual([getReleased('Hats now changes hats on its 5-hour limit')])
   })
 })
