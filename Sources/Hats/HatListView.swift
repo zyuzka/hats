@@ -12,8 +12,10 @@ struct HatListView: View {
             header
             Divider().padding(.vertical, 4)
             if !snapshot.hasFullDiskAccess { fullDiskAccessView }
-            if let banner = snapshot.banner { bannerView(banner) }
-            if let stranded = snapshot.deadEndBanner(now: Date()) { strandedView(stranded) }
+            if let banner = snapshot.banner(on: tab) {
+                bannerView(banner.record, fromTitle: banner.fromTitle, of: banner.tool)
+            }
+            if let stranded = snapshot.deadEndBanner(on: tab, now: Date()) { strandedView(stranded) }
             tabPicker
             let rows = snapshot.rows(of: tab)
             if rows.isEmpty { noHats } else { list(rows) }

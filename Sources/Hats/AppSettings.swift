@@ -37,6 +37,8 @@ struct AppSettings: Codable, Equatable {
     var hasToldToRestartCodexWindows = false
     var hasCodexHats = false
     var popoverTab = Tool.claudeCode
+    var codexAutoSwitch = AutoSwitchPolicy()
+    var codexAutoSwitchRecord: AutoSwitchRecord?
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -78,6 +80,9 @@ struct AppSettings: Codable, Equatable {
         let told = try? c.decodeIfPresent(Bool.self, forKey: .hasToldToRestartCodexWindows)
         hasToldToRestartCodexWindows = told ?? false
         hasCodexHats = (try? c.decodeIfPresent(Bool.self, forKey: .hasCodexHats)) ?? false
+        codexAutoSwitch = (try? c.decodeIfPresent(AutoSwitchPolicy.self, forKey: .codexAutoSwitch))
+            ?? AutoSwitchPolicy()
+        codexAutoSwitchRecord = try? c.decodeIfPresent(AutoSwitchRecord.self, forKey: .codexAutoSwitchRecord)
     }
 
     static var defaultURL: URL {

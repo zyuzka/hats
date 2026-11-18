@@ -34,8 +34,8 @@ extension AppDelegate {
         snapshot.gatewaySessions = somebodyLooks ? GatewayProcess.sessionRows : popover.model.snapshot.gatewaySessions
         snapshot.environment = gatewayEnvironment
         snapshot.settings = settings
-        snapshot.banner = settings.autoSwitchRecord.flatMap { $0.seenInPopover ? nil : $0 }
-        snapshot.bannerFromTitle = settings.autoSwitchRecord.map { snapshot.title(of: $0.from) } ?? ""
+        snapshot.showTheBanners(of: settings)
+        snapshot.codexAutoSwitchWarning = codexSwitch.lastWarning
         snapshot.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         snapshot.canCheckForUpdates = updater?.canCheckNow
         snapshot.checksForUpdatesAutomatically = updater?.checksAutomatically
@@ -61,8 +61,8 @@ extension AppDelegate {
         statusItem.button?.setAccessibilityLabel(snapshot.menuBarAccessibilityLabel)
         let sighting = BannerSighting.of(popoverShown: popover.isShown,
                                          popoverClosing: popover.isClosing,
-                                         hasBanner: snapshot.banner != nil)
-        if sighting == .seen { markBannerSeen() }
+                                         hasBanner: snapshot.banner(on: settings.popoverTab) != nil)
+        if sighting == .seen { markBannerSeen(on: settings.popoverTab) }
     }
 
     func showTheContextRows() {
@@ -80,10 +80,12 @@ extension AppDelegate {
         )
     }
 
-    private func markBannerSeen() {
-        guard var record = settings.autoSwitchRecord, !record.seenInPopover else { return }
+    private func markBannerSeen(on tool: Tool) {
+        let key: WritableKeyPath<AppSettings, AutoSwitchRecord?> =
+            tool == .codex ? \.codexAutoSwitchRecord : \.autoSwitchRecord
+        guard var record = settings[keyPath: key], !record.seenInPopover else { return }
         record.seenInPopover = true
-        settings.autoSwitchRecord = record
+        settings[keyPath: key] = record
         saveSettings()
     }
 

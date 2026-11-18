@@ -1,5 +1,11 @@
 import Foundation
 
+enum CodexAutoWear: Equatable {
+    case worn(CodexWorn, [CodexRenewed])
+    case moved
+    case failed(String)
+}
+
 extension CodexDesk {
     func wear(
         _ target: CodexTicket,
@@ -7,20 +13,45 @@ extension CodexDesk {
         then: @escaping (Result<CodexWorn, Error>, [CodexRenewed]) -> Void
     ) {
         world.run { [self] in
-            do {
-                let worn = try wearNow(target, among: hats)
-                var renewed: [CodexRenewed] = []
-                if case .worn(_, let outgoing?, _) = worn, let hat = hats.first(where: { $0.id == outgoing }) {
-                    renewed = renewOne(hat, forced: true).map { [$0] } ?? []
-                }
-                world.onMain { then(.success(worn), renewed) }
-            } catch {
-                Journal.log("codex.wear.refused", [
-                    "target": String(target.id.prefix(8)),
-                    "reason": error.localizedDescription,
-                ])
-                world.onMain { then(.failure(error), []) }
+            switch wearAndRenewTheParked(target, among: hats) {
+            case .success(let done): world.onMain { then(.success(done.worn), done.renewed) }
+            case .failure(let error): world.onMain { then(.failure(error), []) }
             }
+        }
+    }
+
+    func wear(
+        _ target: CodexTicket,
+        insteadOf expected: String,
+        among hats: [CodexTicket],
+        then: @escaping (CodexAutoWear) -> Void
+    ) {
+        world.run { [self] in
+            guard isStillWorn(expected, among: hats) else { return world.onMain { then(.moved) } }
+            switch wearAndRenewTheParked(target, among: hats) {
+            case .success(let done): world.onMain { then(.worn(done.worn, done.renewed)) }
+            case .failure(let error): world.onMain { then(.failed(error.localizedDescription)) }
+            }
+        }
+    }
+
+    private func wearAndRenewTheParked(
+        _ target: CodexTicket,
+        among hats: [CodexTicket]
+    ) -> Result<(worn: CodexWorn, renewed: [CodexRenewed]), Error> {
+        do {
+            let worn = try wearNow(target, among: hats)
+            var renewed: [CodexRenewed] = []
+            if case .worn(_, let outgoing?, _) = worn, let hat = hats.first(where: { $0.id == outgoing }) {
+                renewed = renewOne(hat, forced: true).map { [$0] } ?? []
+            }
+            return .success((worn, renewed))
+        } catch {
+            Journal.log("codex.wear.refused", [
+                "target": String(target.id.prefix(8)),
+                "reason": error.localizedDescription,
+            ])
+            return .failure(error)
         }
     }
 

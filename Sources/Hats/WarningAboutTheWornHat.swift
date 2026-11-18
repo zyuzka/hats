@@ -6,19 +6,24 @@ struct DeadEndBanner: Equatable {
 }
 
 extension HatsSnapshot {
-    var warningAboutTheWornHat: AutoSwitchWarning? {
-        guard settings.autoSwitch.isOn, hasOnlyHatsThatAreStillHere(autoSwitchWarning) else { return nil }
-        return autoSwitchWarning
+    var warningAboutTheWornHat: AutoSwitchWarning? { warningAboutTheWornHat(on: .claudeCode) }
+
+    func warningAboutTheWornHat(on tool: Tool) -> AutoSwitchWarning? {
+        let (isOn, warning) = tool == .codex
+            ? (settings.codexAutoSwitch.isOn, codexAutoSwitchWarning)
+            : (settings.autoSwitch.isOn, autoSwitchWarning)
+        guard isOn, hasOnlyHatsThatAreStillHere(warning, among: rows(of: tool)) else { return nil }
+        return warning
     }
 
     var showsAWarningAboutTheWornHat: Bool { warningAboutTheWornHat != nil }
 
-    func deadEndBanner(now: Date, timeZone: TimeZone = .current) -> DeadEndBanner? {
-        guard case .nowhereToGoAtALimit(let limit, let by) = warningAboutTheWornHat else {
+    func deadEndBanner(on tool: Tool = .claudeCode, now: Date, timeZone: TimeZone = .current) -> DeadEndBanner? {
+        guard case .nowhereToGoAtALimit(let limit, let by) = warningAboutTheWornHat(on: tool) else {
             return nil
         }
         let line = HatsCopy.nowhereToGo(
-            of: wearing?.title ?? "This hat",
+            of: wearing(on: tool)?.title ?? "This hat",
             limit: limit,
             strandedBy: by,
             now: now,
@@ -29,6 +34,10 @@ extension HatsSnapshot {
     }
 
     func hasOnlyHatsThatAreStillHere(_ warning: AutoSwitchWarning?) -> Bool {
+        hasOnlyHatsThatAreStillHere(warning, among: rows)
+    }
+
+    func hasOnlyHatsThatAreStillHere(_ warning: AutoSwitchWarning?, among rows: [HatRowState]) -> Bool {
         if let warning, let away = findHatsNamedOnVacation(in: warning) {
             return Set(away.map(\.id)) == Set(rows.filter(\.isSkippedByTheSwitch).map(\.id))
         }

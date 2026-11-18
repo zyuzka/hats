@@ -11,19 +11,27 @@ extension AppDelegate {
             self?.syncTheCodexGateway()
             self?.renewTheWornCodexHat()
         }
-        codex.startReadingUsage(every: CodexUsagePoll.interval) { [weak self] in self?.readTheCodexUsage() }
+        codex.startReadingUsage(every: CodexUsagePoll.interval) { [weak self] in
+            self?.codexSwitch.failures.aTimerPollCame()
+            self?.readTheCodexUsage()
+        }
     }
 
     func readTheCodexUsage() {
-        codex.usage.poll(store.codexTickets, worn: store.codexActiveID) { [weak self] in self?.redraw() }
+        codex.usage.poll(store.codexTickets, worn: store.codexActiveID) { [weak self] in
+            self?.redraw()
+            self?.decideCodexAutoSwitch(from: .aPollLanded)
+        }
     }
 
     func noticeTheWornCodexHat() {
+        let before = store.codexActiveID
         do {
             store.noticeCodexLive(try CodexHome.real.readLive())
         } catch {
             Journal.log("codex.liveUnread", ["reason": error.localizedDescription])
         }
+        if store.codexActiveID != before { dropTheCodexSwitchBack() }
         codex.desk.noteWorn(store.codexActiveID)
     }
 
@@ -62,6 +70,7 @@ extension AppDelegate {
             case .success(let worn):
                 do {
                     try self.store.noteCodexWear(id, outcome: worn, renewed: renewed)
+                    self.dropTheCodexSwitchBack()
                 } catch {
                     HatDialogs.present(error)
                 }

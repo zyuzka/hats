@@ -731,7 +731,10 @@ final class NowhereToGoWarningTests: XCTestCase {
         XCTAssertTrue(sourceOf("AppDelegate+Redraw.swift")
             .contains("HatsSnapshot(autoSwitchWarning: lastAutoSwitchWarning)"),
             "the second link of the same chain: the held value reaches the snapshot here")
-        XCTAssertTrue(sourceOf("HatListView.swift").contains("snapshot.deadEndBanner(now: Date())"),
+        XCTAssertTrue(sourceOf("AppDelegate+Redraw.swift")
+            .contains("snapshot.codexAutoSwitchWarning = codexSwitch.lastWarning"),
+            "the Codex warning reaches the snapshot the same way")
+        XCTAssertTrue(sourceOf("HatListView.swift").contains("snapshot.deadEndBanner(on: tab, now: Date())"),
                       "and the third: the banner is drawn here. Every one of these lines is a "
                           + "single edit away from switching the feature off in silence, and none "
                           + "of them is reachable by a test in this project")

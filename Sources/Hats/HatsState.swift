@@ -76,6 +76,8 @@ struct HatsSnapshot: Equatable {
     var settings = AppSettings()
     var banner: AutoSwitchRecord?
     var bannerFromTitle: String = ""
+    var codexBanner: AutoSwitchRecord?
+    var codexBannerFromTitle: String = ""
     var version: String = "dev"
     var canCheckForUpdates: Bool?
     var checksForUpdatesAutomatically: Bool?
@@ -86,6 +88,7 @@ struct HatsSnapshot: Equatable {
     var everySession: [Session]?
     var reducesMotion = false
     var autoSwitchWarning: AutoSwitchWarning?
+    var codexAutoSwitchWarning: AutoSwitchWarning?
     var sessionHandoff = SessionHandoffRow()
     var contextRows: [ContextRow] = []
     var codexGateway = CodexGatewayFace()
@@ -123,22 +126,15 @@ struct HatsSnapshot: Equatable {
                                     readings: readingByHat)
     }
 
-    var isEveryOtherHatOnVacation: Bool {
+    var isEveryOtherHatOnVacation: Bool { Self.isEveryOtherHatOnVacation(in: rows) }
+
+    static func isEveryOtherHatOnVacation(in rows: [HatRowState]) -> Bool {
         let others = rows.filter { !$0.isWearing }
 
         return !others.isEmpty && others.allSatisfy(\.isSkippedByTheSwitch)
     }
 
     var hasABlockedHatInPlay: Bool { !AutoSwitchEngine.blocked(in: rows).isEmpty }
-
-    func getHandover(for row: HatRowState) -> String? {
-        guard row.isWearing, row.tool == .claudeCode, settings.autoSwitch.isOn else { return nil }
-        guard let next = nextInLine else {
-            return isEveryOtherHatOnVacation ? HatsCopy.noHandoverTheOthersAreOnVacation : nil
-        }
-
-        return HatsCopy.handover(to: title(of: next))
-    }
 
     func title(of id: String) -> String { (rows + codexRows).first { $0.id == id }?.title ?? id }
 }

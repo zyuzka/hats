@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastAutoSwitchNowhere = NoteOnChange()
     var lastAutoSwitchWarning: AutoSwitchWarning?
     var lastAnnouncedWarning: AutoSwitchWarning?
+    var codexSwitch = CodexAutoSwitchMemory()
     var pollsLanded = 0
     var pollsOnHeaders = PollsOnHeaders()
     var gatewayEnvironment: GatewayEnvironmentReport?
@@ -74,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.withOneLookAtTheProcessTable {
                 self?.releaseTheRetiredListenerIfNothingNeedsIt()
                 self?.syncWithWorld(reportingErrors: false)
-                self?.decideAutoSwitch(from: .thePopoverOpened)
+                self?.decideEverySwitch(from: .thePopoverOpened)
             }
         }
         login.liveLoginMoved = { [weak self] identity in self?.redraw(ifTheLiveLoginMoved: identity) }

@@ -44,6 +44,12 @@ final class CodexDesk {
 
     func noteWornHere(_ id: String) { worn = id }
 
+    func isStillWorn(_ id: String, among hats: [CodexTicket]) -> Bool {
+        guard worn == id, let owner = hats.first(where: { $0.id == id })?.owner else { return false }
+
+        return (try? world.home.readLive()).flatMap { $0 }.flatMap { CodexAuth(data: $0)?.owner } == owner
+    }
+
     func heldIDs() -> [String] {
         unsavedLock.lock()
         defer { unsavedLock.unlock() }

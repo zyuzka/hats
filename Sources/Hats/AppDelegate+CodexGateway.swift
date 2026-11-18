@@ -14,6 +14,7 @@ extension AppDelegate {
             } catch {
                 Journal.log("codexGateway.wearNotRecorded", ["reason": error.localizedDescription])
             }
+            self.dropTheCodexSwitchBack()
             self.redraw()
         }
         broker.onLogin = { [weak self] id, data in
@@ -29,6 +30,7 @@ extension AppDelegate {
             DispatchQueue.main.async {
                 guard let self, self.codex.usage.note(sighting, for: id) == .taken else { return }
                 self.redraw()
+                self.decideCodexAutoSwitch(from: .aPollLanded)
             }
         }
     }

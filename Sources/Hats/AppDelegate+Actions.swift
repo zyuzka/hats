@@ -137,7 +137,7 @@ extension AppDelegate: HatsActions {
                   self.hasConfirmedLosingTheCodexGateway(by: hat) else { return }
             do {
                 try self.store.remove(id)
-                self.settings.autoSwitch.order.removeAll { $0 == id }
+                self.settings.forgetInTheSwitches(id)
                 self.saveSettings()
                 self.redraw()
                 self.usage.poll(self.hatsForUsage())

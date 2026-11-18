@@ -91,7 +91,11 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
             XCTAssertEqual(codexRow.usage?.session?.percent, 95, order)
             XCTAssertNil(shown.readingByHat[pair.codex.id], order)
             XCTAssertNil(shown.nextInLine, order)
-            XCTAssertNil(shown.getHandover(for: codexRow), "no next: under a worn Codex hat — \(order)")
+            XCTAssertNil(shown.getHandover(for: codexRow),
+                         "the Claude switch is on, the Codex switch is off: no next: under Codex — \(order)")
+            shown.settings.codexAutoSwitch.isOn = true
+            XCTAssertNil(shown.getHandover(for: codexRow),
+                         "the Codex switch is on, yet the only Codex hat has no other to go to — \(order)")
             let file = HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil)
             XCTAssertEqual(file.worn, pair.claude.id, order)
             XCTAssertNil(file.fiveHour, "the Codex 95% is not the worn Claude hat's — \(order)")
@@ -111,7 +115,10 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
         snapshot.rows.append(HatRowState(hat: resting, isWearing: false, usage: nil, usageTrouble: nil))
 
         XCTAssertEqual(snapshot.getHandover(for: snapshot.rows[0]), HatsCopy.noHandoverTheOthersAreOnVacation)
-        XCTAssertNil(snapshot.getHandover(for: codexRow))
+        XCTAssertNil(snapshot.getHandover(for: codexRow), "the Codex switch is off")
+        snapshot.settings.autoSwitch.isOn = false
+        snapshot.settings.codexAutoSwitch.isOn = true
+        XCTAssertNil(snapshot.getHandover(for: snapshot.rows[0]), "the Claude switch is off")
     }
 
     func testAClickGoesByTheProviderOfTheHat() throws {
