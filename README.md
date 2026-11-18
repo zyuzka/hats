@@ -138,7 +138,7 @@ The Codex hats are listed under Claude's, under "Codex".
 
 A Codex window keeps its login in memory, so putting another hat on reaches only windows started after
 it — unless the window goes through the Codex gateway. The gateway is separate from Claude's: it
-listens on `127.0.0.1:8788` (Settings → Codex gateway; on by default once a Codex hat exists) and, while
+listens on `127.0.0.1:8788` (Settings → Gateway, under Codex; on by default once a Codex hat exists) and, while
 it runs, Hats writes one line into the top of `~/.codex/config.toml`:
 
 ```toml

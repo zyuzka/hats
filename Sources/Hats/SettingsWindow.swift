@@ -14,10 +14,8 @@ struct SettingsTabs: View {
                 .tabItem { Text("Auto-switch") }
             ContextThresholdsPanel(model: model)
                 .tabItem { Text("Context") }
-            GatewayPanel(model: model)
+            GatewaysPanel(model: model)
                 .tabItem { Text("Gateway") }
-            CodexGatewayPanel(model: model)
-                .tabItem { Text("Codex gateway") }
         }
         .padding(14)
         .frame(width: 460, height: 420)
