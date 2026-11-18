@@ -2,7 +2,7 @@ import SwiftUI
 
 struct GatewayPanel: View {
     @ObservedObject var model: HatsModel
-    @State private var portText = ""
+    @ObservedObject var drafts: SettingsDrafts
 
     private var snapshot: HatsSnapshot { model.snapshot }
 
@@ -10,9 +10,7 @@ struct GatewayPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             runRow
             portRow
-            GatewaySettleRow(seconds: snapshot.settings.gatewaySettleSeconds) {
-                model.actions?.applyGatewaySettle($0)
-            }
+            GatewaySettleRow(model: model, drafts: drafts)
             profileRow
             Divider()
             HStack(spacing: 8) {
@@ -24,8 +22,6 @@ struct GatewayPanel: View {
             .controlSize(.small).padding(.horizontal, 14)
         }
         .padding(.vertical, 8)
-        .onAppear { portText = String(snapshot.settings.gatewayPort) }
-        .onChange(of: snapshot.settings.gatewayPort) { port in portText = String(port) }
     }
 
     private var runRow: some View {
@@ -49,13 +45,23 @@ struct GatewayPanel: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
                 Text("Port").font(.system(size: 13))
-                TextField("8787", text: $portText).frame(width: 70).textFieldStyle(.roundedBorder)
-                Button("Apply") { applyTypedPort() }.disabled(!isTypedPortApplicable)
+                DigitField(
+                    text: portState.text,
+                    placeholder: "8787",
+                    label: "Port",
+                    change: { drafts.setText($0, of: .port, in: snapshot.settings) },
+                    submit: { drafts.apply(model) },
+                    cancel: { drafts.reset(.port) }
+                )
+                .frame(width: 70)
                 if isAPortWorthWalkingPast, AppSettings.isAUsablePort(nextPortToTry) {
                     Button("Try \(nextPortToTry)") { walkToTheNextPort() }
                 }
             }
             .controlSize(.small)
+            if let reason = portState.reason {
+                Text(reason).font(.system(size: 11)).foregroundStyle(Color.orange)
+            }
             if let refusal = snapshot.portRefusal {
                 Text("the port did not change: \(refusal)").font(.system(size: 11))
                     .foregroundStyle(Color.orange)
@@ -72,15 +78,9 @@ struct GatewayPanel: View {
         .padding(.horizontal, 14)
     }
 
-    private var typedPort: Int? { TypedNumber.typed(portText) }
+    private var portState: SettingsFieldState { drafts.getState(.port, in: snapshot.settings) }
 
-    private var applicablePort: Int? {
-        TypedNumber.applicable(
-            portText,
-            current: snapshot.settings.gatewayPort,
-            isUsable: AppSettings.isAUsablePort
-        )
-    }
+    private var typedPort: Int? { TypedNumber.typed(portState.text) }
 
     private var isAPortWorthWalkingPast: Bool {
         if snapshot.portRefusal != nil { return true }
@@ -92,15 +92,8 @@ struct GatewayPanel: View {
 
     private func walkToTheNextPort() {
         let next = nextPortToTry
-        portText = String(next)
+        drafts.reset(.port)
         model.actions?.applyGatewayPort(next)
-    }
-
-    private var isTypedPortApplicable: Bool { applicablePort != nil }
-
-    private func applyTypedPort() {
-        guard let port = applicablePort else { return }
-        model.actions?.applyGatewayPort(port)
     }
 
     @ViewBuilder private var profileRow: some View {

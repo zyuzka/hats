@@ -154,22 +154,24 @@ final class ContextThresholdsTests: XCTestCase {
         let panel = try String(contentsOf: root.appendingPathComponent("Sources/Hats/ContextThresholdsPanel.swift"),
                                encoding: .utf8)
 
-        XCTAssertTrue(tabs.contains("            ContextThresholdsPanel(model: model)\n"
-                                        + "                .tabItem { Text(\"Context\") }"))
+        XCTAssertTrue(tabs.contains("                ContextThresholdsPanel(model: model, drafts: drafts)\n"
+                                        + "                    .tabItem { Text(\"Context\") }"))
         let rows = [
             """
                         threshold(
                             HatsCopy.warnAt,
+                            field: .contextWarn,
                             percent: thresholds.warnPercent,
-                            bounds: thresholds.getWarnBounds(),
+                            stepRange: thresholds.getWarnRange(),
                             toggle: { next, isOn in next.setWarn(isOn: isOn) },
                             step: { next, percent in next.setWarn(percent) }
                         )
                         drain
                         threshold(
                             HatsCopy.anchorAt,
+                            field: .contextSave,
                             percent: thresholds.savePercent,
-                            bounds: thresholds.getSaveBounds(),
+                            stepRange: thresholds.getSaveRange(),
                             toggle: { next, isOn in next.setSave(isOn: isOn) },
                             step: { next, percent in next.setSave(percent) }
                         )
@@ -179,10 +181,13 @@ final class ContextThresholdsTests: XCTestCase {
             """
                     PercentField(
                         label: label,
+                        field: field,
                         percent: percent,
-                        bounds: bounds,
+                        stepRange: stepRange,
                         note: nil,
-                        apply: { value in change { step(&$0, value) } },
+                        model: model,
+                        drafts: drafts,
+                        step: { value in change { step(&$0, value) } },
                         leading: {
                             Toggle(label, isOn: Binding(
                                 get: { percent != nil },

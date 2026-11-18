@@ -2,13 +2,14 @@ import SwiftUI
 
 struct PercentField<Leading: View>: View {
     let label: String
+    let field: SettingsField
     let percent: Int?
-    let bounds: PercentBounds
+    let stepRange: ClosedRange<Int>
     let note: String?
-    let apply: (Int) -> Void
+    @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
+    let step: (Int) -> Void
     @ViewBuilder let leading: () -> Leading
-
-    @State private var text = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -16,47 +17,43 @@ struct PercentField<Leading: View>: View {
                 leading()
                 Spacer()
                 if let percent {
-                    field(percent)
+                    row(percent)
                 }
             }
             if let reason = state.reason {
                 Text(reason).font(.system(size: 11)).foregroundStyle(Color.orange)
             }
         }
-        .onAppear { text = percent.map(String.init) ?? "" }
-        .onChange(of: percent) { now in text = now.map(String.init) ?? "" }
     }
 
-    private func field(_ percent: Int) -> some View {
+    private func row(_ percent: Int) -> some View {
         HStack(spacing: 6) {
-            TextField(String(percent), text: $text)
-                .accessibilityLabel(label)
-                .frame(width: 44)
-                .textFieldStyle(.roundedBorder)
-                .onSubmit { applyTyped() }
+            DigitField(
+                text: state.text,
+                placeholder: String(percent),
+                label: label,
+                change: { drafts.setText($0, of: field, in: model.snapshot.settings) },
+                submit: { drafts.apply(model) },
+                cancel: { drafts.reset(field) }
+            )
+            .frame(width: 44)
             Text("%").font(.system(size: 11)).foregroundStyle(.secondary)
             Stepper(
                 "",
                 value: Binding(
                     get: { percent },
-                    set: { value in apply(bounds.getStepRange().getClamped(value)) }
+                    set: { value in step(stepRange.getClamped(value)) }
                 ),
-                in: bounds.getStepRange(),
+                in: stepRange,
                 step: 1
             )
             .labelsHidden()
             .accessibilityLabel(label)
-            Button("Apply") { applyTyped() }.disabled(state.applicable == nil)
         }
         .controlSize(.small)
     }
 
-    private var state: PercentFieldState {
-        TypedNumber.getPercentFieldState(text, current: percent, bounds: bounds, note: note)
-    }
-
-    private func applyTyped() {
-        guard let value = state.applicable else { return }
-        apply(value)
+    private var state: SettingsFieldState {
+        drafts.getState(field, in: model.snapshot.settings, note: note)
     }
 }

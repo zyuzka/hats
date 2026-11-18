@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContextThresholdsPanel: View {
     @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
 
     private var thresholds: ContextThresholds { model.snapshot.settings.contextThresholds }
 
@@ -15,16 +16,18 @@ struct ContextThresholdsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             threshold(
                 HatsCopy.warnAt,
+                field: .contextWarn,
                 percent: thresholds.warnPercent,
-                bounds: thresholds.getWarnBounds(),
+                stepRange: thresholds.getWarnRange(),
                 toggle: { next, isOn in next.setWarn(isOn: isOn) },
                 step: { next, percent in next.setWarn(percent) }
             )
             drain
             threshold(
                 HatsCopy.anchorAt,
+                field: .contextSave,
                 percent: thresholds.savePercent,
-                bounds: thresholds.getSaveBounds(),
+                stepRange: thresholds.getSaveRange(),
                 toggle: { next, isOn in next.setSave(isOn: isOn) },
                 step: { next, percent in next.setSave(percent) }
             )
@@ -33,7 +36,7 @@ struct ContextThresholdsPanel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HatLimitSection(model: model)
+            HatLimitSection(model: model, drafts: drafts)
             Spacer()
         }
         .padding(.horizontal, 14)
@@ -48,17 +51,21 @@ struct ContextThresholdsPanel: View {
 
     private func threshold(
         _ label: String,
+        field: SettingsField,
         percent: Int?,
-        bounds: PercentBounds,
+        stepRange: ClosedRange<Int>,
         toggle: @escaping (inout ContextThresholds, Bool) -> Void,
         step: @escaping (inout ContextThresholds, Int) -> Void
     ) -> some View {
         PercentField(
             label: label,
+            field: field,
             percent: percent,
-            bounds: bounds,
+            stepRange: stepRange,
             note: nil,
-            apply: { value in change { step(&$0, value) } },
+            model: model,
+            drafts: drafts,
+            step: { value in change { step(&$0, value) } },
             leading: {
                 Toggle(label, isOn: Binding(
                     get: { percent != nil },

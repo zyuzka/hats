@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HatLimitSection: View {
     @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
 
     private var limits: LimitThresholds { model.snapshot.settings.limitThresholds }
 
@@ -11,8 +12,9 @@ struct HatLimitSection: View {
                 .font(.system(size: 13, weight: .semibold))
             limitThreshold(
                 HatsCopy.warnAt,
+                field: .limitWarn,
                 percent: limits.warnPercent,
-                bounds: limits.getWarnBounds(),
+                stepRange: limits.getWarnRange(),
                 note: limits.canTurnWarnOn() ? nil : limits.savePercent.map {
                     HatsCopy.getNoRoomBelow(HatsCopy.anchorAt, percent: $0)
                 },
@@ -21,8 +23,9 @@ struct HatLimitSection: View {
             )
             limitThreshold(
                 HatsCopy.anchorAt,
+                field: .limitSave,
                 percent: limits.savePercent,
-                bounds: limits.getSaveBounds(),
+                stepRange: limits.getSaveRange(),
                 note: limits.canTurnSaveOn() ? nil : limits.warnPercent.map {
                     HatsCopy.getNoRoomAbove(HatsCopy.warnAt, percent: $0)
                 },
@@ -45,18 +48,22 @@ struct HatLimitSection: View {
 
     private func limitThreshold(
         _ label: String,
+        field: SettingsField,
         percent: Int?,
-        bounds: PercentBounds,
+        stepRange: ClosedRange<Int>,
         note: String?,
         toggle: @escaping (inout LimitThresholds, Bool) -> Void,
         step: @escaping (inout LimitThresholds, Int) -> Void
     ) -> some View {
         PercentField(
             label: label,
+            field: field,
             percent: percent,
-            bounds: bounds,
+            stepRange: stepRange,
             note: percent == nil ? note : nil,
-            apply: { value in changeLimits { step(&$0, value) } },
+            model: model,
+            drafts: drafts,
+            step: { value in changeLimits { step(&$0, value) } },
             leading: {
                 Toggle(label, isOn: Binding(
                     get: { percent != nil },

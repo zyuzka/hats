@@ -68,12 +68,15 @@ struct AppSettings: Codable, Equatable {
         try encoder.encode(self).write(to: url, options: .atomic)
     }
 
+    static let portRange = 1024...65535
+    static let settleRange = 0...600
+
     static func isAUsablePort(_ port: Int) -> Bool {
-        (1024...65535).contains(port)
+        portRange.contains(port)
     }
 
     static func isAUsableSettle(_ seconds: Int) -> Bool {
-        (0...600).contains(seconds)
+        settleRange.contains(seconds)
     }
 
     static func isBelowTheDefaultSettle(_ seconds: Int) -> Bool {

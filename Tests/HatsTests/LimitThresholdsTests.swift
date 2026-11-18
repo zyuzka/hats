@@ -217,8 +217,9 @@ final class LimitThresholdsTests: XCTestCase {
                             .font(.system(size: 13, weight: .semibold))
                         limitThreshold(
                             HatsCopy.warnAt,
+                            field: .limitWarn,
                             percent: limits.warnPercent,
-                            bounds: limits.getWarnBounds(),
+                            stepRange: limits.getWarnRange(),
                             note: limits.canTurnWarnOn() ? nil : limits.savePercent.map {
                                 HatsCopy.getNoRoomBelow(HatsCopy.anchorAt, percent: $0)
                             },
@@ -227,8 +228,9 @@ final class LimitThresholdsTests: XCTestCase {
                         )
                         limitThreshold(
                             HatsCopy.anchorAt,
+                            field: .limitSave,
                             percent: limits.savePercent,
-                            bounds: limits.getSaveBounds(),
+                            stepRange: limits.getSaveRange(),
                             note: limits.canTurnSaveOn() ? nil : limits.warnPercent.map {
                                 HatsCopy.getNoRoomAbove(HatsCopy.warnAt, percent: $0)
                             },
@@ -245,10 +247,13 @@ final class LimitThresholdsTests: XCTestCase {
             """
                     PercentField(
                         label: label,
+                        field: field,
                         percent: percent,
-                        bounds: bounds,
+                        stepRange: stepRange,
                         note: percent == nil ? note : nil,
-                        apply: { value in changeLimits { step(&$0, value) } },
+                        model: model,
+                        drafts: drafts,
+                        step: { value in changeLimits { step(&$0, value) } },
                         leading: {
                             Toggle(label, isOn: Binding(
                                 get: { percent != nil },
@@ -264,7 +269,7 @@ final class LimitThresholdsTests: XCTestCase {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                        HatLimitSection(model: model)
+                        HatLimitSection(model: model, drafts: drafts)
             """,
         ]
         for row in rows {

@@ -18,26 +18,30 @@ struct PercentFieldState: Equatable {
 }
 
 enum TypedNumber {
-    typealias Usable = (Int) -> Bool
-
     static func typed(_ text: String) -> Int? {
         Int(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    static func applicable(_ text: String, current: Int, isUsable: Usable) -> Int? {
-        guard let value = typed(text),
-              isUsable(value),
-              value != current
-        else { return nil }
-        return value
+    static func getDigits(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { ("0"..."9").contains($0) }))
+    }
+
+    static func getDigitEdit(_ text: String, cursor: Int) -> (text: String, cursor: Int) {
+        let before = (text as NSString).substring(to: min(max(0, cursor), (text as NSString).length))
+
+        return (getDigits(text), getDigits(before).utf16.count)
     }
 
     static func getPercentDecision(_ text: String, current: Int, bounds: PercentBounds) -> PercentDecision {
+        getRangeDecision(text, current: current, range: bounds.getStepRange())
+    }
+
+    static func getRangeDecision(_ text: String, current: Int, range: ClosedRange<Int>) -> PercentDecision {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .silent }
         guard let value = typed(trimmed) else { return .refuse(getUnparsedRefusal(trimmed)) }
-        if value < bounds.lower.percent { return .refuse(.belowLower) }
-        if value > bounds.upper.percent { return .refuse(.aboveUpper) }
+        if value < range.lowerBound { return .refuse(.belowLower) }
+        if value > range.upperBound { return .refuse(.aboveUpper) }
         guard value != current else { return .silent }
 
         return .apply(value)
