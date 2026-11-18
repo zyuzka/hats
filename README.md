@@ -292,7 +292,8 @@ when the plugin reloads, when the session changes and during the pause after the
 When they end while no anchor is asked — the window fell below its lowest threshold, **Drain background
 work** was turned off, or, for a hat limit, Hats moves the session again, the limit resets, its
 **Anchor at** is turned off, the hat changes or the session is no longer under Hats — and the model has
-had a drain text, the plugin tells the model once that background work is allowed again and why. It
+had a drain text, the plugin tells the model once that background work is allowed again and why — and, when the switch
+was turned off, that the session still anchors at its thresholds. It
 waits while anything else still refuses, and while a limit warning with the drain words goes out. With
 **Warn at** off they start only when anchoring is put off for running work. Hats writes
 the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that

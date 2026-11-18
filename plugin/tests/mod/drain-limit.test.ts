@@ -1131,6 +1131,13 @@ describe('the drain released', () => {
     )
   })
 
+  test('the drain turned off does not say the anchor is gone: the thresholds still anchor', () => {
+    expect(getReleaseText([DRAIN_OFF_REASON])).toBe(
+      'Hats drain: background work is allowed again — the drain was turned off in Hats; the session still anchors at its thresholds. ' +
+        'Tell the user so in one short line in your reply, in their language.',
+    )
+  })
+
   test('the limit wait cancelled because Hats changes hats again: the subagent runs and carries the release once', async ($, on) => {
     const scene = await startScene($, on)
     await scene.startTurn(10)

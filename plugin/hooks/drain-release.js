@@ -16,8 +16,13 @@ const SWITCH_CAUSE = 'switch'
 
 export const createTold = () => ({ window: false, five_hour: null, seven_day: null })
 
+const getReleaseTail = reasons =>
+  reasons.includes(DRAIN_OFF_REASON)
+    ? '; the session still anchors at its thresholds. '
+    : ', so this session no longer anchors for it. '
+
 export const getReleaseText = reasons =>
-  `Hats drain: background work is allowed again — ${reasons.join(', and ')}, so this session no longer anchors for it. ` +
+  `Hats drain: background work is allowed again — ${reasons.join(', and ')}${getReleaseTail(reasons)}` +
   'Tell the user so in one short line in your reply, in their language.'
 
 export const getWindowReason = lowest =>
