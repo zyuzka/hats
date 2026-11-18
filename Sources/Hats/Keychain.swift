@@ -4,6 +4,10 @@ enum Slot {
     static func parked(_ id: String) -> String { "Hats parked \(id)" }
 
     static func legacyParked(_ id: String) -> String { "TMK acc-switch parked \(id)" }
+
+    static func codexParked(_ id: String) -> String { "Hats Codex parked \(id)" }
+
+    static let claudePrefixes = [parked(""), legacyParked("")]
 }
 
 struct KeychainError: LocalizedError {
@@ -46,18 +50,23 @@ enum Keychain {
         }
     }
 
-    static func parkedAccountIDs(account: String,
-                                 dump: () -> Result = { run(["dump-keychain"]) })
-        throws -> [String] {
+    static func parkedAccountIDs(
+        account: String,
+        prefixes: [String] = Slot.claudePrefixes,
+        dump: () -> Result = { run(["dump-keychain"]) }
+    ) throws -> [String] {
         let result = dump()
         guard result.status == 0 else {
             throw KeychainError(operation: "list parked logins", detail: result.stderr)
         }
-        return parsedParkedIDs(dump: result.stdout, account: account)
+        return parsedParkedIDs(dump: result.stdout, account: account, prefixes: prefixes)
     }
 
-    static func parsedParkedIDs(dump: String, account: String) -> [String] {
-        let prefixes = [Slot.parked(""), Slot.legacyParked("")]
+    static func parsedParkedIDs(
+        dump: String,
+        account: String,
+        prefixes: [String] = Slot.claudePrefixes
+    ) -> [String] {
         var ids: Set<String> = []
         for item in dump.components(separatedBy: "keychain: ") {
             guard quotedAttribute("acct", in: item) == account,

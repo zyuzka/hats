@@ -5,14 +5,25 @@ struct KeychainWorld {
     var write: (String, Data) throws -> Void
     var delete: (String) throws -> Void
     var parkedAccountIDs: () throws -> [String]
+    var codexParkedAccountIDs: () throws -> [String] = { [] }
 
     static func real(osAccount: String) -> KeychainWorld {
         KeychainWorld(
             read: { try Keychain.read(service: $0, account: osAccount) },
             write: { try Keychain.write(service: $0, account: osAccount, data: $1) },
             delete: { try Keychain.delete(service: $0, account: osAccount) },
-            parkedAccountIDs: { try Keychain.parkedAccountIDs(account: osAccount) }
+            parkedAccountIDs: { try Keychain.parkedAccountIDs(account: osAccount) },
+            codexParkedAccountIDs: {
+                try Keychain.parkedAccountIDs(account: osAccount, prefixes: [Slot.codexParked("")])
+            }
         )
+    }
+
+    func writeVerified(_ data: Data, to service: String, label: String) throws {
+        try write(service, data)
+        guard let written = try read(service), written == data else {
+            throw SwitchError.writeDidNotTake(label)
+        }
     }
 
     func deleteParked(id: String) throws {

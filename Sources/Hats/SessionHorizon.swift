@@ -23,7 +23,7 @@ enum SessionHorizon {
 extension AccountStore {
     var soonestParkedAccessExpiry: Date? {
         guard let activeID else { return nil }
-        let parked = accounts.filter { $0.id != activeID }.compactMap(\.accessExpiresAt)
+        let parked = claudeHats.filter { $0.id != activeID }.compactMap(\.accessExpiresAt)
         let now = Date()
         return parked.filter { $0 > now }.min() ?? parked.min()
     }

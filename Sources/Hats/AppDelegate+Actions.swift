@@ -2,6 +2,7 @@ import AppKit
 
 extension AppDelegate: HatsActions {
     func wear(_ id: String) {
+        if ClaudeDoors.route(ofAClickOn: id, among: store.accounts) == .codex { return wearCodex(id) }
         changing = id
         let takenAway = whatTheWearTakesAway()
         redraw()
@@ -31,6 +32,7 @@ extension AppDelegate: HatsActions {
             guard let self else { return }
             self.whenNoSignInIsRunning { [weak self] in
                 guard let self, let wanted = HatDialogs.addHat() else { return }
+                if wanted.tool == .codex { return self.addCodexHat(wanted) }
                 do {
                     var hat = try self.store.add(email: wanted.email, browser: wanted.browser)
                     if let name = wanted.name {
@@ -66,6 +68,7 @@ extension AppDelegate: HatsActions {
                     guard self.store.accounts.first(where: { $0.id == id })?.browser?.overridesBrowser == true
                     else { return }
                 }
+                if hat.wornTool == .codex { return self.reloginCodex(id) }
                 do {
                     try self.login.begin(id, expecting: self.store.accounts.first { $0.id == id }?.email)
                 } catch {
@@ -139,18 +142,5 @@ extension AppDelegate: HatsActions {
                 HatDialogs.present(error, title: "Could not remove that hat")
             }
         }
-    }
-
-    func wornMetersForTheJournal() -> MeterReading {
-        guard let id = hatsForUsage().first(where: \.isWearing)?.id else { return .unavailable }
-        return metersForTheJournal(of: id)
-    }
-
-    func metersForTheJournal(of id: String) -> MeterReading {
-        MeterReading.of(usage.readings[id], readAt: usage.readAt[id], trouble: usage.troubles[id])
-    }
-
-    func afterThePopoverSettles(_ work: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 }

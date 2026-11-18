@@ -3,7 +3,7 @@ import SwiftUI
 struct HatListView: View {
     @ObservedObject var model: HatsModel
 
-    private var snapshot: HatsSnapshot { model.snapshot }
+    var snapshot: HatsSnapshot { model.snapshot }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -35,15 +35,22 @@ struct HatListView: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(snapshot.tool.displayName).font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 2)
-            ForEach(snapshot.rows) { row in
+            if !snapshot.rows.isEmpty { section(snapshot.tool.displayName, snapshot.rows) }
+            if !snapshot.codexRows.isEmpty { section(Tool.codex.displayName, snapshot.codexRows) }
+        }
+    }
+
+    private func section(_ title: String, _ rows: [HatRowState]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 2).padding(.top, 2)
+            ForEach(rows) { row in
                 HatRowView(
                     row: row,
                     isChanging: snapshot.changing == row.id,
                     handover: snapshot.getHandover(for: row),
                     display: snapshot.settings.usageDisplay,
-                    tool: snapshot.tool,
+                    tool: row.tool,
                     onWear: { model.actions?.wear(row.id) },
                     onRelogin: { model.actions?.relogin(row.id) }
                 )
@@ -67,7 +74,11 @@ struct HatListView: View {
         .padding(.horizontal, 14).padding(.top, 6)
     }
 
-    private var empty: some View {
+    @ViewBuilder private var empty: some View {
+        if snapshot.codexRows.isEmpty { noHats } else { list }
+    }
+
+    private var noHats: some View {
         VStack(spacing: 6) {
             Text("No hats yet").font(.system(size: 13, weight: .semibold))
             Text("Name an account — Work, Personal, Team — and Hats keeps its login ready to put on.")
@@ -119,28 +130,5 @@ struct HatListView: View {
             }
         }
         .padding(.horizontal, 14)
-    }
-
-    private func strandedView(_ banner: DeadEndBanner) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(banner.line).font(.system(size: 11))
-            if let hat = banner.signInTo {
-                Button(hat.loginAction) { model.actions?.relogin(hat.id) }
-                    .controlSize(.small)
-            }
-        }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
-        .padding(.horizontal, 10).padding(.bottom, 6)
-    }
-
-    private func bannerView(_ record: AutoSwitchRecord) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(HatsCopy.banner(record, fromTitle: snapshot.bannerFromTitle)).font(.system(size: 11))
-            Button("Switch back now") { model.actions?.switchBack() }.controlSize(.small)
-        }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
-        .padding(.horizontal, 10).padding(.bottom, 6)
     }
 }

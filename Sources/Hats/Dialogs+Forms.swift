@@ -14,7 +14,7 @@ extension HatDialogs {
         let chosen = PromptWindow.show(buttons: prompt.buttons.count) { choose in
             HatFormView(
                 prompt: prompt,
-                fields: [.name, .email, .browser],
+                fields: [.provider, .name, .email, .browser],
                 namePlaceholder: "name — Work, Personal, Team",
                 choices: choices,
                 chromeNames: ChromeProfiles.names(),
@@ -27,7 +27,8 @@ extension HatDialogs {
         return NewHat(
             name: Account.storableName(state.name),
             email: state.email.trimmingCharacters(in: .whitespaces),
-            browser: browser
+            browser: browser,
+            tool: state.tool
         )
     }
 

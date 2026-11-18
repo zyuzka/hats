@@ -23,7 +23,8 @@ final class FakeKeychain {
             read: { [self] service in try self.reading(service) },
             write: { [self] service, data in try self.writing(service, data) },
             delete: { [self] service in try self.deleting(service) },
-            parkedAccountIDs: { [self] in try self.listing() }
+            parkedAccountIDs: { [self] in try self.listing() },
+            codexParkedAccountIDs: { [self] in try self.listing(prefixes: [Slot.codexParked("")]) }
         )
     }
 
@@ -57,9 +58,8 @@ final class FakeKeychain {
         contents.removeValue(forKey: service)
     }
 
-    private func listing() throws -> [String] {
+    private func listing(prefixes: [String] = [Slot.parked(""), Slot.legacyParked("")]) throws -> [String] {
         if let listFailure { throw listFailure }
-        let prefixes = [Slot.parked(""), Slot.legacyParked("")]
         var ids: Set<String> = []
         for service in contents.keys {
             guard let prefix = prefixes.first(where: { service.hasPrefix($0) }) else { continue }

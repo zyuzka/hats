@@ -25,6 +25,7 @@ extension Tool {
     var hatColor: NSColor {
         switch self {
         case .claudeCode: return ProviderColors.claude
+        case .codex: return ProviderColors.codex
         }
     }
 }

@@ -4,7 +4,7 @@ extension AccountStore {
     func activate(_ id: String, meters: MeterReading, targetMeters: MeterReading) throws {
         try requireReadableIndex()
         let configuration = try CLIState.configurationNow(world: system)
-        guard let target = accounts.first(where: { $0.id == id }) else {
+        guard let target = claudeHats.first(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
         guard let incoming = try keychain.read(Slot.parked(id)) else {
@@ -91,7 +91,7 @@ extension AccountStore {
     }
 
     func park(_ outgoing: Data, belongingTo email: String, statedIn stateFile: CLIStateReading) throws {
-        guard let owner = accounts.first(where: { Account.sameAddress($0.email, email) }) else {
+        guard let owner = claudeHats.first(where: { Account.sameAddress($0.email, email) }) else {
             throw SwitchError.outgoingUnknown(email)
         }
         let identity = stateFile.url

@@ -18,6 +18,7 @@ struct HatRowState: Identifiable, Equatable {
     let loginValidity: String?
     let loginAction: String
     let isOnVacation: Bool
+    let tool: Tool
 
     init(
         hat: Account,
@@ -52,28 +53,20 @@ struct HatRowState: Identifiable, Equatable {
             )
         }
         browser = hat.browser?.label(chromeNames: chromeNames)
-        loginValidity = HatsCopy.getLoginLine(for: hat, now: now)
-        loginAction = hat.hasStoredCredentials ? "Log in again…" : "Log in…"
+        loginValidity = HatsCopy.loginLine(for: hat, isWorn: isWearing, now: now)
+        loginAction = HatsCopy.loginAction(for: hat)
         isOnVacation = hat.vacationSince != nil
+        tool = hat.wornTool
     }
 
     var isSkippedByTheSwitch: Bool { isOnVacation && !isWearing }
-}
-
-enum SessionsState: Equatable {
-    case unknown
-    case counted([Session])
-
-    var count: Int? {
-        if case .counted(let live) = self { return live.count }
-        return nil
-    }
 }
 
 struct HatsSnapshot: Equatable {
     var header: String = ""
     var tool: Tool = .claudeCode
     var rows: [HatRowState] = []
+    var codexRows: [HatRowState] = []
     var sessions: SessionsState = .unknown
     var gatewaySessions: [GatewaySessionRow] = []
     var horizon: String = ""
@@ -145,45 +138,5 @@ struct HatsSnapshot: Equatable {
         return HatsCopy.handover(to: title(of: next))
     }
 
-    func title(of id: String) -> String { rows.first { $0.id == id }?.title ?? id }
-}
-
-protocol HatsActions: AnyObject {
-    func wear(_ id: String)
-    func addHat()
-    func relogin(_ id: String)
-    func rename(_ id: String)
-    func chooseBrowser(_ id: String)
-    func setVacation(_ id: String, on: Bool)
-    func remove(_ id: String)
-    func setGateway(enabled: Bool)
-    func applyGatewayPort(_ port: Int)
-    func applyGatewaySettle(_ seconds: Int)
-    func restartGateway()
-    func takeOverProfile()
-    func keepMyProfile()
-    func copyVariables()
-    func openLog()
-    func updateAutoSwitch(_ policy: AutoSwitchPolicy)
-    func updateContextThresholds(_ thresholds: ContextThresholds)
-    func updateLimitThresholds(_ thresholds: LimitThresholds)
-    func setUsageDisplay(_ display: UsageDisplay)
-    func switchBack()
-    func openSessions()
-    func showSettings()
-    func checkForUpdates()
-    func toggleAutomaticUpdateChecks()
-    func showReleases()
-    func toggleStartAtLogin()
-    func toggleHatNameInTheMenuBar()
-    func toggleTheBlinkingCursor()
-    func installSessionHandoff()
-    func updateSessionHandoff()
-    func removeSessionHandoff()
-    func quit()
-}
-
-final class HatsModel: ObservableObject {
-    @Published var snapshot = HatsSnapshot()
-    weak var actions: HatsActions?
+    func title(of id: String) -> String { (rows + codexRows).first { $0.id == id }?.title ?? id }
 }

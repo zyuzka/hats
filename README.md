@@ -108,6 +108,32 @@ limit is used. Settings › General › Usage as picks how: Percent shows the nu
 bars, `5h` and `week`, with the reset time beside each. A bar turns orange from 70% and red from 90%;
 a week Hats only remembers is pale, and a week that has already reset is a dashed outline.
 
+## Codex hats
+
+A hat can also be a Codex account. In Add hat, pick Codex, type the address and pick the hat's own
+browser. Hats signs in to ChatGPT the way `codex login` does, but opens the sign-in page only in that
+browser, so one browser stays one account. A small window waits for the answer; closing it, or 15
+minutes without an answer, stops the sign-in and stores nothing. The sign-in listens on
+`127.0.0.1:1455`, or on `1457` when 1455 is busy; those are the only two addresses the sign-in server
+accepts. If Codex is already signed in as that address, the hat takes that login as it is.
+
+Hats keeps each Codex login in the keychain, in an item of its own (`Hats Codex parked <id>`). Putting
+a Codex hat on replaces `~/.codex/auth.json` the way Codex writes it: under both of Codex's locks, the
+login in the file goes back to its own hat first, then the new one is written through a temporary file
+and read back. Besides `auth.json`, Hats creates in `~/.codex` only Codex's own lock files
+(`auth.lock`, `auth.json.lock`, kept as Codex keeps them) and its temporary file `.auth-hats-*`, which
+the write renames into place or removes. It changes nothing else there (it honours `CODEX_HOME`), and refuses when Codex keeps its login
+elsewhere (`cli_auth_credentials_store` other than `file`) or the file is a link, read-only or not a
+ChatGPT login. A login in the file that belongs to none of your hats is never overwritten: add it as a
+hat first.
+
+Codex renews the hat you wear; Hats renews the others — right after a hat comes off, and on the usage
+timer when its access token has less than a day left. Hats never signs a login out, because that
+revokes it on the server.
+
+The Codex hats are listed under Claude's, under "Codex". They have no usage, no switching by
+themselves and no gateway yet: a Codex session already running keeps the account it started with.
+
 ## The one thing to know before using it
 
 A switch takes effect immediately for **new** sessions. A session already running follows only if it
@@ -360,6 +386,7 @@ session is told when one ends.
 | Tool | Status |
 | --- | --- |
 | Claude Code | supported |
+| Codex | hats: sign-in, wearing, renewing the parked ones; no usage, no switching by itself, no gateway yet |
 
 ## Where things live
 
@@ -367,6 +394,7 @@ session is told when one ends.
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
+| The Codex login in use | `~/.codex/auth.json`, Codex's own file |
 | Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under

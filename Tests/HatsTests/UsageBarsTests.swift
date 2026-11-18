@@ -221,7 +221,7 @@ final class UsageBarsTests: XCTestCase {
             "guard settings.usageDisplay != display else { return }\n"
                 + "        settings.usageDisplay = display\n        saveSettings()\n        redraw()"
         ))
-        XCTAssertTrue(list.contains("display: snapshot.settings.usageDisplay,\n                    tool: snapshot.tool,"))
+        XCTAssertTrue(list.contains("display: snapshot.settings.usageDisplay,\n                    tool: row.tool,"))
         XCTAssertTrue(row.contains("switch RowMark.of(row, tool: tool) {"))
         XCTAssertTrue(row.contains("UsageBarView(bar: bar, secondary: secondary, lit: lit)"))
     }

@@ -4,6 +4,7 @@ final class HatFormState: ObservableObject {
     @Published var name = ""
     @Published var email = ""
     @Published var browser: BrowserChoice?
+    @Published var tool: Tool = .claudeCode
 }
 
 struct HatFormFields: OptionSet {
@@ -12,6 +13,7 @@ struct HatFormFields: OptionSet {
     static let name = HatFormFields(rawValue: 1 << 0)
     static let email = HatFormFields(rawValue: 1 << 1)
     static let browser = HatFormFields(rawValue: 1 << 2)
+    static let provider = HatFormFields(rawValue: 1 << 3)
 }
 
 struct HatFormView: View {
@@ -32,6 +34,7 @@ struct HatFormView: View {
             Text(prompt.text)
                 .font(.system(size: 12))
                 .fixedSize(horizontal: false, vertical: true)
+            if fields.contains(.provider) { providers }
             if fields.contains(.name) {
                 TextField(namePlaceholder, text: $state.name)
                     .textFieldStyle(.roundedBorder)
@@ -52,6 +55,14 @@ struct HatFormView: View {
         .padding(18)
         .frame(width: 380, alignment: .leading)
         .onAppear { typing = true }
+    }
+
+    private var providers: some View {
+        Picker("", selection: $state.tool) {
+            ForEach(Tool.allCases, id: \.self) { Text($0.displayName).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 
     private var browsers: some View {

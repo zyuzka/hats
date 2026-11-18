@@ -11,10 +11,10 @@ struct ManageHatsPanel: View {
                 Button("Add…") { model.actions?.addHat() }.controlSize(.small)
             }
             .padding(.horizontal, 14).padding(.bottom, 6)
-            ForEach(model.snapshot.rows) { row in
+            ForEach(everyRow) { row in
                 hatEntry(row)
             }
-            if model.snapshot.rows.isEmpty {
+            if everyRow.isEmpty {
                 Text("No hats yet").font(.system(size: 12)).foregroundStyle(.secondary)
                     .padding(.horizontal, 14).padding(.vertical, 8)
             }
@@ -22,6 +22,8 @@ struct ManageHatsPanel: View {
         .padding(.vertical, 8)
         .frame(width: 340)
     }
+
+    private var everyRow: [HatRowState] { model.snapshot.rows + model.snapshot.codexRows }
 
     private func hatEntry(_ row: HatRowState) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -49,6 +51,7 @@ struct ManageHatsPanel: View {
 
     private func subtitle(_ row: HatRowState) -> String {
         var parts: [String] = []
+        if row.tool == .codex { parts.append(Tool.codex.displayName) }
         if row.title != row.address { parts.append(row.address) }
         if row.isWearing { parts.append("worn now") }
         if row.isOnVacation { parts.append(HatsCopy.vacationMark) }
@@ -93,7 +96,7 @@ struct ManageHatsPanel: View {
             Button("Browser…") { model.actions?.chooseBrowser(row.id) }
             Spacer()
             Button("Remove") { model.actions?.remove(row.id) }
-                .disabled(row.isWearing || model.snapshot.rows.count < 2)
+                .disabled(row.isWearing || everyRow.filter { $0.tool == row.tool }.count < 2)
         }
         .controlSize(.small)
     }

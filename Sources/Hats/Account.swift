@@ -24,6 +24,8 @@ struct Account: Codable, Identifiable, Equatable {
     var lastLoginAt: Date?
     var authRefusedAt: Date?
     var vacationSince: Date?
+    var codexOwner: CodexOwner?
+    var codexPlan: String?
 
     var display: String { email }
 
@@ -31,14 +33,22 @@ struct Account: Codable, Identifiable, Equatable {
 
     var wornTool: Tool { tool ?? .claudeCode }
 
+    var isClaude: Bool { wornTool == .claudeCode }
+
     var isSwitchable: Bool { blocker() == nil }
 
     func blocker(at now: Date = Date()) -> LoginBlocker? {
         if !hasStoredCredentials { return .needsLogin }
+        if wornTool == .codex { return codexBlocker }
         if identity == nil { return identityDisagreement == nil ? .needsOneMoreLogin : .identityDisagrees }
         if wasRefusedSinceTheLastLogin { return .loginRefused }
         if isExpired(at: now) { return .loginExpired }
         return nil
+    }
+
+    private var codexBlocker: LoginBlocker? {
+        if codexOwner == nil { return .needsLogin }
+        return wasRefusedSinceTheLastLogin ? .loginRefused : nil
     }
 
     var wasRefusedSinceTheLastLogin: Bool {

@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsWindow = SettingsWindow()
     let usage = AutoSwitchWatch(wakes: NSWorkspace.shared.notificationCenter)
     lazy var login = LoginFlow(store: store)
+    lazy var codex = CodexHats(world: .real(keychain: store.keychain))
 
     var statusItem: NSStatusItem!
     var blink: MarkBlink?
@@ -100,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionWindows.start()
         startTheContextChannel()
         startTheUpdater()
+        startTheCodexHats()
         DockPresence.watch()
 
         redraw()
@@ -109,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         usage.stop()
+        noteTheLostCodexAnswers()
         blink?.stop()
         GatewayProcess.stop()
         gatewayEnvironment = GatewayEnvironment.ensure(serving: false)
@@ -125,10 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func hatsForUsage() -> [(id: String, isWearing: Bool)] {
-        let live = liveIdentity.email
-        return store.accounts.map { hat in
-            (hat.id, live.map { Account.sameAddress(hat.email, $0) } ?? false)
-        }
+        ClaudeDoors.hatsForUsage(store.accounts, live: liveIdentity.email)
     }
 
     func redraw(ifTheLiveLoginMoved identity: LiveIdentity) {

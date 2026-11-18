@@ -6,10 +6,10 @@ extension AppDelegate {
         snapshot.header = liveIdentity.display
         let somebodyLooks = popover.isShown || sessions.isVisible
         let chromeNames = somebodyLooks ? ChromeProfiles.names() : [:]
-        snapshot.rows = store.accounts.map { hat in
+        snapshot.rows = ClaudeDoors.claudeRows(store.accounts, live: liveIdentity.email) { hat, isWearing in
             HatRowState(
                 hat: hat,
-                isWearing: liveIdentity.email.map { Account.sameAddress(hat.email, $0) } ?? false,
+                isWearing: isWearing,
                 usage: usage.readings[hat.id],
                 usageTrouble: usage.troubles[hat.id],
                 roseWhileParked: usage.roseWhileParked[hat.id],
@@ -17,6 +17,7 @@ extension AppDelegate {
                 chromeNames: chromeNames
             )
         }
+        snapshot.codexRows = codexRows(chromeNames: chromeNames)
         let taken: [Session]?? = lookAtTheProcessTable ?? (somebodyLooks
             ? .some(SessionDiscovery.everySessionSeenRecently())
             : nil)
