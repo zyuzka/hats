@@ -693,7 +693,7 @@ describe('the limit with the window', () => {
     expect(scene.world.getStage().stage).toBe(null)
   })
 
-  test('the window waits for background work and the limit is due: one request now, with the list', async ($, on) => {
+  test('the window waits and the limit comes due with drain on: the limit waits too; one request once the window deadline passes', async ($, on) => {
     const holders = [
       { id: 'b1shell', type: 'shell', status: 'running', description: 'sleep 180' },
     ]
@@ -704,11 +704,17 @@ describe('the limit with the window', () => {
     scene.setSnapshot({ tasks: holders })
     await scene.endTurn(waiting, { percent: 71 })
     expect(scene.world.getStage()).toMatchObject({ stage: 'waiting', save_round: 1 })
-
     const next = await scene.startTurn(71)
     setLimits(scene, { five: 81 })
     scene.setSnapshot({ tasks: holders })
     await scene.endTurn(next, { percent: 71 })
+    expect(scene.world.runs).toEqual([])
+    expect(getLimitStage(scene).five_hour.waiting).toMatchObject({ origin: 'deferred', drain_minutes: 5, cancelled_at: null })
+    await scene.world.clock.advance(5 * MINUTE)
+
+    const late = await scene.startTurn(71)
+    scene.setSnapshot({ tasks: holders })
+    await scene.endTurn(late, { percent: 71 })
     await scene.ownAnchor()
     scene.world.releaseRuns()
     await scene.world.clock.settle()
@@ -1011,6 +1017,7 @@ describe('the stage file and a reload', () => {
         save_percent: 80,
         warned: null,
         asked: null,
+        waiting: null,
         failed_asks: 0,
         previous: {
           resets_at: '2026-11-14T15:00:00Z',
@@ -1019,6 +1026,7 @@ describe('the stage file and a reload', () => {
           save_percent: 80,
           warned: { at: '2026-11-14T12:40:02.800Z', percent: 72.5, worn: 'work', reason: 'no_hat' },
           asked: null,
+          waiting: null,
           failed_asks: 0,
         },
       },
@@ -1147,7 +1155,7 @@ describe('the rules of the limits', () => {
     setAsked(items, START)
     expect(episode.asked).toMatchObject({ percent: 81, worn: 'work', reason: 'no_hat', at: '2026-11-14T12:00:00.000Z' })
 
-    setAskedBack(items)
+    setAskedBack(items, limits)
 
     expect(episode.asked).toBe(null)
     expect(findRefusalOutcome(`Error: ${STOPPED}`, null)).toMatchObject({ kind: 'stopped', fields: {} })

@@ -235,7 +235,7 @@ final class ContextThresholdsTests: XCTestCase {
                                 .font(.system(size: 13))
                             }
                         }
-                        .disabled(thresholds.savePercent == nil)
+                        .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
                         Text(HatsCopy.drainNote)
             """,
         ]
@@ -355,5 +355,19 @@ final class ContextThresholdsTests: XCTestCase {
         var roomy = thresholds(20, nil)
         roomy.setSave(isOn: true)
         XCTAssertEqual(roomy.savePercent, 70, "with room, the default comes back")
+    }
+
+    func testTheDrainCanBeSwitchedWhenEitherAnchorThresholdIsOn() {
+        var limits = LimitThresholds()
+        limits.setSave(isOn: false)
+        XCTAssertNil(limits.savePercent)
+        var limitOn = LimitThresholds()
+        limitOn.setSave(isOn: true)
+        XCTAssertNotNil(limitOn.savePercent)
+
+        XCTAssertTrue(thresholds(60, 70).canDrain(limits: limits), "the window anchor alone")
+        XCTAssertTrue(thresholds(60, nil).canDrain(limits: limitOn), "the hat-limit anchor alone")
+        XCTAssertTrue(thresholds(60, 70).canDrain(limits: limitOn))
+        XCTAssertFalse(thresholds(60, nil).canDrain(limits: limits), "only both off leave nothing to drain for")
     }
 }

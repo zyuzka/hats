@@ -38,6 +38,15 @@ const getEarlyText = (percent: number, minutes: number, word = '5-hour') =>
   `Hats limit threshold: this session's account is ${getEarlyPart(percent, minutes, word)}. ` +
   `This session anchors at the end of a turn once it reaches 80%. ${TELL}`
 
+const DRAIN_ON =
+  ' Drain is on: do not start subagents, workflows, monitors or background commands; ' +
+  'they are refused until the session is asked to anchor.'
+
+const getEarlyDrainText = (percent: number, minutes: number, drainMinutes: number) =>
+  `Hats limit threshold: this session's account is ${getEarlyPart(percent, minutes, '5-hour')}. ` +
+  'This session anchors at the end of a turn once it reaches 80%, or, while its background work runs, ' +
+  `at the end of a later turn within ${drainMinutes} min. ${TELL}${DRAIN_ON}`
+
 const WARN_72 =
   "Hats limit threshold: this session's account is at 72% of its 5-hour limit (warning threshold 70%) " +
   `and ${NO_HAT}. This session anchors at the end of a turn once it reaches 80%. ${TELL}`
@@ -330,7 +339,7 @@ describe('the early signal through the registered hooks', () => {
     const { scene, out } = await riseFiveIn5Minutes($, on, { thresholds: { drain: true, drain_minutes: 30 } })
 
     expect(getContext(out)).toEqual([
-      getEarlyText(63, 17),
+      getEarlyDrainText(63, 17, 30),
     ])
     expect(getFiveStage(scene).warned).toMatchObject({ lead_seconds: 1882, target: 80, minutes_to_save: 17 })
   })
@@ -420,7 +429,7 @@ describe('the early signal through the registered hooks', () => {
     const out = await toolAt(scene, 63)
 
     expect(getContext(out)).toEqual([
-      getEarlyText(63, 17),
+      getEarlyDrainText(63, 17, 30),
     ])
     expect(getFiveStage(scene).warned).toMatchObject({ lead_seconds: 1882 })
   })

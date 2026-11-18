@@ -97,7 +97,7 @@ struct ContextThresholdsPanel: View {
                     .font(.system(size: 13))
                 }
             }
-            .disabled(thresholds.savePercent == nil)
+            .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
             Text(HatsCopy.drainNote)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)

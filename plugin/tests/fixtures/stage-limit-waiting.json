@@ -1,0 +1,71 @@
+{
+ "session": "ba964b9a-a7bd-4974-a8c5-951037faae99",
+ "cwd": "/w",
+ "stage": null,
+ "warn_round": 0,
+ "save_round": 0,
+ "percent": null,
+ "warn_percent": 60,
+ "save_percent": 70,
+ "after_save": "tell",
+ "drain_minutes": null,
+ "reason": null,
+ "marker": null,
+ "at": "2026-11-14T14:11:00Z",
+ "limits": {
+  "five_hour": {
+   "resets_at": "2026-11-14T15:00:00Z",
+   "percent": 81,
+   "warn_percent": 70,
+   "save_percent": 80,
+   "warned": {
+    "at": "2026-11-14T14:10:00.000Z",
+    "percent": 72,
+    "worn": "work",
+    "reason": "no_hat",
+    "early": false,
+    "target": 80,
+    "lead_seconds": 682
+   },
+   "asked": null,
+   "waiting": {
+    "at": "2026-11-14T14:11:00.250Z",
+    "percent": 81,
+    "worn": "work",
+    "reason": "no_hat",
+    "early": false,
+    "target": 80,
+    "lead_seconds": 682,
+    "until": "2026-11-14T14:15:00.000Z",
+    "origin": "hat",
+    "drain_minutes": 10,
+    "cancelled_at": null
+   },
+   "failed_asks": 0,
+   "previous": null
+  },
+  "seven_day": {
+   "resets_at": "2026-11-18T09:00:00Z",
+   "percent": 82,
+   "warn_percent": 70,
+   "save_percent": 80,
+   "warned": null,
+   "asked": null,
+   "waiting": {
+    "at": "2026-11-14T14:11:00.250Z",
+    "percent": 82,
+    "worn": "work",
+    "reason": "auto_switch_off",
+    "early": false,
+    "target": 80,
+    "lead_seconds": 682,
+    "until": "2026-11-14T14:21:00.250Z",
+    "origin": "deferred",
+    "drain_minutes": 10,
+    "cancelled_at": "2026-11-14T14:15:00.000Z"
+   },
+   "failed_asks": 0,
+   "previous": null
+  }
+ }
+}

@@ -272,7 +272,7 @@ note.») — also while Settings is open in front. It says nothing about stages 
 started, nothing when mods are off in Claude Code, and removes stage files older than 30 days.
 
 **Drain background work**, under **Warn at**, is off until you turn it on and works only with
-**Anchor at** on. From the warning on, the plugin refuses every new subagent, workflow, monitor and
+**Anchor at** on — of the window or of the hat limit. From a context or hat-limit warning on, the plugin refuses every new subagent, workflow, monitor and
 command started with `run_in_background` — in the session and in its subagents — and tells the model
 to do the step in the foreground or leave it for the next session; work already running is never
 stopped. Not refused: a command Claude Code moves to the background itself after its time limit, and a
@@ -291,7 +291,27 @@ when the plugin reloads, when the session changes and during the pause after the
 **Warn at** off they start only when anchoring is put off for running work. Hats writes
 the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that
 waits has the stage `waiting`, and its notification reads «Past 70%: the session anchors at the end of
-its turn, after its background work (up to 10 min).»
+its turn, after its background work (up to 10 min).» Scheduled wake-ups (`/loop`, `CronCreate`) are
+not refused; the list carries only their number — `Scheduled wake-ups: 1 — they are not listed here, and
+they stop the automatic clear.`
+
+**Drain by a hat limit.** The same switch acts on every session on the worn hat when Hats will not move
+it off a limit (the rules of **Hat limit** below): from the limit warning on — or, with **Warn at** off,
+from the first turn end whose anchor is put off — new background work is refused with `Hats drain: this
+session's account is close to its 5-hour limit and …`, until that limit's anchor is asked, a save counts
+for it, its episode ends or its reset passes, or Hats can move the session again. The anchor of the
+limit waits for running work up to **Wait up to**, counted from the first warning of that limit on that
+hat in that episode — one deadline for all its sessions. Hats finds that time in the stage files and
+writes it to `hat-usage.json` as `first_warned`; until it does, a session counts from its own warning,
+and with no warning from the turn end that put the anchor off. The deadline only ever comes nearer: a
+session warned late may find it already passed and anchor at once, without waiting for its own work. At
+the end of each turn the window and the limits are decided together: any cause that is ready — drain
+off, nothing holding, its own deadline passed, the work could not be checked — asks once for all of
+them, and the work still running is listed; otherwise the session waits, and the line names the
+nearest deadline whenever it changes. A wait for a limit is written to the stage file as a `waiting`
+event; a reload keeps it with its deadline. Hats tells it once per hat, limit and reset, on the first of
+`waiting` and `asked`: «… Sessions anchor at the end of their turn, after their background work (up to
+10 min from the first warning on this hat).»
 
 **Hat limit**, the second section of **Settings › Context**, acts on the 5-hour and weekly limits when
 Hats will not move you off a limit itself: no other hat is free, auto-switch is off, the switch

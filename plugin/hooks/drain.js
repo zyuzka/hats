@@ -7,7 +7,6 @@ import {
   findCurrentThresholds,
   queueStage,
   setStage,
-  tellUser,
 } from './files.js'
 import { waitForSnapshot } from './clear-check.js'
 import { getLastMainToolEnd } from './clear-chain.js'
@@ -30,8 +29,6 @@ const HOLDING_TYPES = [
 const DESCRIPTION_LIMIT = 120
 const MINUTE_MS = 60 * 1000
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/gu
-const FREE = { isHeld: false, list: null }
-const HELD = { isHeld: true, list: null }
 const NO_SNAPSHOT = { kind: 'none' }
 
 export const WAIT_CANCELLED = 'wait cancelled'
@@ -90,13 +87,15 @@ const getDescription = text => {
 
 const getListLine = (task, index) => `${index + 1}. ${task.type} "${getDescription(task.description)}" (id ${task.id})`
 
-export const findListText = tasks => {
-  if (tasks.length === 0) return null
+export const getWakeLine = count => `Scheduled wake-ups: ${count} — they are not listed here, and they stop the automatic clear.`
 
-  return [
-    LIST_HEAD,
-    ...tasks.map(getListLine),
-  ].join('\n')
+export const findListText = (tasks, crons = 0) => {
+  const lines = [
+    ...(tasks.length === 0 ? [] : [LIST_HEAD, ...tasks.map(getListLine)]),
+    ...(crons > 0 ? [getWakeLine(crons)] : []),
+  ]
+
+  return lines.length === 0 ? null : lines.join('\n')
 }
 
 export const getHolderCount = tasks => tasks.filter(task => HOLDING_TYPES.includes(task.type)).length
@@ -143,10 +142,9 @@ export async function settleRound($, job) {
   if (isBelow) state.drain = null
 }
 
-async function holdAnchor($, job) {
-  const { state, reading, holders } = job
+export function holdWindow(state, job) {
+  const { reading, now } = job
   if (isWaiting(state)) return
-  const now = await $.clock.now()
   const round = state.drain ?? createRound()
   round.minutes = reading.thresholds.drainMinutes
   round.deadline = now + round.minutes * MINUTE_MS
@@ -157,30 +155,27 @@ async function holdAnchor($, job) {
   state.saveRound += 1
   setReading(state, reading)
   setStage(state, { stage: 'waiting' })
-  await queueStage($, state)
-  tellUser($, getWaitLine(holders, round.minutes))
 }
 
-async function findFreshSnapshot($, job) {
+export async function findFreshSnapshot($, job) {
   const { state, turn } = job
   if (turn === null) return NO_SNAPSHOT
 
   return waitForSnapshot($, { id: state.id, getAfter: () => Math.max(turn.startedAt, getLastMainToolEnd()) })
 }
 
-export async function findDrainChoice($, job) {
-  const { state, reading } = job
-  if (!isDrainOn(reading.thresholds)) return FREE
-  const snapshot = await findFreshSnapshot($, job)
-  if (state.request !== null || (await $.session.id()) !== state.id) return HELD
-  if (snapshot.kind !== 'snapshot' || !snapshot.ok) {
-    tellUser($, UNCHECKED_LINE)
-    return FREE
-  }
-  const list = findListText(snapshot.tasks)
-  const holders = getHolderCount(snapshot.tasks)
-  if (holders === 0 || !job.canHold || isDeadlinePassed(state.drain, await $.clock.now())) return { isHeld: false, list }
-  await holdAnchor($, { state, reading, holders })
+export const isSnapshotGood = snapshot => snapshot.kind === 'snapshot' && snapshot.ok
 
-  return HELD
+export const findWaitLine = (state, job) => {
+  const { deadlines, holders, now } = job
+  if (deadlines.length === 0) return null
+  const nearest = Math.min(...deadlines)
+  if (nearest === state.nearestWait) return null
+  state.nearestWait = nearest
+
+  return getWaitLine(holders, Math.max(1, Math.ceil((nearest - now) / MINUTE_MS)))
 }
+
+export const getWindowDeadlines = state => (isWaiting(state) && state.drain.deadline !== null ? [state.drain.deadline] : [])
+
+export const isRoundPassed = (state, now) => isDeadlinePassed(state.drain, now)

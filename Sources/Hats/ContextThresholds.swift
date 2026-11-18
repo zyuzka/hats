@@ -94,6 +94,10 @@ struct ContextThresholds: Codable, Equatable {
         savePercent = getSaveRange().getClamped(percent)
     }
 
+    func canDrain(limits: LimitThresholds) -> Bool {
+        savePercent != nil || limits.savePercent != nil
+    }
+
     mutating func setDrainMinutes(_ minutes: Int) {
         drainMinutes = Self.drainMinutesRange.getClamped(minutes)
     }

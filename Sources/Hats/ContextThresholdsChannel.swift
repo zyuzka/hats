@@ -8,6 +8,8 @@ final class ContextThresholdsChannel {
     private let notices: ContextThresholdNotices
     private let limitNotices: LimitThresholdNotices
     private let log: SessionThresholdsScan.Log
+    private(set) var lastStages: [SessionStage] = []
+    var onStagesRead: (() -> Void)?
 
     init(
         root: URL = StateDirectory.url,
@@ -47,9 +49,11 @@ final class ContextThresholdsChannel {
     }
 
     func start(windows: @escaping () -> [SessionWindow]) {
-        stages.onRead = { [notices, limitNotices] found in
+        stages.onRead = { [weak self, notices, limitNotices] found in
             notices.noteARead(found, windows: windows())
             limitNotices.noteARead(found)
+            self?.lastStages = found.stages
+            self?.onStagesRead?()
         }
         stages.start()
     }

@@ -28,6 +28,7 @@ final class EpisodeFields: Decodable {
     let savePercent: Int?
     let warned: EventFields?
     let asked: EventFields?
+    let waiting: EventFields?
     let previous: EpisodeFields?
 
     enum CodingKeys: String, CodingKey {
@@ -37,6 +38,7 @@ final class EpisodeFields: Decodable {
         case savePercent = "save_percent"
         case warned
         case asked
+        case waiting
         case previous
     }
 }
@@ -50,6 +52,10 @@ struct EventFields: Decodable {
     let minutesToSave: Int?
     let target: Int?
     let leadSeconds: Int?
+    let until: String?
+    let origin: String?
+    let drainMinutes: Int?
+    let cancelledAt: String?
 
     enum CodingKeys: String, CodingKey {
         case at
@@ -60,6 +66,10 @@ struct EventFields: Decodable {
         case minutesToSave = "minutes_to_save"
         case target
         case leadSeconds = "lead_seconds"
+        case until
+        case origin
+        case drainMinutes = "drain_minutes"
+        case cancelledAt = "cancelled_at"
     }
 
     init(from decoder: Decoder) throws {
@@ -73,5 +83,11 @@ struct EventFields: Decodable {
         let target = try? fields.decodeIfPresent(Int.self, forKey: .target)
         self.target = target.flatMap { LimitThresholds.range.contains($0) ? $0 : nil }
         leadSeconds = (try? fields.decodeIfPresent(Int.self, forKey: .leadSeconds)).flatMap { $0 >= 0 ? $0 : nil }
+        until = try? fields.decodeIfPresent(String.self, forKey: .until)
+        origin = try? fields.decodeIfPresent(String.self, forKey: .origin)
+        drainMinutes = try? fields.decodeIfPresent(Int.self, forKey: .drainMinutes)
+        let isCancelGiven = fields.contains(.cancelledAt) && (try? fields.decodeNil(forKey: .cancelledAt)) == false
+        let cancelled = try? fields.decodeIfPresent(String.self, forKey: .cancelledAt)
+        cancelledAt = cancelled ?? (isCancelGiven ? "" : nil)
     }
 }

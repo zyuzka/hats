@@ -90,6 +90,13 @@ const isWholeIn = (value, range) => Number.isInteger(value) && value >= range.lo
 
 const isThresholdShape = (value, range) => value === null || isWholeIn(value, range)
 
+export const isDrainMinutes = value => isWholeIn(value, MINUTES_RANGE)
+
+export const getDrainFields = data => ({
+  drain: data.drain === true,
+  drainMinutes: isDrainMinutes(data.drain_minutes) ? data.drain_minutes : DEFAULTS.drainMinutes,
+})
+
 export const getPercent = usage => {
   const percent = usage?.context?.percent
 
@@ -109,10 +116,8 @@ export const findThresholds = text => {
   if (!isThresholdShape(warn, WARN_RANGE) || !isThresholdShape(save, SAVE_RANGE)) return null
   if (warn !== null && save !== null && warn >= save) return null
   const after = ACTIONS.includes(data.after_save) ? data.after_save : 'tell'
-  const drain = data.drain === true
-  const drainMinutes = isWholeIn(data.drain_minutes, MINUTES_RANGE) ? data.drain_minutes : DEFAULTS.drainMinutes
 
-  return { warn, save, after, drain, drainMinutes }
+  return { warn, save, after, ...getDrainFields(data) }
 }
 
 export const isDrainOn = thresholds => thresholds.drain === true && thresholds.save !== null
@@ -159,7 +164,7 @@ const getAnchorPart = ({ thresholds, percent }) => {
   return `It anchors itself at the end of a turn once it reaches ${thresholds.save}%. `
 }
 
-const DRAIN_WARNING =
+export const DRAIN_WARNING =
   ' Drain is on: do not start subagents, workflows, monitors or background commands; ' +
   'they are refused until the session is asked to anchor.'
 

@@ -10,11 +10,12 @@ extension HatsCopy {
             + "next message. A session already past the lower threshold at its first answer gets neither."
     static let drainBackgroundWork = "Drain background work"
     static let drainNote =
-        "From the warning on, new subagents, workflows, monitors and background commands are refused. Not refused: "
-            + "a command Claude Code moves to the background itself, after its time limit, and a skill that runs in "
-            + "the background — both are waited for; a command detached with & or nohup is neither waited for nor "
-            + "listed. At the anchor threshold the session waits for running work up to this long, then anchors and "
-            + "lists what still runs. A monitor on a socket and a teammate are listed, not waited for."
+        "From a context or hat-limit warning on, new subagents, workflows, monitors and background commands "
+            + "are refused. Not refused: a command Claude Code moves to the background itself, after its time "
+            + "limit, and a skill that runs in the background — both are waited for; a command detached with & or "
+            + "nohup is neither waited for nor listed. At the anchor threshold the session waits for running work "
+            + "up to this long, then anchors and lists what still runs. A monitor on a socket and a teammate are "
+            + "listed, not waited for. Scheduled wake-ups are not refused."
 
     static func getAfterSaveTitle(_ action: AfterSave) -> String {
         switch action {

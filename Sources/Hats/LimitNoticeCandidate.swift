@@ -14,6 +14,13 @@ struct LimitNoticeCandidate {
 
     static func getBody(of candidate: LimitNoticeCandidate) -> String {
         let event = candidate.event
+        if let wait = event.wait {
+            return HatsCopy.getLimitWaitNoticeBody(
+                reason: event.reason,
+                origin: wait.origin,
+                minutes: wait.drainMinutes
+            )
+        }
         if let pace = findEarlyPace(of: event) {
             return HatsCopy.getEarlyLimitNoticeBody(reason: event.reason, target: pace.target, minutes: pace.minutes)
         }
@@ -41,6 +48,11 @@ struct LimitNoticeCandidate {
         if let target = event.target { details["target"] = String(target) }
         if let lead = event.leadSeconds { details["lead_seconds"] = String(lead) }
         if let pace { details["minutes_to_save"] = String(pace.minutes) }
+        if let wait = event.wait {
+            details["stage"] = "waiting"
+            details["origin"] = wait.origin.rawValue
+            details["drain_minutes"] = String(wait.drainMinutes)
+        }
 
         return details
     }

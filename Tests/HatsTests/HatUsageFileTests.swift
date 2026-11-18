@@ -56,7 +56,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")], reading: reading),
             readAt: ["work": readAt, "personal": now],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
 
         XCTAssertEqual(file.setRecord(record, at: now), .written)
@@ -85,6 +86,7 @@ final class HatUsageFileTests: XCTestCase {
                 "credential_service",
                 "switch_covers",
                 "alive_at",
+                "first_warned",
             ]
         )
         let text = try String(contentsOf: file.url, encoding: .utf8)
@@ -97,7 +99,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")]),
             readAt: ["work": readAt],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(unread, at: now), .written)
         var fields = try written(file)
@@ -110,7 +113,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: nil, hats: [hat("work"), hat("personal")], autoSwitch: false),
             readAt: [:],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(bare, at: now), .written)
         fields = try written(file)
@@ -124,7 +128,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "work", hats: [hat("work"), hat("team", switchable: false)], reading: reading),
             readAt: [:],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertFalse(alone.hasAHatToSwitchTo)
         let shown = snapshot(wearing: "work", hats: [hat("work"), hat("team", switchable: false)], reading: reading)
@@ -138,7 +143,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "work", hats: hats, reading: reading),
             readAt: ["work": readAt],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(first, at: now), .written)
         let inode = try FileManager.default.attributesOfItem(atPath: file.url.path)[.systemFileNumber] as? Int
@@ -152,7 +158,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "personal", hats: hats),
             readAt: ["work": readAt],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(other, at: now.addingTimeInterval(600)), .written, "another hat put on is written")
         XCTAssertEqual(try written(file)["worn"] as? String, "personal")
@@ -161,7 +168,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "personal", hats: hats, reading: reading),
             readAt: ["personal": now],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(polled, at: now.addingTimeInterval(900)), .written, "a new reading is written")
     }
@@ -172,7 +180,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: "work", hats: [hat("work"), hat("personal")], reading: reading),
             readAt: ["work": readAt],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
         XCTAssertEqual(file.setRecord(record, at: now), .written)
         try FileManager.default.removeItem(at: file.url)
@@ -190,7 +199,8 @@ final class HatUsageFileTests: XCTestCase {
             from: snapshot(wearing: nil, hats: []),
             readAt: [:],
             liveSlot: FakeSlots.live,
-            aliveAt: polledAt
+            aliveAt: polledAt,
+            stages: []
         )
 
         guard case .failed = file.setRecord(record, at: now) else { return XCTFail("a folder that is a file must fail") }

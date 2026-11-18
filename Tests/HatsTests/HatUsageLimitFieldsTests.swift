@@ -41,7 +41,7 @@ final class HatUsageLimitFieldsTests: XCTestCase {
     }
 
     private func record(_ snapshot: HatsSnapshot, liveSlot: String?, aliveAt: Date?) -> HatUsageRecord {
-        HatUsageRecord.create(from: snapshot, readAt: [:], liveSlot: liveSlot, aliveAt: aliveAt)
+        HatUsageRecord.create(from: snapshot, readAt: [:], liveSlot: liveSlot, aliveAt: aliveAt, stages: [])
     }
 
     private func fields(of record: HatUsageRecord) throws -> [String: Any] {
@@ -207,7 +207,7 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         var stamps: [String] = []
         watch.onReadings = { _ in
-            _ = file.setRecord(HatUsageRecord.create(from: shown, watch: watch), at: self.now)
+            _ = file.setRecord(HatUsageRecord.create(from: shown, watch: watch, stages: []), at: self.now)
             let written = try? JSONSerialization.jsonObject(with: Data(contentsOf: file.url)) as? [String: Any]
             stamps.append((written?["alive_at"] as? String) ?? "null")
         }

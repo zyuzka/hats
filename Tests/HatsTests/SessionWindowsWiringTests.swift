@@ -55,4 +55,14 @@ final class SessionWindowsWiringTests: XCTestCase {
         XCTAssertTrue(write.contains("case .written, .unchanged:\n            lastHatUsageFailure.clear()"),
                       "a success forgets the reason, so the same failure later is told again")
     }
+
+    func testTheHatUsageIsWrittenWithTheStagesAndAgainAfterEveryStageRead() throws {
+        let write = try getBody(of: "func writeTheHatUsage() {", in: sourceOf("AppDelegate+HatUsage.swift"))
+        let start = try getBody(of: "func startTheContextChannel() {", in: sourceOf("AppDelegate+ContextThresholds.swift"))
+
+        XCTAssertTrue(write.contains("watch: usage,\n            stages: contextChannel.lastStages\n"),
+                      "first_warned is worked out from the last stages the channel read")
+        XCTAssertTrue(start.contains("contextChannel.onStagesRead = { [weak self] in self?.writeTheHatUsage() }"),
+                      "a new warning in a stage file reaches hat-usage.json without waiting for a redraw")
+    }
 }

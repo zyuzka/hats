@@ -36,6 +36,23 @@ extension HatsCopy {
         "Spending fast: \(target)% in about \(minutes) min. \(getLimitReason(reason))."
     }
 
+    static func getLimitWaitNoticeBody(reason: LimitReason, origin: LimitWaitOrigin, minutes: Int) -> String {
+        let asked = getLimitNoticeBody(stage: .asked, reason: reason, save: nil)
+
+        return "\(asked.dropLast()), after their background work (up to \(minutes) min\(getWaitOriginWords(origin)))."
+    }
+
+    private static func getWaitOriginWords(_ origin: LimitWaitOrigin) -> String {
+        switch origin {
+        case .hat:
+            return " from the first warning on this hat"
+        case .warned:
+            return " from their warning"
+        case .deferred:
+            return ""
+        }
+    }
+
     static func getLimitNoticeBody(stage: LimitStage, reason: LimitReason, save: Int?) -> String {
         let why = getLimitReason(reason)
         switch stage {

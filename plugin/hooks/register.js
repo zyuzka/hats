@@ -41,6 +41,7 @@ import {
   setCurrentGetter,
 } from './requests.js'
 import {
+  findLimitDenial,
   findLimitWarning,
   forgetCell,
   markWarned,
@@ -96,6 +97,7 @@ const createSession = id => ({
   turn: null,
   drain: null,
   drainMinutes: null,
+  nearestWait: null,
   limits: createLimits(),
   pace: createPace(),
 })
@@ -314,8 +316,9 @@ const findCallDenial = async ($, e) => {
   if (!isDrainCall(e)) return null
   const state = await findState($)
   await updateArm($, state)
+  const limit = await findLimitDenial($, state)
 
-  return findDenial($, state)
+  return limit ?? findDenial($, state)
 }
 
 const onToolCall = async (

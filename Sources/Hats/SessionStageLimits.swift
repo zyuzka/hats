@@ -58,6 +58,11 @@ enum SessionStageLimits {
             guard let made = createEvent(event, stage: stage) else { return nil }
             events.append(made)
         }
+        if let waiting = fields.waiting {
+            guard var made = createEvent(waiting, stage: .asked), let wait = createWait(waiting) else { return nil }
+            made.wait = wait
+            events.append(made)
+        }
 
         return LimitEpisode(
             limit: limit,
@@ -67,6 +72,18 @@ enum SessionStageLimits {
             savePercent: fields.savePercent,
             events: events
         )
+    }
+
+    private static func createWait(_ fields: EventFields) -> LimitWait? {
+        guard let until = fields.until.flatMap(UsageReading.date(from:)),
+              let origin = fields.origin.flatMap(LimitWaitOrigin.init(rawValue:)),
+              let minutes = fields.drainMinutes,
+              ContextThresholds.drainMinutesRange.contains(minutes)
+        else { return nil }
+        let cancelledAt = fields.cancelledAt.map(UsageReading.date(from:))
+        guard cancelledAt != .some(nil) else { return nil }
+
+        return LimitWait(until: until, origin: origin, drainMinutes: minutes, cancelledAt: cancelledAt.flatMap { $0 })
     }
 
     private static func createEvent(_ fields: EventFields, stage: LimitStage) -> LimitEvent? {

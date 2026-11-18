@@ -7,6 +7,7 @@ import {
   getRequestLine,
   getSavedLine,
   getTurnFailure,
+  isDrainOn,
   isSaveDue,
   isWarnDue,
   setArm,
@@ -19,12 +20,26 @@ import {
 } from './files.js'
 import { findVerdict } from './anchor-check.js'
 import {
-  findDrainChoice,
+  UNCHECKED_LINE,
+  findFreshSnapshot,
+  findListText,
+  findWaitLine,
+  getHolderCount,
+  getWindowDeadlines,
+  holdWindow,
+  isRoundPassed,
+  isSnapshotGood,
   isWaiting,
   setPaused,
   setReading,
   settleRound,
 } from './drain.js'
+import {
+  findPlan,
+  getLiveDeadlines,
+  setLimitWaiting,
+  settleLimitWaits,
+} from './limit-drain.js'
 import {
   failRequest,
   fireWarning,
@@ -36,6 +51,7 @@ import {
 } from './clear-chain.js'
 import {
   findLimitAsks,
+  findLimitView,
   setAskFailed,
   setAsked,
   setAskedBack,
@@ -43,6 +59,7 @@ import {
 import {
   getLimitRequestLine,
   getLimitSavedLine,
+  isLimitAskDue,
 } from './limit-rules.js'
 
 let getCurrent = () => null
@@ -144,7 +161,7 @@ export async function onRunRefused($, job) {
 export const setRefusedBack = (state, job) => {
   const { request, outcome } = job
   state.request = null
-  setAskedBack(request.limits)
+  setAskedBack(request.limits, state.limits)
   if (!request.isWindow) return
   Object.assign(state, outcome.fields)
   state.arm.save = outcome.isSaveArmed
@@ -212,33 +229,85 @@ async function acceptManualSave($, job) {
   return true
 }
 
-async function findWindowCause($, job) {
-  const { state, turn, reading, limits } = job
-  if (isPausedAfterClear(await $.clock.now())) {
-    setPaused(state)
-    if (limits.length === 0) tellUser($, getPauseLine(reading.percent, reading.thresholds.save))
-    return { isWindow: false, isHeld: false, list: null }
-  }
-  const drain = await findDrainChoice($, { state, turn, reading, canHold: limits.length === 0 })
+async function findCauses($, state) {
+  const reading = await findReading($)
+  if (!isCurrent(state)) return null
+  if (reading !== null) setArm(state.arm, reading)
+  if (reading !== null) await settleRound($, { state, reading })
+  const view = await findLimitView($, state)
+  if (!isCurrent(state)) return null
+  if (settleLimitWaits(state, { view, now: view.now })) await queueStage($, state)
+  const limits = view.items.filter(item => isLimitAskDue(item.episode))
+  const isWindowDue = reading !== null && isSaveDue(state.arm, reading)
 
-  return { isWindow: !drain.isHeld, isHeld: drain.isHeld, list: drain.list }
+  return { reading, view, limits, isWindowDue }
+}
+
+async function isWindowWanted($, job) {
+  const { state, causes } = job
+  if (!causes.isWindowDue) return false
+  if (!isPausedAfterClear(await $.clock.now())) return true
+  setPaused(state)
+  if (causes.limits.length === 0) tellUser($, getPauseLine(causes.reading.percent, causes.reading.thresholds.save))
+
+  return false
+}
+
+const isDrainWanted = (causes, isWindow) =>
+  (isWindow && isDrainOn(causes.reading.thresholds)) || (causes.limits.length > 0 && causes.view.drain.isOn)
+
+const isAnyReady = (state, job) => {
+  const { causes, plans, holders, now } = job
+  const isWindowReady = causes.isWindowDue && (!isDrainOn(causes.reading.thresholds) || holders === 0 || isRoundPassed(state, now))
+  const isLimitReady = plans.some(plan => !causes.view.drain.isOn || holders === 0 || plan.untilMs <= now)
+
+  return isWindowReady || isLimitReady
+}
+
+async function holdCauses($, job) {
+  const { state, causes, plans, holders, now } = job
+  if (causes.isWindowDue) holdWindow(state, { reading: causes.reading, now })
+  for (const plan of plans) if (plan.isNew) setLimitWaiting(plan, { now, minutes: causes.view.drain.minutes })
+  await queueStage($, state)
+  const line = findWaitLine(state, { deadlines: [...getWindowDeadlines(state), ...getLiveDeadlines(state)], holders, now })
+  if (line !== null) tellUser($, line)
+}
+
+async function decideDrain($, job) {
+  const { state, causes, snapshot } = job
+  if (!causes.isWindowDue && causes.limits.length === 0) return
+  const isGood = isSnapshotGood(snapshot)
+  if (!isGood) tellUser($, UNCHECKED_LINE)
+  const list = isGood ? findListText(snapshot.tasks, snapshot.crons) : null
+  const holders = isGood ? getHolderCount(snapshot.tasks) : 0
+  const now = await $.clock.now()
+  const plans = causes.limits.map(item => findPlan(item, { view: causes.view, now }))
+  if (!isGood || isAnyReady(state, { causes, plans, holders, now })) {
+    await askToAnchor($, { state, reading: causes.reading, isWindow: causes.isWindowDue, limits: causes.limits, list })
+    return
+  }
+  if (!isCurrent(state) || state.request !== null) return
+  await holdCauses($, { state, causes, plans, holders, now })
 }
 
 export async function judgeTurnEnd($, job) {
   const { state, turn } = job
-  const reading = await findReading($)
-  if (!isCurrent(state)) return
-  if (reading !== null) setArm(state.arm, reading)
-  if (reading !== null) await settleRound($, { state, reading })
-  const limits = await findLimitAsks($, state)
-  if (!isCurrent(state)) return
-  const isWindowDue = reading !== null && isSaveDue(state.arm, reading)
-  if (!isWindowDue && limits.length === 0) {
-    if (reading !== null && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
+  const first = await findCauses($, state)
+  if (first === null) return
+  if (!first.isWindowDue && first.limits.length === 0) {
+    if (first.reading !== null && isWarnDue(state.arm, first.reading)) await fireWarning($, { state, reading: first.reading })
     return
   }
-  if (await acceptManualSave($, { state, turn, reading, isWindow: isWindowDue, limits })) return
-  const cause = isWindowDue ? await findWindowCause($, { state, turn, reading, limits }) : { isWindow: false, isHeld: false, list: null }
-  if (cause.isHeld || (!cause.isWindow && limits.length === 0)) return
-  await askToAnchor($, { state, reading, isWindow: cause.isWindow, limits, list: cause.list })
+  const isWindowDue = first.isWindowDue
+  if (await acceptManualSave($, { state, turn, reading: first.reading, isWindow: isWindowDue, limits: first.limits })) return
+  const isWindow = await isWindowWanted($, { state, causes: first })
+  if (!isWindow && first.limits.length === 0) return
+  if (!isDrainWanted(first, isWindow)) {
+    await askToAnchor($, { state, reading: first.reading, isWindow, limits: first.limits, list: null })
+    return
+  }
+  const snapshot = await findFreshSnapshot($, { state, turn })
+  if (state.request !== null || (await $.session.id()) !== state.id) return
+  const causes = await findCauses($, state)
+  if (causes !== null) await decideDrain($, { state, causes, snapshot })
 }
