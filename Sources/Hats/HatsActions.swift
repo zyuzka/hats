@@ -12,6 +12,8 @@ protocol HatsActions: AnyObject {
     func applyGatewayPort(_ port: Int)
     func applyGatewaySettle(_ seconds: Int)
     func restartGateway()
+    func setCodexGateway(enabled: Bool)
+    func applyCodexGatewayPort(_ port: Int)
     func takeOverProfile()
     func keepMyProfile()
     func copyVariables()

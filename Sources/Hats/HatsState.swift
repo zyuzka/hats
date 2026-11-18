@@ -87,6 +87,7 @@ struct HatsSnapshot: Equatable {
     var autoSwitchWarning: AutoSwitchWarning?
     var sessionHandoff = SessionHandoffRow()
     var contextRows: [ContextRow] = []
+    var codexGateway = CodexGatewayFace()
 
     var wearing: HatRowState? { rows.first(where: \.isWearing) }
 

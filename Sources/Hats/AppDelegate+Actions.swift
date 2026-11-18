@@ -130,7 +130,8 @@ extension AppDelegate: HatsActions {
         popover.close()
         afterThePopoverSettles { [weak self] in
             guard let self, let hat = self.store.accounts.first(where: { $0.id == id }),
-                  HatDialogs.hasConfirmedRemoval(of: hat) else { return }
+                  HatDialogs.hasConfirmedRemoval(of: hat),
+                  self.hasConfirmedLosingTheCodexGateway(by: hat) else { return }
             do {
                 try self.store.remove(id)
                 self.settings.autoSwitch.order.removeAll { $0 == id }

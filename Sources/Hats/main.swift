@@ -113,8 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         usage.stop()
         noteTheLostCodexAnswers()
         blink?.stop()
-        GatewayProcess.stop()
-        gatewayEnvironment = GatewayEnvironment.ensure(serving: false)
+        stopEveryGateway()
     }
 
     @objc private func markClicked() {

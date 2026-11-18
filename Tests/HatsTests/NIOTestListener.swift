@@ -15,6 +15,8 @@ final class NIOTestListener: @unchecked Sendable {
         case stream(chunks: [String], gap: TimeInterval)
         case stalled(seconds: TimeInterval)
         case stallsAfter(chunks: [String])
+        case heldOpen(status: Int, body: String)
+        case cutOff(status: Int, body: String)
     }
 
     private let handler = Locked<((Request) -> Answer)?>(nil)
@@ -109,6 +111,20 @@ final class NIOTestListener: @unchecked Sendable {
                         channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
                     }
                 }
+            case .heldOpen(let status, let body):
+                write(context: context, status: status, headers: ["Content-Type": "application/json"],
+                      body: body, end: false)
+                context.flush()
+            case .cutOff(let status, let body):
+                var headers = HTTPHeaders()
+                headers.add(name: "Content-Length", value: String(body.utf8.count + 100))
+                let head = HTTPResponseHead(version: .http1_1, status: HTTPResponseStatus(statusCode: status),
+                                            headers: headers)
+                context.write(wrapOutboundOut(.head(head)), promise: nil)
+                var buffer = context.channel.allocator.buffer(capacity: body.utf8.count)
+                buffer.writeString(body)
+                context.writeAndFlush(wrapOutboundOut(.body(.byteBuffer(buffer))))
+                    .whenComplete { _ in context.close(promise: nil) }
             case .stallsAfter(let chunks):
                 var response = HTTPHeaders()
                 response.add(name: "Content-Type", value: "text/event-stream")

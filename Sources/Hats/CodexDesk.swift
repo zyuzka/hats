@@ -5,9 +5,10 @@ final class CodexDesk {
     var interval: TimeInterval = 300
     var encode: (CodexAuth) throws -> Data = { try $0.data() }
 
-    private var held: [String: Data] = [:]
+    var held: [String: Data] = [:]
     private var heldFields: [String: CodexRenewal.Fields] = [:]
-    private var backoff = RenewalBackoff()
+    var backoff = RenewalBackoff()
+    var onLiveWritten: ((String, Data) -> Void)?
     private var worn: String?
     private let unsavedLock = NSLock()
     private var unsaved: Set<String> = []
@@ -50,7 +51,7 @@ final class CodexDesk {
         return unsaved.sorted()
     }
 
-    private func mark(_ id: String, unsaved isUnsaved: Bool) {
+    func mark(_ id: String, unsaved isUnsaved: Bool) {
         unsavedLock.lock()
         defer { unsavedLock.unlock() }
         if isUnsaved { unsaved.insert(id) } else { unsaved.remove(id) }

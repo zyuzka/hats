@@ -122,17 +122,71 @@ a Codex hat on replaces `~/.codex/auth.json` the way Codex writes it: under both
 login in the file goes back to its own hat first, then the new one is written through a temporary file
 and read back. Besides `auth.json`, Hats creates in `~/.codex` only Codex's own lock files
 (`auth.lock`, `auth.json.lock`, kept as Codex keeps them) and its temporary file `.auth-hats-*`, which
-the write renames into place or removes. It changes nothing else there (it honours `CODEX_HOME`), and refuses when Codex keeps its login
+the write renames into place or removes. Apart from the one gateway line in `config.toml` (below), it
+changes nothing else there (it honours `CODEX_HOME`), and refuses when Codex keeps its login
 elsewhere (`cli_auth_credentials_store` other than `file`) or the file is a link, read-only or not a
 ChatGPT login. A login in the file that belongs to none of your hats is never overwritten: add it as a
 hat first.
 
-Codex renews the hat you wear; Hats renews the others — right after a hat comes off, and on the usage
-timer when its access token has less than a day left. Hats never signs a login out, because that
-revokes it on the server.
+Hats renews the parked Codex hats — right after a hat comes off, and on the usage timer when its
+access token has less than a day left. The hat you wear is renewed by Codex, and also by Hats while the
+Codex gateway runs (below). Hats never signs a login out, because that revokes it on the server.
 
-The Codex hats are listed under Claude's, under "Codex". They have no usage, no switching by
-themselves and no gateway yet: a Codex session already running keeps the account it started with.
+The Codex hats are listed under Claude's, under "Codex".
+
+### The Codex gateway
+
+A Codex window keeps its login in memory, so putting another hat on reaches only windows started after
+it — unless the window goes through the Codex gateway. The gateway is separate from Claude's: it
+listens on `127.0.0.1:8788` (Settings → Codex gateway; on by default once a Codex hat exists) and, while
+it runs, Hats writes one line into the top of `~/.codex/config.toml`:
+
+```toml
+openai_base_url = "http://127.0.0.1:8788/<secret>/codex"
+```
+
+Every request Codex sends there goes on to ChatGPT with the login of the hat you wear right now, so a
+thread started after the gateway came on changes hats between two requests without noticing. A request
+already streaming finishes on the hat it started with. When the worn hat answers `usage_limit_reached`,
+Hats puts on the next Codex hat that is not on vacation and does not need a sign-in, and sends the
+request again; Codex sees the limit only when every hat refused it; you then get a notification, at most one every 10
+minutes.
+An expired login is renewed and the request repeated once; if the server refuses the login, Codex is told
+that the hat needs a sign-in, and if the renewal could not reach the server, Codex gets a 502 and repeats
+the turn itself. While the gateway runs, Hats also renews the hat you wear a day before its access token
+expires, in `auth.json` itself, and leaves the file alone when Codex has renewed it first.
+
+A thread counts as going through the gateway for 6 hours after its last request; an older one is only
+written to the log. Turning the gateway off, changing its port, quitting Hats or removing the last Codex
+hat asks first while such threads exist. Hats removes the line when the gateway stops, is turned off, or
+Hats quits (and removes the file if Hats created it and nothing else is in it); the usage timer puts a
+deleted line back while the gateway runs. Hats does not edit a `config.toml` that has a value over
+several lines before its first table, and says so in the panel. It never touches a line someone else wrote: if
+`openai_base_url` already points elsewhere, the panel says so and the gateway stays unused. A link
+named `config.toml` stays a link; the file it points at is edited. The first time the gateway comes on,
+Hats shows one notification asking you to restart the Codex windows that are already open — a thread keeps the address it
+started with, so only threads started afterwards go through it.
+
+The `<secret>` part of the address is random and kept in Hats' settings. A request without it gets 404
+and never leaves the Mac. It keeps out web pages that call `127.0.0.1` and other users of the Mac, not
+programs you run yourself — those can read `config.toml` anyway, and Codex shows the address in its own
+window and logs.
+
+What the gateway does not cover:
+
+- Threads already open when the line was written stay on their old address.
+- Voice mode (`realtime/calls`) is not supported through it and gets 404.
+- The model catalog of a Codex service that was already running, and `model_catalog_url`, go around it.
+- Requests to `chatgpt_base_url` (account limits, `wham/*`) keep the login the Codex service started
+  with; once that login expires, the limits Codex shows can fail or disagree with the gateway.
+- Codex and Hats share no lock on `config.toml`. Hats writes it through a temporary file, checks that
+  nothing changed it in between, reads it back and redoes the edit when it differs, but a write from
+  Codex at the very same moment cannot be ruled out.
+
+The build script refuses to stop Hats while threads went through the Codex gateway in the last 6 hours,
+as it does for Claude Code sessions on the Claude gateway, and names them as `codex-thread <id>`. It
+decides whether the Codex gateway should be running by the app's own rule — a Codex hat exists and the
+gateway is not switched off — from two values the app keeps in its settings.
 
 ## The one thing to know before using it
 
@@ -386,7 +440,7 @@ session is told when one ends.
 | Tool | Status |
 | --- | --- |
 | Claude Code | supported |
-| Codex | hats: sign-in, wearing, renewing the parked ones; no usage, no switching by itself, no gateway yet |
+| Codex | hats: sign-in, wearing, renewing; the Codex gateway moves new threads between hats and past a usage limit; no usage display yet |
 
 ## Where things live
 
@@ -395,6 +449,7 @@ session is told when one ends.
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
 | The Codex login in use | `~/.codex/auth.json`, Codex's own file |
+| The Codex gateway address | one `openai_base_url` line in `~/.codex/config.toml`, only while the gateway runs |
 | Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under

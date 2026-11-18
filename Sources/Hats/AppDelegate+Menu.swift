@@ -82,13 +82,18 @@ extension AppDelegate {
 
     func quit() {
         let live = SessionDiscovery.everySessionSeenRecently()
-        guard let cost = HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown) else {
+        let threads = codex.gateway.isServing ? codex.gateway.state.threadIDs.count : 0
+        let costs = [
+            HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown),
+            HatsCopy.codexQuitCost(threads: threads),
+        ].compactMap { $0 }
+        guard !costs.isEmpty else {
             NSApp.terminate(nil)
             return
         }
         popover.close()
         afterThePopoverSettles {
-            guard HatDialogs.hasConfirmedQuit(cost: cost) else { return }
+            guard HatDialogs.hasConfirmedQuit(cost: costs.joined(separator: " ")) else { return }
             NSApp.terminate(nil)
         }
     }

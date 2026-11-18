@@ -2,11 +2,15 @@ import AppKit
 
 final class CodexHats {
     let desk: CodexDesk
+    let gateway: CodexGatewayRun
     let signIn = CodexSignInFlow()
     private var timer: DispatchSourceTimer?
     private var wakeObserver: NSObjectProtocol?
 
-    init(world: CodexWorld) { desk = CodexDesk(world: world) }
+    init(world: CodexWorld) {
+        desk = CodexDesk(world: world)
+        gateway = CodexGatewayRun(broker: CodexGatewayDesk(desk: desk, state: CodexGatewayState()))
+    }
 
     func start(every interval: TimeInterval, tick: @escaping () -> Void) {
         desk.interval = interval

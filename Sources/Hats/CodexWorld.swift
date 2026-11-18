@@ -14,6 +14,8 @@ struct CodexWorld {
     var now: () -> Date
     var run: (@escaping () -> Void) -> Void
     var onMain: (@escaping () -> Void) -> Void
+    var pause: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
+    var waitForCodex: TimeInterval = 30
 
     static func real(keychain: KeychainWorld) -> CodexWorld {
         let queue = DispatchQueue(label: "hats.codex", qos: .utility)

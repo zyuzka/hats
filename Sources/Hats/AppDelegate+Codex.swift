@@ -3,9 +3,13 @@ import AppKit
 extension AppDelegate {
     func startTheCodexHats() {
         noticeTheWornCodexHat()
+        listenToTheCodexGateway()
+        syncTheCodexGateway()
         codex.start(every: usage.interval) { [weak self] in
             self?.noticeTheWornCodexHat()
             self?.renewTheParkedCodexHats()
+            self?.syncTheCodexGateway()
+            self?.renewTheWornCodexHat()
         }
     }
 

@@ -63,10 +63,14 @@ extension CodexDesk {
         }
         var outgoing: CodexTicket?
         var parked: Data?
+        var kept: Data?
         let written = try world.home.swap(in: incoming) { live in
             guard let live else { return .write }
             let owner = try ownerOf(live)
-            if owner == target.owner { return .keep }
+            if owner == target.owner {
+                kept = live
+                return .keep
+            }
             guard let hat = hats.first(where: { $0.owner == owner }) else {
                 throw CodexError.foreignLogin(CodexAuth(data: live)?.identity?.email ?? owner.accountID)
             }
@@ -78,6 +82,7 @@ extension CodexDesk {
             return .write
         }
         noteWornHere(target.id)
+        onLiveWritten?(target.id, written ? incoming : kept ?? incoming)
         guard written else { return .alreadyWorn(target.id) }
         forget(target.id)
         Journal.log("codex.wear.done", ["target": String(target.id.prefix(8)), "now": Journal.fingerprint(incoming)])
@@ -101,6 +106,7 @@ extension CodexDesk {
             return .write
         }
         noteWornHere(target.id)
+        onLiveWritten?(target.id, data)
 
         return .worn(target: target.id, outgoing: outgoing?.id, parked: parked)
     }

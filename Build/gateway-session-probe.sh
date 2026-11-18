@@ -87,7 +87,10 @@ readonly atRiskUnknown="unknown"
 
 # Pure: turns the endpoint's body into a pid list, or into the unknown token. An empty
 # body, a missing header line, or `readable 0` — the app saying it could not read the
-# process table — all mean unknown, and unknown refuses.
+# process table — all mean unknown, and unknown refuses. The Codex gateway answers the
+# same way and names its threads on `codex-thread <id>` lines, which are kept whole: a
+# Codex thread keeps the gateway address it started with, so it is at risk exactly like a
+# Claude Code pid.
 pidsFromAnswer() {
     local body="$1" first
     [[ -n "$body" ]] || { printf '%s\n' "$atRiskUnknown"; return 0; }
@@ -96,34 +99,59 @@ pidsFromAnswer() {
         printf '%s\n' "$atRiskUnknown"
         return 0
     fi
-    sed -n 's/^pid \([0-9]\{1,\}\)$/\1/p' <<< "$body"
+    sed -nE -e 's/^pid ([0-9]+)$/\1/p' -e 's/^(codex-thread .+)$/\1/p' <<< "$body"
 }
 
 # Asks the gateway. Separated from the parsing so the parsing can be checked without a
-# network, and kept overridable so the checks can stand a fake in its place.
+# network, and kept overridable so the checks can stand a fake in its place. The second
+# argument is the path prefix: the Codex gateway answers only under its secret.
 gatewayAnswer() {
-    local port="$1"
-    curl -sS --max-time 4 "http://127.0.0.1:${port}/__gateway__/sessions-at-risk" 2>/dev/null || true
+    local port="$1" prefix="${2:-}"
+    curl -sS --max-time 4 "http://127.0.0.1:${port}${prefix}/__gateway__/sessions-at-risk" 2>/dev/null || true
 }
 
-sessionsTheBuildWouldBreak() {
-    local file port enabled
-    file="$(hatsSettingsFile)"
-    if [[ ! -r "$file" ]]; then
-        printf '%s\n' "$atRiskUnknown"
-        return 0
-    fi
-    # A gateway that is switched off carries no session, so there is nothing to break.
-    enabled="$(settingFlag isGatewayEnabled "$file")"
-    if [[ "$enabled" == false ]]; then
-        return 0
-    fi
+settingText() {
+    sed -nE "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9]+)\".*/\1/p" "$2" 2>/dev/null | head -1
+}
+
+# Each gateway is asked on its own. The Claude gateway counts as on unless the settings
+# say false, as before. The Codex gateway is decided by the app's own rule
+# (`CodexGatewayWanted.isWanted`): it serves when there is a Codex hat (`hasCodexHats`,
+# which the app keeps in the settings for this script) and it is not switched off
+# (`isCodexGatewayEnabled` not false; absent means on).
+claudeSessionsAtRisk() {
+    local file="$1" port
+    [[ "$(settingFlag isGatewayEnabled "$file")" == false ]] && return 0
     port="$(settingNumber gatewayPort "$file")"
     if [[ -z "$port" ]]; then
         printf '%s\n' "$atRiskUnknown"
         return 0
     fi
     pidsFromAnswer "$(gatewayAnswer "$port")"
+}
+
+codexThreadsAtRisk() {
+    local file="$1" port secret
+    [[ "$(settingFlag hasCodexHats "$file")" == true ]] || return 0
+    [[ "$(settingFlag isCodexGatewayEnabled "$file")" == false ]] && return 0
+    port="$(settingNumber codexGatewayPort "$file")"
+    secret="$(settingText codexGatewaySecret "$file")"
+    if [[ -z "$port" || -z "$secret" ]]; then
+        printf '%s\n' "$atRiskUnknown"
+        return 0
+    fi
+    pidsFromAnswer "$(gatewayAnswer "$port" "/$secret")"
+}
+
+sessionsTheBuildWouldBreak() {
+    local file
+    file="$(hatsSettingsFile)"
+    if [[ ! -r "$file" ]]; then
+        printf '%s\n' "$atRiskUnknown"
+        return 0
+    fi
+    claudeSessionsAtRisk "$file"
+    codexThreadsAtRisk "$file"
 }
 
 # The override has to be said affirmatively. Testing only for emptiness made

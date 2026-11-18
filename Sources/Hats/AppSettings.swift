@@ -30,6 +30,12 @@ struct AppSettings: Codable, Equatable {
     var contextThresholds = ContextThresholds()
     var limitThresholds = LimitThresholds()
     var usageDisplay = UsageDisplay.percent
+    var codexGatewayPort = CodexGatewayPaths.defaultPort
+    var isCodexGatewayEnabled: Bool?
+    var codexGatewaySecret: String?
+    var codexConfigCreatedByHats = false
+    var hasToldToRestartCodexWindows = false
+    var hasCodexHats = false
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -56,6 +62,20 @@ struct AppSettings: Codable, Equatable {
         limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
             ?? LimitThresholds()
         usageDisplay = (try? c.decodeIfPresent(UsageDisplay.self, forKey: .usageDisplay)) ?? .percent
+        try decodeTheCodexGateway(from: decoder)
+    }
+
+    private mutating func decodeTheCodexGateway(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let port = try? c.decodeIfPresent(Int.self, forKey: .codexGatewayPort)
+        codexGatewayPort = port.flatMap { Self.isAUsablePort($0) ? $0 : nil } ?? CodexGatewayPaths.defaultPort
+        isCodexGatewayEnabled = try? c.decodeIfPresent(Bool.self, forKey: .isCodexGatewayEnabled)
+        let secret = try? c.decodeIfPresent(String.self, forKey: .codexGatewaySecret)
+        codexGatewaySecret = secret.flatMap { CodexGatewayPaths.isAUsableSecret($0) ? $0 : nil }
+        codexConfigCreatedByHats = (try? c.decodeIfPresent(Bool.self, forKey: .codexConfigCreatedByHats)) ?? false
+        let told = try? c.decodeIfPresent(Bool.self, forKey: .hasToldToRestartCodexWindows)
+        hasToldToRestartCodexWindows = told ?? false
+        hasCodexHats = (try? c.decodeIfPresent(Bool.self, forKey: .hasCodexHats)) ?? false
     }
 
     static var defaultURL: URL {

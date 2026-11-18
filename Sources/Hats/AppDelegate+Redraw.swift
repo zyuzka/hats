@@ -45,6 +45,8 @@ extension AppDelegate {
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         snapshot.sessionHandoff = handoff.row
         snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
+        syncTheCodexGatewayIfItsInputsMoved()
+        snapshot.codexGateway = codexGatewayFace
         popover.model.snapshot = snapshot
         writeTheHatUsage()
         contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())
