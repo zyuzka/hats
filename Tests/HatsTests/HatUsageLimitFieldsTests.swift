@@ -107,6 +107,18 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertEqual(read["sevenDay"] as? String, "switch_threshold_off")
     }
 
+    func testWithOneHatTheModHearsThatThereIsNoOtherHatOnBothLimits() throws {
+        let alone = record(snapshot(wearing: "work", hats: ["work"]), liveSlot: slot, aliveAt: polledAt)
+        var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
+        XCTAssertEqual(file.setRecord(alone, at: now), .written)
+
+        let read = try readByTheMod(file.url)
+
+        XCTAssertEqual(read["isUnderHats"] as? Bool, true, "one hat is still a hat: the limit thresholds act")
+        XCTAssertEqual(read["fiveHour"] as? String, "no_hat")
+        XCTAssertEqual(read["sevenDay"] as? String, "no_hat")
+    }
+
     func testAWornHatWithAKnownCellCarriesItsCellWhatHatsSwitchesOnAndTheTimeOfThePoll() throws {
         let written = try fields(of: record(snapshot(wearing: "work"), liveSlot: slot, aliveAt: polledAt))
 
