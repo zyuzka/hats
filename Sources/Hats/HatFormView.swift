@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 final class HatFormState: ObservableObject {
@@ -21,6 +22,7 @@ struct HatFormView: View {
     let fields: HatFormFields
     let namePlaceholder: String
     let choices: [BrowserChoice]
+    let browserWarning: String?
     let chromeNames: [String: String]
     @ObservedObject var state: HatFormState
     let choose: (Int) -> Void
@@ -44,6 +46,7 @@ struct HatFormView: View {
                 TextField("email address", text: $state.email).textFieldStyle(.roundedBorder)
             }
             if fields.contains(.browser) { browsers }
+            if fields.contains(.browser), let browserWarning { warning(browserWarning) }
             HStack(spacing: 8) {
                 Spacer()
                 ForEach(PromptButtons.leftToRight(prompt.buttons), id: \.index) { button in
@@ -72,6 +75,19 @@ struct HatFormView: View {
             }
         }
         .labelsHidden()
+    }
+
+    private func warning(_ text: String) -> some View {
+        Button {
+            if let url = BrowserChoice.fullDiskAccessSettings { NSWorkspace.shared.open(url) }
+        } label: {
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func action(_ index: Int, _ title: String) -> some View {

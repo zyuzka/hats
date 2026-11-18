@@ -164,14 +164,4 @@ enum BrowserChoice: Codable, Equatable, Hashable {
         return String(reduced.prefix(64))
     }
 
-    static func available() -> [BrowserChoice] {
-        var choices: [BrowserChoice] = ChromeChannel.allCases.flatMap { channel in
-            channel.profiles.map { BrowserChoice.chrome(channel, $0) }
-        }
-        if FileManager.default.fileExists(atPath: "/Applications/Firefox.app") {
-            choices.append(.firefox)
-        }
-        choices.append(.safari)
-        return choices
-    }
 }

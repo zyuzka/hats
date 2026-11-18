@@ -30,6 +30,7 @@ extension AppDelegate {
         }
         snapshot.horizon = SessionHorizon.line(soonestParkedAccessExpiry: store.soonestParkedAccessExpiry)
         snapshot.gateway = GatewayProcess.status
+        snapshot.hasFullDiskAccess = FullDiskAccess.isGranted()
         snapshot.gatewaySessions = somebodyLooks ? GatewayProcess.sessionRows : popover.model.snapshot.gatewaySessions
         snapshot.environment = gatewayEnvironment
         snapshot.settings = settings

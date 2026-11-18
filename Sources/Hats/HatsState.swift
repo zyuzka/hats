@@ -71,6 +71,7 @@ struct HatsSnapshot: Equatable {
     var gatewaySessions: [GatewaySessionRow] = []
     var horizon: String = ""
     var gateway: GatewayProcess.Status = .notRunning
+    var hasFullDiskAccess = true
     var environment: GatewayEnvironmentReport?
     var settings = AppSettings()
     var banner: AutoSwitchRecord?

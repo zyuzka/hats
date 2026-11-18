@@ -31,7 +31,7 @@ extension AppDelegate: HatsActions {
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
             self.whenNoSignInIsRunning { [weak self] in
-                guard let self, let wanted = HatDialogs.addHat() else { return }
+                guard let self, let wanted = HatDialogs.addHat(remembered: self.store.accounts.compactMap(\.browser)) else { return }
                 if wanted.tool == .codex { return self.addCodexHat(wanted) }
                 do {
                     var hat = try self.store.add(email: wanted.email, browser: wanted.browser)
@@ -96,7 +96,7 @@ extension AppDelegate: HatsActions {
 
     private func chooseBrowserNow(_ id: String) {
         guard var hat = store.accounts.first(where: { $0.id == id }),
-              let chosen = HatDialogs.browser(for: hat) else { return }
+              let chosen = HatDialogs.browser(for: hat, remembered: store.accounts.compactMap(\.browser)) else { return }
         hat.browser = chosen
         apply(hat)
     }

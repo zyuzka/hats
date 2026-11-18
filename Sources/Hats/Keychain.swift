@@ -24,7 +24,34 @@ enum Keychain {
             if result.stderr.contains("could not be found") { return nil }
             throw KeychainError(operation: "read \(service)", detail: result.stderr)
         }
-        return result.stdout.data(using: .utf8)
+        return storedValue(printed: result.stdout)
+    }
+
+    static func storedValue(printed: String) -> Data {
+        let digits = Array(printed.utf8)
+        guard !digits.isEmpty, digits.count % 2 == 0, digits.allSatisfy(isLowerHexDigit) else {
+            return Data(printed.utf8)
+        }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(digits.count / 2)
+        for index in stride(from: 0, to: digits.count, by: 2) {
+            bytes.append(hexValue(digits[index]) << 4 | hexValue(digits[index + 1]))
+        }
+        guard bytes.contains(where: isNotPrintable) else { return Data(printed.utf8) }
+
+        return Data(bytes)
+    }
+
+    private static func isLowerHexDigit(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+    }
+
+    private static func hexValue(_ digit: UInt8) -> UInt8 {
+        digit <= UInt8(ascii: "9") ? digit - UInt8(ascii: "0") : digit - UInt8(ascii: "a") + 10
+    }
+
+    private static func isNotPrintable(_ byte: UInt8) -> Bool {
+        byte < 0x20 || byte == 0x7f
     }
 
     static func write(service: String, account: String, data: Data) throws {

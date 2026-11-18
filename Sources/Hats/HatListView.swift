@@ -9,6 +9,7 @@ struct HatListView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().padding(.vertical, 4)
+            if !snapshot.hasFullDiskAccess { fullDiskAccessView }
             if let banner = snapshot.banner { bannerView(banner) }
             if let stranded = snapshot.deadEndBanner(now: Date()) { strandedView(stranded) }
             if snapshot.rows.isEmpty { empty } else { list }

@@ -1,9 +1,10 @@
 import AppKit
 
 extension HatDialogs {
-    static func addHat() -> NewHat? {
+    static func addHat(remembered: [BrowserChoice]) -> NewHat? {
         let state = HatFormState()
-        let choices = BrowserChoice.available()
+        let list = BrowserChoice.available(remembered: remembered)
+        let choices = list.choices
         state.browser = choices.first
         let prompt = HatPrompt(
             title: "Add a hat",
@@ -17,6 +18,10 @@ extension HatDialogs {
                 fields: [.provider, .name, .email, .browser],
                 namePlaceholder: "name — Work, Personal, Team",
                 choices: choices,
+                browserWarning: HatsCopy.browserAccessWarning(
+                    hasFullDiskAccess: FullDiskAccess.isGranted(),
+                    unreadable: list.unreadable
+                ),
                 chromeNames: ChromeProfiles.names(),
                 state: state,
                 choose: choose
@@ -46,6 +51,7 @@ extension HatDialogs {
                 fields: [.name],
                 namePlaceholder: hat.email,
                 choices: [],
+                browserWarning: nil,
                 chromeNames: [:],
                 state: state,
                 choose: choose
@@ -56,9 +62,10 @@ extension HatDialogs {
         return .some(Account.storableName(state.name))
     }
 
-    static func browser(for hat: Account) -> BrowserChoice? {
+    static func browser(for hat: Account, remembered: [BrowserChoice]) -> BrowserChoice? {
         let state = HatFormState()
-        let choices = BrowserChoice.available()
+        let list = BrowserChoice.available(remembered: remembered)
+        let choices = list.choices
         state.browser = choices.first { $0 == hat.browser } ?? choices.first
         let prompt = HatPrompt(
             title: "Browser for \(hat.title)",
@@ -72,6 +79,10 @@ extension HatDialogs {
                 fields: [.browser],
                 namePlaceholder: "",
                 choices: choices,
+                browserWarning: HatsCopy.browserAccessWarning(
+                    hasFullDiskAccess: FullDiskAccess.isGranted(),
+                    unreadable: list.unreadable
+                ),
                 chromeNames: ChromeProfiles.names(),
                 state: state,
                 choose: choose
