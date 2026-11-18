@@ -12,14 +12,20 @@ struct HatLimitSection: View {
             limitThreshold(
                 HatsCopy.warnAt,
                 percent: limits.warnPercent,
-                range: limits.getWarnRange(),
+                bounds: limits.getWarnBounds(),
+                note: limits.canTurnWarnOn() ? nil : limits.savePercent.map {
+                    HatsCopy.getNoRoomBelow(HatsCopy.anchorAt, percent: $0)
+                },
                 toggle: { next, isOn in next.setWarn(isOn: isOn) },
                 step: { next, percent in next.setWarn(percent) }
             )
             limitThreshold(
                 HatsCopy.anchorAt,
                 percent: limits.savePercent,
-                range: limits.getSaveRange(),
+                bounds: limits.getSaveBounds(),
+                note: limits.canTurnSaveOn() ? nil : limits.warnPercent.map {
+                    HatsCopy.getNoRoomAbove(HatsCopy.warnAt, percent: $0)
+                },
                 toggle: { next, isOn in next.setSave(isOn: isOn) },
                 step: { next, percent in next.setSave(percent) }
             )
@@ -40,29 +46,25 @@ struct HatLimitSection: View {
     private func limitThreshold(
         _ label: String,
         percent: Int?,
-        range: ClosedRange<Int>,
+        bounds: PercentBounds,
+        note: String?,
         toggle: @escaping (inout LimitThresholds, Bool) -> Void,
         step: @escaping (inout LimitThresholds, Int) -> Void
     ) -> some View {
-        HStack {
-            Toggle(label, isOn: Binding(
-                get: { percent != nil },
-                set: { isOn in changeLimits { toggle(&$0, isOn) } }
-            ))
-            .font(.system(size: 13))
-            Spacer()
-            if let percent {
-                Stepper(
-                    "\(percent)%",
-                    value: Binding(
-                        get: { percent },
-                        set: { value in changeLimits { step(&$0, value) } }
-                    ),
-                    in: range,
-                    step: 1
-                )
+        PercentField(
+            label: label,
+            percent: percent,
+            bounds: bounds,
+            note: percent == nil ? note : nil,
+            apply: { value in changeLimits { step(&$0, value) } },
+            leading: {
+                Toggle(label, isOn: Binding(
+                    get: { percent != nil },
+                    set: { isOn in changeLimits { toggle(&$0, isOn) } }
+                ))
                 .font(.system(size: 13))
+                .disabled(percent == nil && note != nil)
             }
-        }
+        )
     }
 }

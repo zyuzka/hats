@@ -59,4 +59,33 @@ extension HatsCopy {
 
         return "\(past), after its background work (up to \(drainMinutes) min), and, \(clear)"
     }
+
+    static let aWholeNumber = "a whole number"
+
+    static func getPercentRefusal(_ refusal: PercentRefusal, bounds: PercentBounds) -> String {
+        switch refusal {
+        case .notAWholeNumber:
+            return aWholeNumber
+        case .belowLower:
+            guard let neighbour = bounds.lower.neighbour else { return getPercentRange(bounds) }
+
+            return "above \(neighbour.label) \(neighbour.percent)%"
+        case .aboveUpper:
+            guard let neighbour = bounds.upper.neighbour else { return getPercentRange(bounds) }
+
+            return "below \(neighbour.label) \(neighbour.percent)%"
+        }
+    }
+
+    static func getPercentRange(_ bounds: PercentBounds) -> String {
+        "from \(bounds.lower.percent)% to \(bounds.upper.percent)%"
+    }
+
+    static func getNoRoomBelow(_ label: String, percent: Int) -> String {
+        "\(label) \(percent)% leaves no room below it: raise \(label) first"
+    }
+
+    static func getNoRoomAbove(_ label: String, percent: Int) -> String {
+        "\(label) \(percent)% leaves no room above it: lower \(label) first"
+    }
 }

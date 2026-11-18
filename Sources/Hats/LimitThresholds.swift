@@ -59,6 +59,26 @@ struct LimitThresholds: Codable, Equatable {
         return min(low, Self.range.upperBound)...Self.range.upperBound
     }
 
+    func getWarnBounds() -> PercentBounds {
+        let anchor = savePercent.map { PercentNeighbour(label: HatsCopy.anchorAt, percent: $0) }
+
+        return PercentBounds(getWarnRange(), below: anchor)
+    }
+
+    func getSaveBounds() -> PercentBounds {
+        let warn = warnPercent.map { PercentNeighbour(label: HatsCopy.warnAt, percent: $0) }
+
+        return PercentBounds(getSaveRange(), above: warn)
+    }
+
+    func canTurnWarnOn() -> Bool {
+        Self.isAUsablePair(warn: getWarnRange().getClamped(Self.defaultWarn), save: savePercent)
+    }
+
+    func canTurnSaveOn() -> Bool {
+        Self.isAUsablePair(warn: warnPercent, save: getSaveRange().getClamped(Self.defaultSave))
+    }
+
     mutating func setWarn(isOn: Bool) {
         guard isOn else {
             warnPercent = nil

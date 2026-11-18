@@ -16,7 +16,7 @@ struct ContextThresholdsPanel: View {
             threshold(
                 HatsCopy.warnAt,
                 percent: thresholds.warnPercent,
-                range: thresholds.getWarnRange(),
+                bounds: thresholds.getWarnBounds(),
                 toggle: { next, isOn in next.setWarn(isOn: isOn) },
                 step: { next, percent in next.setWarn(percent) }
             )
@@ -24,7 +24,7 @@ struct ContextThresholdsPanel: View {
             threshold(
                 HatsCopy.anchorAt,
                 percent: thresholds.savePercent,
-                range: thresholds.getSaveRange(),
+                bounds: thresholds.getSaveBounds(),
                 toggle: { next, isOn in next.setSave(isOn: isOn) },
                 step: { next, percent in next.setSave(percent) }
             )
@@ -49,30 +49,24 @@ struct ContextThresholdsPanel: View {
     private func threshold(
         _ label: String,
         percent: Int?,
-        range: ClosedRange<Int>,
+        bounds: PercentBounds,
         toggle: @escaping (inout ContextThresholds, Bool) -> Void,
         step: @escaping (inout ContextThresholds, Int) -> Void
     ) -> some View {
-        HStack {
-            Toggle(label, isOn: Binding(
-                get: { percent != nil },
-                set: { isOn in change { toggle(&$0, isOn) } }
-            ))
-            .font(.system(size: 13))
-            Spacer()
-            if let percent {
-                Stepper(
-                    "\(percent)%",
-                    value: Binding(
-                        get: { percent },
-                        set: { value in change { step(&$0, value) } }
-                    ),
-                    in: range,
-                    step: 1
-                )
+        PercentField(
+            label: label,
+            percent: percent,
+            bounds: bounds,
+            note: nil,
+            apply: { value in change { step(&$0, value) } },
+            leading: {
+                Toggle(label, isOn: Binding(
+                    get: { percent != nil },
+                    set: { isOn in change { toggle(&$0, isOn) } }
+                ))
                 .font(.system(size: 13))
             }
-        }
+        )
     }
 
     private var drain: some View {

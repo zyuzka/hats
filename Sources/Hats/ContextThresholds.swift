@@ -76,6 +76,18 @@ struct ContextThresholds: Codable, Equatable {
         return max(Self.saveRange.lowerBound, warnPercent + 1)...Self.saveRange.upperBound
     }
 
+    func getWarnBounds() -> PercentBounds {
+        let anchor = savePercent.map { PercentNeighbour(label: HatsCopy.anchorAt, percent: $0) }
+
+        return PercentBounds(getWarnRange(), below: anchor)
+    }
+
+    func getSaveBounds() -> PercentBounds {
+        let warn = warnPercent.map { PercentNeighbour(label: HatsCopy.warnAt, percent: $0) }
+
+        return PercentBounds(getSaveRange(), above: warn)
+    }
+
     mutating func setWarn(isOn: Bool) {
         warnPercent = isOn ? getWarnRange().getClamped(Self.defaultWarn) : nil
     }

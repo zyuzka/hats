@@ -218,14 +218,20 @@ final class LimitThresholdsTests: XCTestCase {
                         limitThreshold(
                             HatsCopy.warnAt,
                             percent: limits.warnPercent,
-                            range: limits.getWarnRange(),
+                            bounds: limits.getWarnBounds(),
+                            note: limits.canTurnWarnOn() ? nil : limits.savePercent.map {
+                                HatsCopy.getNoRoomBelow(HatsCopy.anchorAt, percent: $0)
+                            },
                             toggle: { next, isOn in next.setWarn(isOn: isOn) },
                             step: { next, percent in next.setWarn(percent) }
                         )
                         limitThreshold(
                             HatsCopy.anchorAt,
                             percent: limits.savePercent,
-                            range: limits.getSaveRange(),
+                            bounds: limits.getSaveBounds(),
+                            note: limits.canTurnSaveOn() ? nil : limits.warnPercent.map {
+                                HatsCopy.getNoRoomAbove(HatsCopy.warnAt, percent: $0)
+                            },
                             toggle: { next, isOn in next.setSave(isOn: isOn) },
                             step: { next, percent in next.setSave(percent) }
                         )
@@ -237,13 +243,21 @@ final class LimitThresholdsTests: XCTestCase {
                     model.actions?.updateLimitThresholds(next)
             """,
             """
-                        Toggle(label, isOn: Binding(
-                            get: { percent != nil },
-                            set: { isOn in changeLimits { toggle(&$0, isOn) } }
-                        ))
-            """,
-            """
-                                set: { value in changeLimits { step(&$0, value) } }
+                    PercentField(
+                        label: label,
+                        percent: percent,
+                        bounds: bounds,
+                        note: percent == nil ? note : nil,
+                        apply: { value in changeLimits { step(&$0, value) } },
+                        leading: {
+                            Toggle(label, isOn: Binding(
+                                get: { percent != nil },
+                                set: { isOn in changeLimits { toggle(&$0, isOn) } }
+                            ))
+                            .font(.system(size: 13))
+                            .disabled(percent == nil && note != nil)
+                        }
+                    )
             """,
             """
                         Text(HatsCopy.contextThresholdsNote)
@@ -256,6 +270,59 @@ final class LimitThresholdsTests: XCTestCase {
         for row in rows {
             XCTAssertTrue((panel + section).contains(row), "the panel no longer reads, as one block:\n\(row)")
         }
+    }
+
+    func testTheBoundsOfALimitThresholdNameTheOtherOneOnlyWhereItSetsThem() {
+        XCTAssertEqual(limits(70, 80).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 79, neighbour: PercentNeighbour(label: "Anchor at", percent: 80))
+        ))
+        XCTAssertEqual(limits(70, 80).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 71, neighbour: PercentNeighbour(label: "Warn at", percent: 70)),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(limits(70, nil).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(limits(nil, 80).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(limits(10, 11).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 10, neighbour: PercentNeighbour(label: "Anchor at", percent: 11))
+        ))
+        XCTAssertEqual(limits(94, 95).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 95, neighbour: PercentNeighbour(label: "Warn at", percent: 94)),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        for chosen in [limits(70, 80), limits(nil, 80), limits(70, nil), limits(10, 11), limits(94, 95)] {
+            XCTAssertEqual(chosen.getWarnRange(), chosen.getWarnBounds().getStepRange(), "\(chosen)")
+            XCTAssertEqual(chosen.getSaveRange(), chosen.getSaveBounds().getStepRange(), "\(chosen)")
+        }
+    }
+
+    func testAToggleThatCannotTurnOnIsKnownBeforeItIsTried() {
+        XCTAssertFalse(limits(95, nil).canTurnSaveOn(), "the range is 95...95 and the pair is still impossible")
+        XCTAssertEqual(limits(95, nil).getSaveRange(), 95...95)
+        XCTAssertFalse(limits(nil, 10).canTurnWarnOn())
+        XCTAssertTrue(limits(94, nil).canTurnSaveOn())
+        XCTAssertTrue(limits(nil, 11).canTurnWarnOn())
+        XCTAssertTrue(limits(nil, nil).canTurnWarnOn())
+        XCTAssertTrue(limits(nil, nil).canTurnSaveOn())
+        for (start, isWarn) in [(limits(95, nil), false), (limits(nil, 10), true), (limits(90, nil), false)] {
+            var turned = start
+            if isWarn { turned.setWarn(isOn: true) } else { turned.setSave(isOn: true) }
+            let isOn = isWarn ? turned.warnPercent != nil : turned.savePercent != nil
+            let can = isWarn ? start.canTurnWarnOn() : start.canTurnSaveOn()
+            XCTAssertEqual(isOn, can, "\(start): the predicate and the toggle agree")
+        }
+        XCTAssertEqual(HatsCopy.getNoRoomAbove(HatsCopy.warnAt, percent: 95), "Warn at 95% leaves no room above it: lower Warn at first")
+        XCTAssertEqual(
+            HatsCopy.getNoRoomBelow(HatsCopy.anchorAt, percent: 10),
+            "Anchor at 10% leaves no room below it: raise Anchor at first"
+        )
     }
 
     func testTheTextsOfTheHatLimitSection() {

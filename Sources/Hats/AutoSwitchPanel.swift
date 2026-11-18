@@ -55,33 +55,27 @@ struct AutoSwitchPanel: View {
         _ key: WritableKeyPath<AutoSwitchPolicy, Int?>,
         fallback: Int
     ) -> some View {
-        HStack {
-            Toggle(label, isOn: Binding(
-                get: { policy[keyPath: key] != nil },
-                set: { on in
-                    var next = policy
-                    next[keyPath: key] = on ? fallback : nil
-                    model.actions?.updateAutoSwitch(next)
-                }
-            )).font(.system(size: 12))
-            Spacer()
-            if let percent = policy[keyPath: key] {
-                Stepper(
-                    "at \(percent)%",
-                    value: Binding(
-                        get: { percent },
-                        set: { value in
-                            var next = policy
-                            next[keyPath: key] = min(100, max(50, value))
-                            model.actions?.updateAutoSwitch(next)
-                        }
-                    ),
-                    in: 50...100,
-                    step: 1
-                )
-                .font(.system(size: 12))
+        PercentField(
+            label: label,
+            percent: policy[keyPath: key],
+            bounds: PercentBounds(AutoSwitchPolicy.thresholdRange),
+            note: nil,
+            apply: { value in
+                var next = policy
+                next[keyPath: key] = value
+                model.actions?.updateAutoSwitch(next)
+            },
+            leading: {
+                Toggle(label, isOn: Binding(
+                    get: { policy[keyPath: key] != nil },
+                    set: { on in
+                        var next = policy
+                        next[keyPath: key] = on ? fallback : nil
+                        model.actions?.updateAutoSwitch(next)
+                    }
+                )).font(.system(size: 12))
             }
-        }
+        )
     }
 
     private var order: some View {
