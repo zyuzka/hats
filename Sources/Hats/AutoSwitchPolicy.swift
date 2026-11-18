@@ -91,6 +91,7 @@ enum AutoSwitchHold: String, Equatable {
     case blindAndNear
     case blindAndFar
     case blindTargetSpent
+    case blindAndOthersAreOnVacation
 
     var isWorthAJournalLine: Bool { self != .off }
 }
@@ -109,6 +110,7 @@ extension AutoSwitchPolicy {
         eligible: [String],
         readings: [String: UsageReading],
         blocked: [ShutOutHat],
+        onVacation: [HatOnVacation],
         blindness: UsageBlindness = UsageBlindness(),
         at now: Date = Date()
     ) -> AutoSwitchDecision {
@@ -119,6 +121,7 @@ extension AutoSwitchPolicy {
                     after: wearing,
                     among: eligible,
                     blocked: blocked,
+                    onVacation: onVacation,
                     readings: readings,
                     at: now
                 )
@@ -129,6 +132,14 @@ extension AutoSwitchPolicy {
         guard blindness.isBlindEnoughToSwitch,
               let near = nearestWindow(in: reading, at: now)
         else { return .hold }
+        if let away = findEveryOtherHatOnVacation(
+            after: wearing,
+            among: eligible,
+            blocked: blocked,
+            onVacation: onVacation
+        ) {
+            return .nowhereToGo(.unreadableAndOthersAreOnVacation(away))
+        }
         let seen = candidatesReadInThisPoll(
             after: wearing,
             among: eligible,

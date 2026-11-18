@@ -51,6 +51,7 @@ struct ManageHatsPanel: View {
         var parts: [String] = []
         if row.title != row.address { parts.append(row.address) }
         if row.isWearing { parts.append("worn now") }
+        if row.isOnVacation { parts.append(HatsCopy.vacationMark) }
         if let browser = row.browser { parts.append("opens in \(browser)") }
         if let validity = row.loginValidity { parts.append(validity) }
         return parts.joined(separator: " · ")
@@ -65,8 +66,24 @@ struct ManageHatsPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             buttons(row)
+            createVacationRow(row)
         }
         .padding(.top, 2)
+    }
+
+    private func createVacationRow(_ row: HatRowState) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Toggle("On vacation", isOn: Binding(
+                get: { row.isOnVacation },
+                set: { model.actions?.setVacation(row.id, on: $0) }
+            ))
+            .toggleStyle(.checkbox)
+            .font(.system(size: 12))
+            Text(HatsCopy.vacationExplained)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func buttons(_ row: HatRowState) -> some View {

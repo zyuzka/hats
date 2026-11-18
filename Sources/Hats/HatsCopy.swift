@@ -226,6 +226,19 @@ enum HatsCopy {
 
             return ("Nowhere to switch",
                     "\(reached), and no other hat has room. \(frees), or sooner if you reset a limit.")
+        case .othersAreSpentOrOnVacation(let freesUpAt, let away):
+            let spent = "\(reached), and no other hat has room; \(getAlsoOnVacation(away))."
+            guard let frees = freesUp(
+                freesUpAt,
+                now: now,
+                timeZone: timeZone
+            ) else {
+                return ("Nowhere to switch", spent)
+            }
+
+            return ("Nowhere to switch", "\(spent) \(frees), or sooner if you reset a limit.")
+        case .othersAreOnVacation(let away):
+            return ("Nowhere to switch", "\(reached), and \(getOthersOnVacation(away))")
         }
     }
 

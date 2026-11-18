@@ -99,7 +99,7 @@ final class AutoSwitchPolicyTests: XCTestCase {
         at when: Date? = nil
     ) -> AutoSwitchDecision {
         policy.decide(reading: reading, wearing: wearing, eligible: eligible,
-                      readings: readings, blocked: blocked, blindness: blindness, at: when ?? now)
+                      readings: readings, blocked: blocked, onVacation: [], blindness: blindness, at: when ?? now)
     }
 
     private func blind(

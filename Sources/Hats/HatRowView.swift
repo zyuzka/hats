@@ -39,6 +39,9 @@ struct HatRowView: View {
                         Text(row.address).font(.system(size: 11)).foregroundStyle(secondary)
                     }
                 }
+                if row.isOnVacation {
+                    Text(HatsCopy.vacationMark).font(.system(size: 11)).foregroundStyle(secondary)
+                }
                 detail
             }
             Spacer(minLength: 8)

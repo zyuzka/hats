@@ -46,6 +46,7 @@ extension AutoSwitchWorld {
             wearing: snapshot.wearing?.id,
             eligible: AutoSwitchEngine.eligible(in: snapshot.rows),
             blocked: AutoSwitchEngine.blocked(in: snapshot.rows),
+            onVacation: AutoSwitchEngine.findOnVacation(in: snapshot.rows),
             blindness: UsageBlindness.of(missed, fresh: fresh, from: call)
         )
     }

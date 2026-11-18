@@ -7,14 +7,24 @@ struct ShutOutHat: Equatable {
     let loginAction: String
 }
 
+struct HatOnVacation: Equatable {
+    let id: String
+    let title: String
+}
+
 enum AutoSwitchDeadEnd: Equatable {
     case noFreshReading
+    case unreadableAndOthersAreOnVacation([HatOnVacation])
     case atALimit(UsageLimit, StrandedBy)
+
+    static let othersAreOnVacationReason = "othersAreOnVacation"
 
     enum StrandedBy: Equatable {
         case noOtherHat
         case othersNeedSigningIn(ShutOutHat, alsoShutOut: [ShutOutHat])
         case othersAreSpent(freesUpAt: Date?)
+        case othersAreSpentOrOnVacation(freesUpAt: Date?, onVacation: [HatOnVacation])
+        case othersAreOnVacation([HatOnVacation])
 
         func isTheSameReasonAs(_ other: StrandedBy) -> Bool {
             switch (self, other) {
@@ -24,6 +34,10 @@ enum AutoSwitchDeadEnd: Equatable {
                   .othersNeedSigningIn(let theirs, let alsoTheirs)):
                 return HatsCopy.signingIn(mine, alsoShutOut: alsoMine)
                     == HatsCopy.signingIn(theirs, alsoShutOut: alsoTheirs)
+            case (.othersAreSpentOrOnVacation(_, let mine), .othersAreSpentOrOnVacation(_, let theirs)):
+                return HatsCopy.getAlsoOnVacation(mine) == HatsCopy.getAlsoOnVacation(theirs)
+            case (.othersAreOnVacation(let mine), .othersAreOnVacation(let theirs)):
+                return HatsCopy.getOthersOnVacation(mine) == HatsCopy.getOthersOnVacation(theirs)
             default:
                 return self == other
             }
@@ -33,7 +47,8 @@ enum AutoSwitchDeadEnd: Equatable {
             switch self {
             case .noOtherHat: return "noOtherHat"
             case .othersNeedSigningIn: return "othersNeedSigningIn"
-            case .othersAreSpent: return "othersAreSpent"
+            case .othersAreSpent, .othersAreSpentOrOnVacation: return "othersAreSpent"
+            case .othersAreOnVacation: return AutoSwitchDeadEnd.othersAreOnVacationReason
             }
         }
     }
@@ -47,9 +62,11 @@ enum AutoSwitchDeadEnd: Equatable {
     }
 
     var journalReason: String {
-        guard case .atALimit(_, let by) = self else { return "-" }
-
-        return by.journalReason
+        switch self {
+        case .noFreshReading: return "-"
+        case .unreadableAndOthersAreOnVacation: return Self.othersAreOnVacationReason
+        case .atALimit(_, let by): return by.journalReason
+        }
     }
 }
 
@@ -86,10 +103,23 @@ extension AutoSwitchPolicy {
             .min()
     }
 
+    func findEveryOtherHatOnVacation(
+        after wearing: String?,
+        among eligible: [String],
+        blocked: [ShutOutHat],
+        onVacation: [HatOnVacation]
+    ) -> [HatOnVacation]? {
+        guard !onVacation.isEmpty, candidates(after: wearing, among: eligible).isEmpty else { return nil }
+        guard !blocked.contains(where: { $0.id != wearing }) else { return nil }
+
+        return onVacation
+    }
+
     func strandedBy(
         after wearing: String?,
         among eligible: [String],
         blocked: [ShutOutHat],
+        onVacation: [HatOnVacation],
         readings: [String: UsageReading],
         at now: Date
     ) -> AutoSwitchDeadEnd.StrandedBy {
@@ -99,7 +129,9 @@ extension AutoSwitchPolicy {
             return .othersNeedSigningIn(first, alsoShutOut: Array(withRoom.dropFirst()))
         }
         let others = candidates(after: wearing, among: eligible)
-        guard !others.isEmpty || !shutOut.isEmpty else { return .noOtherHat }
+        guard !others.isEmpty || !shutOut.isEmpty else {
+            return onVacation.isEmpty ? .noOtherHat : .othersAreOnVacation(onVacation)
+        }
         let wornIsShutOutToo = blocked.contains { $0.id == wearing }
         let comesBack = wornIsShutOutToo ? nil : wearing
 
@@ -109,7 +141,8 @@ extension AutoSwitchPolicy {
             readings: readings,
             at: now
         )
+        guard !onVacation.isEmpty else { return .othersAreSpent(freesUpAt: freesUpAt) }
 
-        return .othersAreSpent(freesUpAt: freesUpAt)
+        return .othersAreSpentOrOnVacation(freesUpAt: freesUpAt, onVacation: onVacation)
     }
 }

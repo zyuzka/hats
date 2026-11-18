@@ -17,6 +17,7 @@ struct HatRowState: Identifiable, Equatable {
     let browser: String?
     let loginValidity: String?
     let loginAction: String
+    let isOnVacation: Bool
 
     init(
         hat: Account,
@@ -53,7 +54,10 @@ struct HatRowState: Identifiable, Equatable {
         browser = hat.browser?.label(chromeNames: chromeNames)
         loginValidity = HatsCopy.getLoginLine(for: hat, now: now)
         loginAction = hat.hasStoredCredentials ? "Log in again…" : "Log in…"
+        isOnVacation = hat.vacationSince != nil
     }
+
+    var isSkippedByTheSwitch: Bool { isOnVacation && !isWearing }
 }
 
 enum SessionsState: Equatable {
@@ -124,6 +128,23 @@ struct HatsSnapshot: Equatable {
                                     readings: readingByHat)
     }
 
+    var isEveryOtherHatOnVacation: Bool {
+        let others = rows.filter { !$0.isWearing }
+
+        return !others.isEmpty && others.allSatisfy(\.isSkippedByTheSwitch)
+    }
+
+    var hasABlockedHatInPlay: Bool { !AutoSwitchEngine.blocked(in: rows).isEmpty }
+
+    func getHandover(for row: HatRowState) -> String? {
+        guard row.isWearing, settings.autoSwitch.isOn else { return nil }
+        guard let next = nextInLine else {
+            return isEveryOtherHatOnVacation ? HatsCopy.noHandoverTheOthersAreOnVacation : nil
+        }
+
+        return HatsCopy.handover(to: title(of: next))
+    }
+
     func title(of id: String) -> String { rows.first { $0.id == id }?.title ?? id }
 }
 
@@ -133,6 +154,7 @@ protocol HatsActions: AnyObject {
     func relogin(_ id: String)
     func rename(_ id: String)
     func chooseBrowser(_ id: String)
+    func setVacation(_ id: String, on: Bool)
     func remove(_ id: String)
     func setGateway(enabled: Bool)
     func applyGatewayPort(_ port: Int)

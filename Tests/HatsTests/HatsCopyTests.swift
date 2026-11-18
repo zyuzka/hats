@@ -298,6 +298,8 @@ final class HatsCopyTests: XCTestCase {
             .willSwitchWhenItCan,
             .nowhereFreshToGo,
             .everyOtherHatIsSpent,
+            .everyOtherHatIsSpentOrOnVacation([HatOnVacation(id: "personal", title: "Personal")]),
+            .unreadableAndOthersAreOnVacation([HatOnVacation(id: "personal", title: "Personal")]),
             .nowhereToGoAtALimit(.session, .othersAreSpent(freesUpAt: nil)),
         ]
         let written = everyWarning.map { $0.text(hat: "Work", now: now, timeZone: utc) }
@@ -306,16 +308,16 @@ final class HatsCopyTests: XCTestCase {
                            + "unread, telling a person the others have no fresh reading when they "
                            + "do is the kind of small lie this whole branch exists to stop, and "
                            + "reaching a limit that was measured is not failing to measure one. "
-                           + "This list is the check - a fifth warning added beside it rather "
+                           + "This list is the check - a seventh warning added beside it rather "
                            + "than into it would be covered by nothing")
         XCTAssertEqual(Set(written.dropLast().map(\.0)).count, 1,
-                       "the three that cannot read the usage share a title on purpose; it names "
-                           + "the one thing all three have in common")
+                       "the five that cannot read the usage share a title on purpose; it names "
+                           + "the one thing all five have in common")
         XCTAssertEqual(written.last?.0, "Nowhere to switch",
-                       "and the fourth does not share it, because the usage was read perfectly "
+                       "and the sixth does not share it, because the usage was read perfectly "
                            + "and \"Can't read usage\" over it would be false")
         XCTAssertEqual(Set(everyWarning.map(\.menuBarLabel)).count, 2,
-                       "read aloud there are two facts, not four: the usage cannot be read, or "
+                       "read aloud there are two facts, not six: the usage cannot be read, or "
                            + "the limit was reached and nothing has room")
         XCTAssertEqual(HatsCopy.switched(to: "Personal"), "Switched to Personal")
         XCTAssertEqual(

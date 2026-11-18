@@ -18,7 +18,8 @@ extension AppDelegate {
             let warning = AutoSwitchWarning.of(
                 decision: outcome.decision,
                 holding: holding,
-                blindness: world.blindness
+                blindness: world.blindness,
+                onVacation: world.onVacation
             )
             noteTheWarning(warning, on: snapshot, at: now)
         }

@@ -41,7 +41,7 @@ final class NowhereToGoWarningTests: XCTestCase {
         blindness: UsageBlindness? = nil
     ) -> AutoSwitchWorld {
         AutoSwitchWorld(readings: readings, wearing: "work", eligible: eligible,
-                        blocked: blocked, blindness: blindness ?? blind())
+                        blocked: blocked, onVacation: [], blindness: blindness ?? blind())
     }
 
     private func theDayItWentQuiet(resets: Date?, room: Int = 95) -> AutoSwitchWorld {
@@ -61,7 +61,7 @@ final class NowhereToGoWarningTests: XCTestCase {
         let holding = AutoSwitchEngine.reasonForHolding(policy: policy, world: world, at: now)
 
         return AutoSwitchWarning.of(decision: outcome.decision, holding: holding,
-                                    blindness: world.blindness)
+                                    blindness: world.blindness, onVacation: world.onVacation)
     }
 
     private func body(of warning: AutoSwitchWarning?) throws -> String {
@@ -577,16 +577,30 @@ final class NowhereToGoWarningTests: XCTestCase {
             if switchable { hat.identity = CLIIdentity(oauthAccount: [:], userID: nil) }
             return hat
         }
+        var awayAndShutOut = hat("team", "Team", switchable: false)
+        awayAndShutOut.vacationSince = now
+        var awayWithRoom = hat("spare", "Spare", switchable: true)
+        awayWithRoom.vacationSince = now
         let rows = [
             HatRowState(hat: hat("work", "Work", switchable: true), isWearing: true,
                         usage: nil, usageTrouble: nil),
             HatRowState(hat: hat("personal", "Personal", switchable: false), isWearing: false,
                         usage: nil, usageTrouble: nil),
+            HatRowState(hat: awayAndShutOut, isWearing: false, usage: nil, usageTrouble: nil),
+            HatRowState(hat: awayWithRoom, isWearing: false, usage: nil, usageTrouble: nil),
         ]
         XCTAssertEqual(AutoSwitchEngine.eligible(in: rows), ["work"])
         XCTAssertEqual(AutoSwitchEngine.blocked(in: rows).map(\.id), ["personal"],
                        "the two lists are complements read off one pass of the same rows, so a hat "
                            + "can never be in both or in neither")
+        XCTAssertEqual(AutoSwitchEngine.findOnVacation(in: rows).map(\.id), ["team", "spare"],
+                       "and a hat on vacation is in a third list and in neither of the other two, "
+                           + "whether or not it could be worn")
+        let groups = AutoSwitchEngine.eligible(in: rows)
+            + AutoSwitchEngine.blocked(in: rows).map(\.id)
+            + AutoSwitchEngine.findOnVacation(in: rows).map(\.id)
+        XCTAssertEqual(groups.sorted(), rows.map(\.id).sorted(),
+                       "every row lands in exactly one of the three groups: none twice, none missing")
         XCTAssertEqual(AutoSwitchEngine.blocked(in: rows).first?.title, "Personal",
                        "the title travels with it, because the sentence names the hat")
         XCTAssertEqual(AutoSwitchEngine.blocked(in: rows).first?.blocker, "needs login",
