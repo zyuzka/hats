@@ -74,9 +74,9 @@ enum HatsCopy {
         return "week: \(percent)%" + (isConfirmed ? "" : "?") + " / \(when)"
     }
 
-    static func staleReading(_ trouble: UsageTrouble?) -> String? {
+    static func staleReading(_ trouble: UsageTrouble?, timeZone: TimeZone = .current, now: Date = Date()) -> String? {
         guard let trouble, trouble.keepsAnEarlierReading else { return nil }
-        return "latest check failed — \(trouble.journalLine)"
+        return trouble.staleLine(timeZone: timeZone, now: now) ?? "latest check failed — \(trouble.journalLine)"
     }
 
     static func parkedUsage(

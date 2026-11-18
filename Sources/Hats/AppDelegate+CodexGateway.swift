@@ -25,6 +25,12 @@ extension AppDelegate {
             self?.redraw()
         }
         broker.onAllAtLimit = { Notifier.post(title: HatsCopy.codexAllAtLimitTitle, body: HatsCopy.codexAllAtLimit) }
+        codex.gateway.state.onReading = { [weak self] id, sighting in
+            DispatchQueue.main.async {
+                guard let self, self.codex.usage.note(sighting, for: id) == .taken else { return }
+                self.redraw()
+            }
+        }
     }
 
     func syncTheCodexGatewayIfItsInputsMoved() {

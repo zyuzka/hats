@@ -29,6 +29,11 @@ struct CodexAuth {
     var accessExpiry: Date? { accessToken.flatMap(CodexJWT.expiry) }
     var lastRefresh: Date? { (root["last_refresh"] as? String).flatMap(Self.date) }
 
+    var accessAndAccount: (accessToken: String, accountID: String)? {
+        guard let access = accessToken, let account = owner?.accountID ?? token("account_id") else { return nil }
+        return (access, account)
+    }
+
     func token(_ name: String) -> String? {
         guard let value = tokens[name] as? String, !value.isEmpty else { return nil }
         return value

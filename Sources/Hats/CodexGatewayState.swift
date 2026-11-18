@@ -7,9 +7,7 @@ struct CodexGatewayLogin: Equatable {
     let shift: Int
 
     static func of(hatID: String, auth data: Data) -> (accessToken: String, accountID: String)? {
-        guard let auth = CodexAuth(data: data), let token = auth.accessToken else { return nil }
-        guard let account = auth.owner?.accountID ?? auth.token("account_id") else { return nil }
-        return (token, account)
+        CodexAuth(data: data)?.accessAndAccount
     }
 }
 
@@ -23,7 +21,8 @@ final class CodexGatewayState: @unchecked Sendable {
     private var turnStates: [String: String] = [:]
     private var turnStateOrder: [String] = []
     private var threads: [String: Date] = [:]
-    private var readings: [String: CodexUsageReading] = [:]
+    private var readings: [String: CodexUsageSighting] = [:]
+    private var readingSink: ((String, CodexUsageSighting) -> Void)?
 
     var login: CodexGatewayLogin? { locked { worn } }
 
@@ -84,11 +83,23 @@ final class CodexGatewayState: @unchecked Sendable {
         locked { threads.removeAll() }
     }
 
-    func noteReading(_ reading: CodexUsageReading, for hatID: String) {
-        locked { readings[hatID] = reading }
+    var onReading: ((String, CodexUsageSighting) -> Void)? {
+        get { locked { readingSink } }
+        set { locked { readingSink = newValue } }
     }
 
-    func reading(for hatID: String) -> CodexUsageReading? { locked { readings[hatID] } }
+    func noteReading(_ reading: CodexUsageReading, for hatID: String, at now: Date = Date()) {
+        let sighting = CodexUsageSighting(reading: reading, at: now, source: .gateway)
+        let sink: ((String, CodexUsageSighting) -> Void)? = locked {
+            readings[hatID] = sighting
+            return readingSink
+        }
+        sink?(hatID, sighting)
+    }
+
+    func reading(for hatID: String) -> CodexUsageReading? { locked { readings[hatID]?.reading } }
+
+    func sighting(for hatID: String) -> CodexUsageSighting? { locked { readings[hatID] } }
 
     private func locked<Result>(_ body: () -> Result) -> Result {
         lock.lock()

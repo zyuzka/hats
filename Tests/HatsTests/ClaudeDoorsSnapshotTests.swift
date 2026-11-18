@@ -76,6 +76,44 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
         }
     }
 
+    func testACodexReadingStaysOutOfTheClaudeSwitchTheFileAndTheHandover() throws {
+        try bothOrders { pair, order in
+            makeTheClaudeHatWearable(pair)
+            var book = CodexUsageBook()
+            let reading = CodexUsageReading(windows: [CodexUsageWindow(minutes: 300, percent: 95, resetsAt: nil),
+                                                      CodexUsageWindow(minutes: 10080, percent: 40, resetsAt: nil)],
+                                            plan: "plus")
+            book.note(CodexUsageSighting(reading: reading, at: Date(), source: .gateway), for: pair.codex.id)
+            var shown = snapshot(pair)
+            shown.codexRows = ClaudeDoors.codexRows(own(pair), worn: pair.codex.id, usage: book)
+            let codexRow = try XCTUnwrap(shown.codexRows.first { $0.id == pair.codex.id })
+
+            XCTAssertEqual(codexRow.usage?.session?.percent, 95, order)
+            XCTAssertNil(shown.readingByHat[pair.codex.id], order)
+            XCTAssertNil(shown.nextInLine, order)
+            XCTAssertNil(shown.getHandover(for: codexRow), "no next: under a worn Codex hat — \(order)")
+            let file = HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil)
+            XCTAssertEqual(file.worn, pair.claude.id, order)
+            XCTAssertNil(file.fiveHour, "the Codex 95% is not the worn Claude hat's — \(order)")
+        }
+    }
+
+    func testTheHandoverIsKeptForAClaudeRowAndDroppedForACodexRow() {
+        var snapshot = HatsSnapshot()
+        snapshot.settings.autoSwitch = AutoSwitchPolicy(isOn: true)
+        snapshot.rows = [HatRowState(hat: Account(id: "a", email: "a@b.co"), isWearing: true, usage: nil,
+                                     usageTrouble: nil)]
+        var codex = Account(id: "c", email: "c@b.co")
+        codex.tool = .codex
+        let codexRow = HatRowState(hat: codex, isWearing: true, usage: nil, usageTrouble: nil)
+        var resting = Account(id: "r", email: "r@b.co")
+        resting.vacationSince = Date()
+        snapshot.rows.append(HatRowState(hat: resting, isWearing: false, usage: nil, usageTrouble: nil))
+
+        XCTAssertEqual(snapshot.getHandover(for: snapshot.rows[0]), HatsCopy.noHandoverTheOthersAreOnVacation)
+        XCTAssertNil(snapshot.getHandover(for: codexRow))
+    }
+
     func testAClickGoesByTheProviderOfTheHat() throws {
         try bothOrders { pair, order in
             XCTAssertEqual(ClaudeDoors.route(ofAClickOn: pair.codex.id, among: pair.store.accounts), .codex, order)

@@ -31,15 +31,21 @@ enum ClaudeDoors {
     static func codexRows(
         _ accounts: [Account],
         worn: String?,
+        usage: CodexUsageBook = CodexUsageBook(),
         chromeNames: [String: String] = [:],
         now: Date = Date()
     ) -> [HatRowState] {
         accounts.filter { $0.wornTool == .codex }.map { hat in
-            HatRowState(
+            let sighting = usage.sightings[hat.id]
+            let trouble = usage.troubles[hat.id]
+            let shown = trouble?.keepsAnEarlierReading ?? true ? sighting?.reading.shown : nil
+
+            return HatRowState(
                 hat: hat,
                 isWearing: hat.id == worn,
-                usage: nil,
-                usageTrouble: nil,
+                usage: shown,
+                usageTrouble: trouble.map { .codex($0, seenAt: shown == nil ? nil : sighting?.at) },
+                week: shown?.weekly.map { WeekSighting(window: $0, isConfirmed: trouble == nil) },
                 chromeNames: chromeNames,
                 now: now
             )

@@ -132,7 +132,7 @@ struct HatsSnapshot: Equatable {
     var hasABlockedHatInPlay: Bool { !AutoSwitchEngine.blocked(in: rows).isEmpty }
 
     func getHandover(for row: HatRowState) -> String? {
-        guard row.isWearing, settings.autoSwitch.isOn else { return nil }
+        guard row.isWearing, row.tool == .claudeCode, settings.autoSwitch.isOn else { return nil }
         guard let next = nextInLine else {
             return isEveryOtherHatOnVacation ? HatsCopy.noHandoverTheOthersAreOnVacation : nil
         }

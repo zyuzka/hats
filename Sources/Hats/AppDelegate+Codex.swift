@@ -11,6 +11,11 @@ extension AppDelegate {
             self?.syncTheCodexGateway()
             self?.renewTheWornCodexHat()
         }
+        codex.startReadingUsage(every: CodexUsagePoll.interval) { [weak self] in self?.readTheCodexUsage() }
+    }
+
+    func readTheCodexUsage() {
+        codex.usage.poll(store.codexTickets, worn: store.codexActiveID) { [weak self] in self?.redraw() }
     }
 
     func noticeTheWornCodexHat() {
@@ -37,7 +42,12 @@ extension AppDelegate {
     }
 
     func codexRows(chromeNames: [String: String]) -> [HatRowState] {
-        ClaudeDoors.codexRows(store.accounts, worn: store.codexActiveID, chromeNames: chromeNames)
+        ClaudeDoors.codexRows(
+            store.accounts,
+            worn: store.codexActiveID,
+            usage: codex.usage.book,
+            chromeNames: chromeNames
+        )
     }
 
     func wearCodex(_ id: String) {

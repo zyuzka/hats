@@ -69,20 +69,21 @@ enum RowDetail {
         now: Date = Date()
     ) -> [RowDetailLine] {
         let week = weekLines(of: row, display: display, timeZone: timeZone, now: now)
-        let stale = HatsCopy.staleReading(row.usageTrouble).map { [RowDetailLine.text($0)] } ?? []
+        let stale = HatsCopy.staleReading(row.usageTrouble, timeZone: timeZone, now: now)
+            .map { [RowDetailLine.text($0)] } ?? []
         if row.isWearing, let usage = row.usage {
             let session = sessionLines(usage, rose: nil, display: display, timeZone: timeZone, now: now)
             return session + week + stale + (handover.map { [.text($0)] } ?? [])
         }
         if row.isWearing, let trouble = row.usageTrouble {
-            return [.text(trouble.onTheRow)] + week
+            return [.text(trouble.line(timeZone: timeZone, now: now))] + week
         }
         if !row.isWearing, let usage = row.usage, usage.session != nil {
             let rose = row.roseWhileParked
             return sessionLines(usage, rose: rose, display: display, timeZone: timeZone, now: now) + week + stale
         }
         if let trouble = row.usageTrouble {
-            return [.text(trouble.onTheRow)] + week
+            return [.text(trouble.line(timeZone: timeZone, now: now))] + week
         }
 
         return week

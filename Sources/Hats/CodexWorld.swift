@@ -16,10 +16,17 @@ struct CodexWorld {
     var onMain: (@escaping () -> Void) -> Void
     var pause: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
     var waitForCodex: TimeInterval = 30
+    var sendUsage: ((URLRequest) -> (status: Int, body: Data?))?
+    var runUsage: ((@escaping () -> Void) -> Void)?
+
+    static func oneShot(within budget: TimeInterval) -> (URLRequest) -> (status: Int, body: Data?) {
+        { request in OneShotRequest.answer(to: request, within: budget, unreachable: (0, nil)) { ($0, $1) } }
+    }
 
     static func real(keychain: KeychainWorld) -> CodexWorld {
         let queue = DispatchQueue(label: "hats.codex", qos: .utility)
-        return CodexWorld(
+        let usageQueue = DispatchQueue(label: "hats.codex-usage", qos: .utility)
+        var world = CodexWorld(
             home: .real,
             keychain: keychain,
             send: { request in
@@ -29,6 +36,9 @@ struct CodexWorld {
             run: { queue.async(execute: $0) },
             onMain: { DispatchQueue.main.async(execute: $0) }
         )
+        world.sendUsage = oneShot(within: CodexUsageFetch.budget)
+        world.runUsage = { usageQueue.async(execute: $0) }
+        return world
     }
 }
 
