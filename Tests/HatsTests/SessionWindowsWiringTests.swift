@@ -41,9 +41,10 @@ final class SessionWindowsWiringTests: XCTestCase {
     func testTheMenuShowsTheBlockBetweenTheHatsAndTheBottomRow() {
         let view = sourceOf("HatListView.swift")
 
-        XCTAssertTrue(view.contains("if snapshot.rows.isEmpty { empty } else { list }\n"
-                                        + "            if !snapshot.contextRows.isEmpty { context }\n"
-                                        + "            Divider().padding(.vertical, 4)"))
+        XCTAssertTrue(view.contains("if rows.isEmpty { noHats } else { list(rows) }\n"
+                                        + "            if tab == .claudeCode, !snapshot.contextRows.isEmpty { context }\n"
+                                        + "            Divider().padding(.vertical, 4)"),
+                      "the context block sits under the hats of the Claude tab only")
         XCTAssertTrue(view.contains("ForEach(snapshot.contextRows)"))
     }
 

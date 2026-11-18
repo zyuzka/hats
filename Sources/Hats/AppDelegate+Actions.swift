@@ -26,12 +26,15 @@ extension AppDelegate: HatsActions {
         }
     }
 
-    func addHat() {
+    func addHat(for tool: Tool) {
         popover.close()
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
             self.whenNoSignInIsRunning { [weak self] in
-                guard let self, let wanted = HatDialogs.addHat(remembered: self.store.accounts.compactMap(\.browser)) else { return }
+                guard let self, let wanted = HatDialogs.addHat(
+                    remembered: self.store.accounts.compactMap(\.browser),
+                    tool: tool
+                ) else { return }
                 if wanted.tool == .codex { return self.addCodexHat(wanted) }
                 do {
                     var hat = try self.store.add(email: wanted.email, browser: wanted.browser)

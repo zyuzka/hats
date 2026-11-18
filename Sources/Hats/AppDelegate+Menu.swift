@@ -47,6 +47,13 @@ extension AppDelegate {
         redraw()
     }
 
+    func setPopoverTab(_ tool: Tool) {
+        guard settings.popoverTab != tool else { return }
+        settings.popoverTab = tool
+        saveSettings()
+        redraw()
+    }
+
     func showReleases() {
         popover.close()
         afterThePopoverSettles { [weak self] in

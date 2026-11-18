@@ -121,6 +121,24 @@ final class HatsCopyTests: XCTestCase {
         XCTAssertEqual(HatsCopy.handover(to: "Personal"), "next: Personal")
     }
 
+    func testTheProviderAverageLineCarriesBracketsOnlyWhereAVacationHatCounted() {
+        let plain = ProviderSummary(
+            session: ProviderAverage(withoutVacation: 40, withVacation: nil),
+            week: ProviderAverage(withoutVacation: 93, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(plain), "5h 40% · week 93%")
+        let away = ProviderSummary(
+            session: ProviderAverage(withoutVacation: 40, withVacation: 45),
+            week: ProviderAverage(withoutVacation: 93, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(away), "5h 40% (45%) · week 93%")
+        let empty = ProviderSummary(
+            session: ProviderAverage(withoutVacation: nil, withVacation: 50),
+            week: ProviderAverage(withoutVacation: nil, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(empty), "5h – (50%) · week –")
+    }
+
     func testTheSessionsLineIsHonestAboutWhatItKnows() {
         XCTAssertEqual(HatsCopy.sessions(count: nil),
                        "Live sessions unknown — the process table could not be read")

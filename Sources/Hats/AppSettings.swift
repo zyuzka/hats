@@ -36,6 +36,7 @@ struct AppSettings: Codable, Equatable {
     var codexConfigCreatedByHats = false
     var hasToldToRestartCodexWindows = false
     var hasCodexHats = false
+    var popoverTab = Tool.claudeCode
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -62,6 +63,7 @@ struct AppSettings: Codable, Equatable {
         limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
             ?? LimitThresholds()
         usageDisplay = (try? c.decodeIfPresent(UsageDisplay.self, forKey: .usageDisplay)) ?? .percent
+        popoverTab = (try? c.decodeIfPresent(Tool.self, forKey: .popoverTab)) ?? .claudeCode
         try decodeTheCodexGateway(from: decoder)
     }
 

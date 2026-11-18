@@ -8,7 +8,7 @@ struct ManageHatsPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Spacer()
-                Button("Add…") { model.actions?.addHat() }.controlSize(.small)
+                Button("Add…") { model.actions?.addHat(for: .claudeCode) }.controlSize(.small)
             }
             .padding(.horizontal, 14).padding(.bottom, 6)
             ForEach(everyRow) { row in

@@ -1,8 +1,8 @@
 import AppKit
 
 extension HatDialogs {
-    static func addHat(remembered: [BrowserChoice]) -> NewHat? {
-        let state = HatFormState()
+    static func addHat(remembered: [BrowserChoice], tool: Tool) -> NewHat? {
+        let state = HatFormState(tool: tool)
         let list = BrowserChoice.available(remembered: remembered)
         let choices = list.choices
         state.browser = choices.first

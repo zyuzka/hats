@@ -2,7 +2,7 @@ import Foundation
 
 protocol HatsActions: AnyObject {
     func wear(_ id: String)
-    func addHat()
+    func addHat(for tool: Tool)
     func relogin(_ id: String)
     func rename(_ id: String)
     func chooseBrowser(_ id: String)
@@ -22,6 +22,7 @@ protocol HatsActions: AnyObject {
     func updateContextThresholds(_ thresholds: ContextThresholds)
     func updateLimitThresholds(_ thresholds: LimitThresholds)
     func setUsageDisplay(_ display: UsageDisplay)
+    func setPopoverTab(_ tool: Tool)
     func switchBack()
     func openSessions()
     func showSettings()

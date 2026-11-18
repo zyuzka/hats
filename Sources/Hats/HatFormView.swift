@@ -5,7 +5,11 @@ final class HatFormState: ObservableObject {
     @Published var name = ""
     @Published var email = ""
     @Published var browser: BrowserChoice?
-    @Published var tool: Tool = .claudeCode
+    @Published var tool: Tool
+
+    init(tool: Tool = .claudeCode) {
+        self.tool = tool
+    }
 }
 
 struct HatFormFields: OptionSet {
