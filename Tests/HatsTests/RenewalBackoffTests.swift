@@ -24,10 +24,12 @@ final class RenewalBackoffTests: XCTestCase {
         var backoff = RenewalBackoff()
         backoff.failed("work", at: now, pollingEvery: interval)
 
-        XCTAssertFalse(backoff.allows("work", at: now.addingTimeInterval(interval - 1)))
-        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval)),
-                      "the deadline itself is allowed, so a poll landing exactly on it is not "
-                          + "pushed to the one after")
+        XCTAssertFalse(backoff.allows("work", at: now.addingTimeInterval(interval / 2)))
+        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval - 1)),
+                      "the failure is stamped when the poll lands and the next poll starts one interval "
+                          + "after the last one started, so it comes a second early - measured 2026-11-15, "
+                          + "09:34:13 against a hold until 09:34:14, and the retry waited a second poll")
+        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval)))
         XCTAssertTrue(backoff.allows("other", at: now), "and it holds one hat, not every hat")
     }
 

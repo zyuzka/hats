@@ -60,9 +60,12 @@ final class SessionWindowsWiringTests: XCTestCase {
         let write = try getBody(of: "func writeTheHatUsage() {", in: sourceOf("AppDelegate+HatUsage.swift"))
         let start = try getBody(of: "func startTheContextChannel() {", in: sourceOf("AppDelegate+ContextThresholds.swift"))
 
-        XCTAssertTrue(write.contains("watch: usage,\n            stages: contextChannel.lastStages\n"),
-                      "first_warned is worked out from the last stages the channel read")
-        XCTAssertTrue(start.contains("contextChannel.onStagesRead = { [weak self] in self?.writeTheHatUsage() }"),
-                      "a new warning in a stage file reaches hat-usage.json without waiting for a redraw")
+        XCTAssertTrue(write.contains("watch: usage,\n            channel: contextChannel,\n"),
+                      "first_warned is worked out from the last stages the channel read; "
+                          + "ContextChannelWiringTests holds what the file gets from them")
+        XCTAssertTrue(start.contains("snapshot: { [weak self] in self?.popover.model.snapshot },\n"
+                                         + "            stagesRead: { [weak self] in self?.writeTheHatUsage() }"),
+                      "a new warning in a stage file reaches hat-usage.json without waiting for a redraw, "
+                          + "and a limit notice names the hat by its title")
     }
 }

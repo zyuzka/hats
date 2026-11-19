@@ -96,6 +96,21 @@ struct HatUsageFile {
         self.url = url
     }
 
+    mutating func setRecord(
+        from snapshot: HatsSnapshot,
+        watch: AutoSwitchWatch,
+        channel: ContextThresholdsChannel,
+        at now: Date
+    ) -> HatUsageSave {
+        let record = HatUsageRecord.create(
+            from: snapshot,
+            watch: watch,
+            stages: channel.lastStages
+        )
+
+        return setRecord(record, at: now)
+    }
+
     mutating func setRecord(_ record: HatUsageRecord, at now: Date) -> HatUsageSave {
         guard record != written || !FileManager.default.fileExists(atPath: url.path) else { return .unchanged }
         do {

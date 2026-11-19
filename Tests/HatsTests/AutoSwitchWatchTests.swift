@@ -61,6 +61,23 @@ final class AutoSwitchWatchTests: XCTestCase {
         XCTAssertNotEqual(watch.readAt["work"], read)
     }
 
+    func testAHatWhoseWeekWasEverReadIsRememberedUntilItLeaves() {
+        let week = UsageReading(session: nil, weekly: UsageWindow(used: 10, limit: 100, resetsAt: then))
+        let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let watch = watching(hats)
+        defer { watch.stop() }
+
+        watch.landed(landing(["work": reading, "personal": week]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.weeklyEverRead, ["personal"])
+
+        watch.landed(landing(["work": week, "personal": reading]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.weeklyEverRead, ["work", "personal"],
+                       "an answer without the week does not make the hat one whose week was never read")
+
+        XCTAssertEqual(AutoSwitchWatch.getWeeklyEverRead(["work", "gone"], keeping: ["work"], batch: landing([:])),
+                       ["work"], "a hat no longer in the list is dropped")
+    }
+
     func testOnlyTimerPollsOfTheHatBeingWornAreCountedAsMissed() {
         let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
         let watch = watching(hats)

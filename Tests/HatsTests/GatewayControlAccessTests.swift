@@ -47,7 +47,7 @@ final class GatewayControlAccessTests: XCTestCase {
         let inside = try NSRegularExpression(
             pattern: #"queue\.async[\s\S]{0,200}?makeWorld\(osAccount\)"#
         )
-        XCTAssertTrue(text.contains("var makeWorld: (String) -> UsageWorld = UsageWorld.real(osAccount:)"),
+        XCTAssertTrue(text.contains("var makeWorld: (String) -> UsageWorld = { UsageWorld.real(keychain: .real(osAccount: $0)) }"),
                       "the world the poll builds is the real one unless a test puts in its own")
         XCTAssertEqual(inside.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text)), 1,
                        "the timer fires on .main, so a world built before the hop is built on the "

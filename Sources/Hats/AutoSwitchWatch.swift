@@ -20,12 +20,14 @@ final class AutoSwitchWatch {
     private(set) var backoff = RenewalBackoff()
     private(set) var missed = MissedPolls()
     private(set) var freshInTheLastPoll: Set<String> = []
+    private(set) var weeklyEverRead: Set<String> = []
     private(set) var liveCredential: LiveCredential?
     private(set) var lastPoll: LastPoll?
     private(set) var aliveAt: Date?
 
     var interval: TimeInterval = 300
-    var makeWorld: (String) -> UsageWorld = UsageWorld.real(osAccount:)
+    var wakeDelay: TimeInterval = 25
+    var makeWorld: (String) -> UsageWorld = { UsageWorld.real(keychain: .real(osAccount: $0)) }
     var onReadings: ([String: UsageReading]) -> Void = { _ in Journal.log("usage.readingsIgnored") }
     var onAuthObservation: (Set<String>, Set<String>) -> Void = { _, _ in Journal.log("usage.authIgnored") }
     var onRenewals: ([String: RenewedLogin]) -> Void = { _ in Journal.log("usage.renewalsIgnored") }
@@ -47,7 +49,13 @@ final class AutoSwitchWatch {
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in self?.poll(hats(), from: .outOfBand) }
+        ) { [weak self] _ in
+            guard let delay = self?.wakeDelay else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard self?.timer != nil else { return }
+                self?.poll(hats(), from: .outOfBand)
+            }
+        }
     }
 
     func stop() {
@@ -86,6 +94,14 @@ final class AutoSwitchWatch {
             .merging(batch.readings) { _, new in new }
     }
 
+    static func getWeeklyEverRead(
+        _ existing: Set<String>,
+        keeping ids: Set<String>,
+        batch: Batch
+    ) -> Set<String> {
+        existing.intersection(ids).union(batch.readings.filter { $0.value.weekly != nil }.keys)
+    }
+
     func landed(_ batch: Batch, polled: Hats, from source: PollSource) {
         inFlight = false
         if !batch.renewals.isEmpty { onRenewals(batch.renewals) }
@@ -102,6 +118,7 @@ final class AutoSwitchWatch {
         }
         let ids = Set(polled.map(\.id))
         readings = Self.readingsAfterAPoll(readings, keeping: ids, batch: batch)
+        weeklyEverRead = Self.getWeeklyEverRead(weeklyEverRead, keeping: ids, batch: batch)
         liveCredential = batch.liveCredential
         let fresh = Set(batch.readings.keys)
         let stamp = Date()

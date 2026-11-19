@@ -26,7 +26,13 @@ struct KeychainWorld {
 
     func adoptLegacyParked(id: String) {
         guard let payload = try? read(Slot.legacyParked(id)) else { return }
-        if (try? read(Slot.parked(id))) != nil {
+        let current: Data?
+        do {
+            current = try read(Slot.parked(id))
+        } catch {
+            return
+        }
+        if current != nil {
             try? delete(Slot.legacyParked(id))
             return
         }

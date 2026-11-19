@@ -269,10 +269,11 @@ enum HatsCopy {
 
     static func humanise(_ seconds: TimeInterval) -> String {
         guard seconds > 0 else { return "expired" }
-        let days = Int(seconds) / 86400
-        let hours = (Int(seconds) % 86400) / 3600
+        let whole = Int(exactly: seconds.rounded(.towardZero)) ?? Int.max
+        let days = whole / 86400
+        let hours = (whole % 86400) / 3600
         if days > 0 { return "\(days)d \(hours)h" }
-        let minutes = (Int(seconds) % 3600) / 60
+        let minutes = (whole % 3600) / 60
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 

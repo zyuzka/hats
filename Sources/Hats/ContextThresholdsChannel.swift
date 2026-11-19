@@ -48,6 +48,11 @@ final class ContextThresholdsChannel {
         set { limitNotices.hatTitle = newValue }
     }
 
+    func setWiring(snapshot: @escaping () -> HatsSnapshot?, stagesRead: @escaping () -> Void) {
+        hatTitle = { id in snapshot()?.title(of: id) ?? id }
+        onStagesRead = stagesRead
+    }
+
     func start(windows: @escaping () -> [SessionWindow]) {
         stages.onRead = { [weak self, notices, limitNotices] found in
             notices.noteARead(found, windows: windows())

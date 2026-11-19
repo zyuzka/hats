@@ -14,6 +14,7 @@ struct UsageBlindness: Equatable {
     var hasReadTheWornHatSinceItWentOn = false
     var fresh: Set<String> = []
     var landedAPoll = false
+    var weeklyEverRead: Set<String> = []
 
     var isBlind: Bool {
         hasReadTheWornHatSinceItWentOn && missedPolls >= Self.missesBeforeAWarning
@@ -23,12 +24,18 @@ struct UsageBlindness: Equatable {
         landedAPoll && hasReadTheWornHatSinceItWentOn && missedPolls >= Self.missesBeforeASwitch
     }
 
-    static func of(_ missed: MissedPolls, fresh: Set<String>, from call: AutoSwitchCall) -> UsageBlindness {
+    static func of(
+        _ missed: MissedPolls,
+        fresh: Set<String>,
+        weeklyEverRead: Set<String>,
+        from call: AutoSwitchCall
+    ) -> UsageBlindness {
         UsageBlindness(
             missedPolls: missed.count,
             hasReadTheWornHatSinceItWentOn: missed.hasReadTheWornHatSinceItWentOn,
             fresh: fresh,
-            landedAPoll: call == .aPollLanded
+            landedAPoll: call == .aPollLanded,
+            weeklyEverRead: weeklyEverRead
         )
     }
 }
@@ -39,6 +46,7 @@ extension AutoSwitchWorld {
         readings: [String: UsageReading],
         missed: MissedPolls,
         fresh: Set<String>,
+        weeklyEverRead: Set<String>,
         from call: AutoSwitchCall
     ) -> AutoSwitchWorld {
         AutoSwitchWorld(
@@ -47,7 +55,12 @@ extension AutoSwitchWorld {
             eligible: AutoSwitchEngine.eligible(in: snapshot.rows),
             blocked: AutoSwitchEngine.blocked(in: snapshot.rows),
             onVacation: AutoSwitchEngine.findOnVacation(in: snapshot.rows),
-            blindness: UsageBlindness.of(missed, fresh: fresh, from: call)
+            blindness: UsageBlindness.of(
+                missed,
+                fresh: fresh,
+                weeklyEverRead: weeklyEverRead,
+                from: call
+            )
         )
     }
 }
@@ -86,6 +99,12 @@ extension AutoSwitchPolicy {
         sessionThresholdPercent == nil || reading.session != nil
     }
 
+    func hasTheWeeklyWindowItsThresholdNeeds(_ reading: UsageReading?, wasEverRead: Bool) -> Bool {
+        weeklyThresholdPercent == nil
+            || !wasEverRead
+            || reading?.weekly != nil
+    }
+
     func hasRoomToSpare(_ id: String, readings: [String: UsageReading], at now: Date = Date()) -> Bool {
         guard room(for: id, readings: readings) == .free, let reading = readings[id] else { return false }
         guard hasTheSessionWindowItsThresholdNeeds(reading) else { return false }
@@ -113,10 +132,13 @@ extension AutoSwitchPolicy {
         after wearing: String?,
         among eligible: [String],
         readings: [String: UsageReading],
-        fresh: Set<String>,
+        blindness: UsageBlindness,
         at now: Date = Date()
     ) -> String? {
-        candidatesReadInThisPoll(after: wearing, among: eligible, readings: readings, fresh: fresh)
-            .first { hasRoomToSpare($0, readings: readings, at: now) }
+        candidatesReadInThisPoll(after: wearing, among: eligible, readings: readings, fresh: blindness.fresh)
+            .first { id in
+                hasTheWeeklyWindowItsThresholdNeeds(readings[id], wasEverRead: blindness.weeklyEverRead.contains(id))
+                    && hasRoomToSpare(id, readings: readings, at: now)
+            }
     }
 }

@@ -8,6 +8,7 @@ extension AppDelegate {
             readings: usage.readings,
             missed: usage.missed,
             fresh: usage.freshInTheLastPoll,
+            weeklyEverRead: usage.weeklyEverRead,
             from: call
         )
         let now = Date()

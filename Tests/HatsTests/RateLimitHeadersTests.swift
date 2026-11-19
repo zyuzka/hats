@@ -44,6 +44,26 @@ final class RateLimitHeadersTests: XCTestCase {
         )
     }
 
+    func testHalfAPercentWithThreeDigitsRoundsUpLikeThePoll() throws {
+        let cases = [
+            ("0.845", 85),
+            ("0.285", 29),
+            ("0.565", 57),
+            ("0.835", 84),
+            ("0.844", 84),
+            ("0.005", 1),
+            ("1", 100),
+            ("1.5", 100),
+        ]
+        for (header, percent) in cases {
+            let read = try XCTUnwrap(findReading([RateLimitHeaders.sessionUtilization: header]))
+            XCTAssertEqual(read.session?.used, percent,
+                           "\(header): 0.285 * 100 is 28.499999999999996 in binary (so are 0.145, 0.565 "
+                               + "and 0.575 among the three-digit halves; 0.845 is not), so the header is "
+                               + "read as a decimal and rounds half up, as the poll's 28.5 does")
+        }
+    }
+
     func testTheResetIsReadAsUnixSeconds() throws {
         let read = try XCTUnwrap(findReading([
             RateLimitHeaders.sessionUtilization: "0.26",

@@ -66,10 +66,7 @@ extension AppDelegate {
 
     func toggleAutomaticUpdateChecks() {
         guard let updater else { return }
-        updater.checksAutomatically.toggle()
-        Journal.log("update.automaticChecks", [
-            "enabled": String(updater.checksAutomatically),
-        ])
+        AppUpdates.toggleAutomaticChecks(of: updater) { Journal.log($0, $1) }
         redraw()
     }
 

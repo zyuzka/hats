@@ -55,6 +55,7 @@ struct HatRowView: View {
         if row.isWearing, let usage = row.usage {
             if let line = HatsCopy.usageLine(usage) {
                 Text(line).font(.system(size: 11)).foregroundStyle(secondary)
+                    .accessibilityLabel(HatsCopy.getUsageSpoken(usage) ?? line)
             }
             weekBelow
             if let stale = HatsCopy.staleReading(row.usageTrouble) {
@@ -67,6 +68,7 @@ struct HatRowView: View {
         } else if !row.isWearing, let usage = row.usage,
                   let parked = HatsCopy.parkedUsage(usage, rose: row.roseWhileParked) {
             Text(parked).font(.system(size: 11)).foregroundStyle(secondary)
+                .accessibilityLabel(HatsCopy.getParkedSpoken(usage, rose: row.roseWhileParked) ?? parked)
             weekBelow
             if let stale = HatsCopy.staleReading(row.usageTrouble) {
                 Text(stale).font(.system(size: 11)).foregroundStyle(secondary)
@@ -80,7 +82,10 @@ struct HatRowView: View {
     }
 
     @ViewBuilder private var weekBelow: some View {
-        if let week = row.week { Text(week).font(.system(size: 11)).foregroundStyle(secondary) }
+        if let week = row.week {
+            Text(week).font(.system(size: 11)).foregroundStyle(secondary)
+                .accessibilityLabel(row.weekSpoken ?? week)
+        }
     }
 
     @ViewBuilder private var trailing: some View {

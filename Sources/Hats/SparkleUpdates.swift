@@ -16,7 +16,8 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
                 self?.controller?.userDriver.dismissUpdateInstallation()
                 ask()
             }
-        }
+        },
+        waitingChanged: { [weak self] in self?.whenCanCheckNowChanges?() }
     )
 
     private init(decideTheRestart: @escaping () -> GatewayStopDecision) {
@@ -36,6 +37,8 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
     }
 
     var canCheckNow: Bool { controller?.updater.canCheckForUpdates ?? false }
+
+    var hasAnUpdateWaiting: Bool { gate.hasAnInstallWaiting }
 
     var checksAutomatically: Bool {
         get { controller?.updater.automaticallyChecksForUpdates ?? false }

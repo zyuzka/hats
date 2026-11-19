@@ -249,20 +249,31 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertEqual(stamps[4], watch.aliveAt.map(HatUsageRecord.getStamp))
     }
 
-    func testAWakeOfTheMacPollsAtOnce() {
+    func testAWakeOfTheMacPollsOnceTheNetworkHadTimeToComeUp() {
         let hats: AutoSwitchWatch.Hats = [("work", true)]
         let wakes = NotificationCenter()
         let watch = AutoSwitchWatch(wakes: wakes)
         let slots = FakeSlots([:])
         watch.makeWorld = { _ in slots.world(now: self.now, liveSlot: nil) }
+        watch.wakeDelay = 0.6
+        var landedAt: Date?
         let landed = expectation(description: "a poll landed")
         landed.assertForOverFulfill = false
-        watch.onReadings = { _ in landed.fulfill() }
+        watch.onReadings = { _ in
+            landedAt = landedAt ?? Date()
+            landed.fulfill()
+        }
         watch.start(hats: { hats })
         defer { watch.stop() }
+        let woke = Date()
 
         wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
 
-        wait(for: [landed], timeout: 1.0)
+        wait(for: [landed], timeout: 1.5)
+        XCTAssertGreaterThanOrEqual(landedAt?.timeIntervalSince(woke) ?? 0, 0.6,
+                                    "measured 2026-11-15: a poll 4 s after the wake found no network and "
+                                        + "every hat showed \"latest check failed\" until the next poll")
+        XCTAssertEqual(AutoSwitchWatch(wakes: NotificationCenter()).wakeDelay, 25,
+                       "the network was answering within two minutes of that wake; 25 s is chosen, not measured")
     }
 }

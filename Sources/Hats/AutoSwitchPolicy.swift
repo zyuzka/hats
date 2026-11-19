@@ -152,7 +152,7 @@ extension AutoSwitchPolicy {
             after: wearing,
             among: eligible,
             readings: readings,
-            fresh: blindness.fresh,
+            blindness: blindness,
             at: now
         ) else { return .hold }
 

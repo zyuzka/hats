@@ -3,6 +3,7 @@ import Foundation
 protocol AppUpdater: AnyObject {
     var canCheckNow: Bool { get }
     var checksAutomatically: Bool { get set }
+    var hasAnUpdateWaiting: Bool { get }
     var whenCanCheckNowChanges: (() -> Void)? { get set }
     func start()
     func checkNow()
@@ -17,6 +18,13 @@ enum AppUpdates {
         let key = (info?[publicKeyKey] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         return !feed.isEmpty && !key.isEmpty
+    }
+
+    static func toggleAutomaticChecks(of updater: AppUpdater, log: (String, [String: String]) -> Void) {
+        updater.checksAutomatically.toggle()
+        log("update.automaticChecks", [
+            "enabled": String(updater.checksAutomatically),
+        ])
     }
 }
 
@@ -35,20 +43,24 @@ final class UpdateInstallGate {
     private let confirm: (String) -> Bool
     private let notify: (_ title: String, _ body: String) -> Void
     private let beforeAsking: (@escaping () -> Void) -> Void
+    private let waitingChanged: () -> Void
     private var installWaitingForQuit: (() -> Void)?
     private var waitingVersion = ""
     private var announcedVersion: String?
+    private var session = 0
 
     init(
         decideTheRestart: @escaping () -> GatewayStopDecision,
         confirm: @escaping (String) -> Bool,
         notify: @escaping (_ title: String, _ body: String) -> Void,
-        beforeAsking: @escaping (@escaping () -> Void) -> Void
+        beforeAsking: @escaping (@escaping () -> Void) -> Void,
+        waitingChanged: @escaping () -> Void
     ) {
         self.decideTheRestart = decideTheRestart
         self.confirm = confirm
         self.notify = notify
         self.beforeAsking = beforeAsking
+        self.waitingChanged = waitingChanged
     }
 
     var hasAnInstallWaiting: Bool { installWaitingForQuit != nil }
@@ -63,7 +75,8 @@ final class UpdateInstallGate {
         Journal.log("update.askingBeforeRestart", [
             "version": version,
         ])
-        beforeAsking { [weak self] in self?.ask(cost, version: version, install: install) }
+        let asked = session
+        beforeAsking { [weak self] in self?.ask(cost, version: version, install: install, in: asked) }
 
         return true
     }
@@ -72,12 +85,14 @@ final class UpdateInstallGate {
         guard let install = installWaitingForQuit else { return }
         var cost = HatsCopy.updateWaitsForQuit
         if case .ask(let named) = decideTheRestart() { cost = named }
-        ask(cost, version: waitingVersion, install: install)
+        ask(cost, version: waitingVersion, install: install, in: session)
     }
 
     func forgetTheWaitingInstall() {
+        session += 1
         installWaitingForQuit = nil
         waitingVersion = ""
+        waitingChanged()
     }
 
     func announceOnce(version: String) {
@@ -86,13 +101,21 @@ final class UpdateInstallGate {
         notify("Hats \(version) is out", "Install it from the update window.")
     }
 
-    private func ask(_ cost: String, version: String, install: @escaping () -> Void) {
-        guard confirm(cost) else {
+    private func ask(_ cost: String, version: String, install: @escaping () -> Void, in asked: Int) {
+        let isConfirmed = confirm(cost)
+        guard asked == session else {
+            Journal.log("update.sessionEnded", [
+                "version": version,
+            ])
+            return
+        }
+        guard isConfirmed else {
             installWaitingForQuit = install
             waitingVersion = version
             Journal.log("update.installOnQuit", [
                 "version": version,
             ])
+            waitingChanged()
             return
         }
         forgetTheWaitingInstall()

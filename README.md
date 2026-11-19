@@ -41,6 +41,9 @@ Not affiliated with Anthropic.
   and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
+- **It does not carry claude.ai connectors across hats.** A connector such as Slack or Atlassian is
+  granted to one Claude account on Anthropic's side, so switching the hat changes which connectors
+  work. One connected under one hat asks you to sign in again under another.
 
 ## Install
 
