@@ -8,9 +8,9 @@ struct CodexPluginReport: Equatable {
 }
 
 enum CodexPluginText {
-    static let trustNote = "The next Codex window you open asks whether to trust the hooks of the hats plugin, "
-        + "because they are new or changed. Trust them there: Hats does not do it for you, and without that "
-        + "trust Codex does not run them."
+    static let trustNote = "When the hooks of the hats plugin are new or changed, the next Codex window you open "
+        + "asks whether to trust them. Trust them there: Hats does not do it for you, and without that trust "
+        + "Codex does not run them. Hooks you trusted before and that did not change are not asked about again."
     static let nothingToDoTitle = "The Codex plugin was left as it is"
     static let notFound = "Codex not found: there is no codex in /opt/homebrew/bin, /usr/local/bin, ~/.local/bin "
         + "or on the PATH of a new login shell."

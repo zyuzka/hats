@@ -226,8 +226,10 @@ codex plugin marketplace add zyuzka/hats
 codex plugin add hats@hats
 ```
 
-After every install, update and refresh, the next Codex window says that the plugin's hooks are new or
-changed; choose to trust them there. Hats never trusts them for you and never edits `~/.codex/hooks.json`.
+When an install, update or refresh brings hooks that are new or changed, the next Codex window says so;
+choose to trust them there. Hooks trusted before and unchanged are not asked about again: Remove keeps
+Codex's trust, so Install of the same plugin opens the next window without a question. Hats never trusts
+them for you and never edits `~/.codex/hooks.json`.
 
 The plugin uses the same window thresholds as the Claude plugin (Settings → Context; 60% and 70% when Hats
 has never run):
