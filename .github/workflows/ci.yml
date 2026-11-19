@@ -52,8 +52,11 @@ jobs:
       - name: Plugin version check
         run: bash Dev/plugin-version-check.test.sh
 
-      # Only on the release pull request into main: develop collects plugin changes between
-      # releases, and the number is raised once for the release that carries them.
+      - name: Update feed of the package
+        run: bash Dev/package-appcast.test.sh
+
+      # Only on a pull request into main (a release or a hotfix): develop collects plugin
+      # changes between releases, and the number is raised once for the release that carries them.
       - name: Plugin version is raised for the release
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: ./Dev/plugin-version-check.sh
@@ -115,12 +118,12 @@ jobs:
 
       - name: Mod tests
         run: |
-          export CLAUDE_CONFIG_DIR="$(mktemp -d)"
+          export HOME="$(mktemp -d)" CLAUDE_CONFIG_DIR="$(mktemp -d)"
           claude plugin test plugin
 
       - name: Mod as claude plugin validate sees it
         run: |
-          export CLAUDE_CONFIG_DIR="$(mktemp -d)"
+          export HOME="$(mktemp -d)" CLAUDE_CONFIG_DIR="$(mktemp -d)"
           bash plugin/tests/mod-validate.test.sh
 
       - name: Plugin tests under the system Python

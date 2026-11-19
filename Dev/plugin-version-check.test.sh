@@ -2,7 +2,7 @@
 # Checks plugin-version-check.sh on made-up repositories: each case builds a temporary git
 # repository with a plugin/ folder and v* tags, copies the script into its Dev/ and runs it there.
 #
-# Run it directly: ./plugin-version-check.test.sh — prints one line per failure and exits
+# Run it from the repository root: bash Dev/plugin-version-check.test.sh — prints one line per failure and exits
 # non-zero if there are any. It touches no repository but the temporary ones.
 set -uo pipefail
 
@@ -45,6 +45,11 @@ pluginFile() {
     printf '%s\n' "$text" > "$repo/plugin/hooks/hook.sh"
 }
 
+moveOn() {
+    printf 'more\n' >> "$1/README"
+    commitAll "$1" "outside plugin"
+}
+
 commitAll() {
     g -C "$1" add -A
     g -C "$1" commit -q -m "$2"
@@ -71,7 +76,7 @@ expect() {
 
 r="$(newRepo no-tag)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
-expect "no v* tag" "$r" 0 "no v* tag yet"
+expect "no v* tag" "$r" 0 "no release tag vN.N.N yet"
 
 r="$(newRepo unchanged)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
@@ -83,7 +88,7 @@ r="$(newRepo changed-same)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
 pluginFile "$r" b; commitAll "$r" "plugin change"
-expect "committed change, same version" "$r" 1 "still 1.0.0"
+expect "committed change, same version" "$r" 1 "is 1.0.0, not above the released 1.0.0"
 
 r="$(newRepo changed-raised)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
@@ -94,12 +99,14 @@ expect "committed change, raised version" "$r" 0 "version 1.0.0 -> 1.0.1"
 r="$(newRepo uncommitted)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
+moveOn "$r"
 pluginFile "$r" b
-expect "uncommitted change, same version" "$r" 1 "still 1.0.0"
+expect "uncommitted change, same version" "$r" 1 "is 1.0.0, not above the released 1.0.0"
 
 r="$(newRepo uncommitted-raise)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
+moveOn "$r"
 pluginFile "$r" b; commitAll "$r" "plugin change"
 manifest "$r" 1.0.1
 expect "committed change, version raised in the working tree" "$r" 0 "1.0.0 -> 1.0.1"
@@ -109,6 +116,7 @@ manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v0.9.0
 pluginFile "$r" b; commitAll "$r" "plugin change, released as v0.10.0"
 g -C "$r" tag v0.10.0
+moveOn "$r"
 expect "highest tag by version, not by text" "$r" 0 "has not changed since v0.10.0"
 
 r="$(newRepo unreachable-tag)"
@@ -117,7 +125,7 @@ g -C "$r" checkout -q -b release
 pluginFile "$r" b; commitAll "$r" "release"
 g -C "$r" tag v2.0.0
 g -C "$r" checkout -q main
-expect "tag on a commit the branch does not contain" "$r" 1 "plugin/ changed since v2.0.0"
+expect "tag on a commit the branch does not contain" "$r" 1 "changed since v2.0.0"
 
 r="$(newRepo other-tags)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
@@ -134,20 +142,23 @@ expect "plugin added after the tag" "$r" 0 "the plugin is new, version 0.1.0"
 r="$(newRepo no-manifest)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
+moveOn "$r"
 pluginFile "$r" b; rm "$r/plugin/.claude-plugin/plugin.json"
 expect "manifest removed" "$r" 1 "is missing"
 
 r="$(newRepo no-version)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
+moveOn "$r"
 pluginFile "$r" b; printf '{"name": "hats"}\n' > "$r/plugin/.claude-plugin/plugin.json"
-expect "manifest without a version" "$r" 1 "no readable"
+expect "manifest without a version" "$r" 1 'readable "version"'
 
 r="$(newRepo bad-json)"
 manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
+moveOn "$r"
 pluginFile "$r" b; printf '{"version": \n' > "$r/plugin/.claude-plugin/plugin.json"
-expect "manifest that is not JSON" "$r" 1 "no readable"
+expect "manifest that is not JSON" "$r" 1 'readable "version"'
 
 r="$(newRepo released-no-version)"
 mkdir -p "$r/plugin/.claude-plugin"; printf '{"name": "hats"}\n' > "$r/plugin/.claude-plugin/plugin.json"
@@ -155,6 +166,66 @@ pluginFile "$r" a; commitAll "$r" plugin
 g -C "$r" tag v1.0.0
 manifest "$r" 1.0.0; commitAll "$r" "version added"
 expect "released manifest without a version" "$r" 1 "released number is unknown"
+
+r="$(newRepo untracked)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+moveOn "$r"
+mkdir -p "$r/plugin/skills"; printf 'new\n' > "$r/plugin/skills/new.md"
+expect "untracked new file under plugin/, same version" "$r" 1 "not above the released 1.0.0"
+
+r="$(newRepo lowered)"
+manifest "$r" 1.0.1; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+pluginFile "$r" b; manifest "$r" 1.0.0; commitAll "$r" "plugin change, lowered version"
+expect "lowered version" "$r" 1 "is 1.0.0, not above the released 1.0.1"
+
+r="$(newRepo version-sort)"
+manifest "$r" 1.0.9; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+pluginFile "$r" b; manifest "$r" 1.0.10; commitAll "$r" "plugin change, 1.0.10"
+expect "1.0.10 is above 1.0.9" "$r" 0 "1.0.9 -> 1.0.10"
+
+r="$(newRepo prerelease-tag)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+pluginFile "$r" b; commitAll "$r" "plugin change"
+g -C "$r" tag v1.1.0-rc1
+g -C "$r" tag vtest
+moveOn "$r"
+expect "pre-release and non-version v* tags are not releases" "$r" 1 "changed since v1.0.0"
+
+r="$(newRepo tag-on-head)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+pluginFile "$r" b; commitAll "$r" "plugin change"
+g -C "$r" tag v1.1.0
+expect "release tag on HEAD is not its own baseline" "$r" 1 "changed since v1.0.0"
+
+r="$(newRepo marketplace)"
+manifest "$r" 1.0.0; pluginFile "$r" a
+mkdir -p "$r/.claude-plugin"; printf '{"plugins": []}\n' > "$r/.claude-plugin/marketplace.json"
+commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+printf '{"plugins": [1]}\n' > "$r/.claude-plugin/marketplace.json"; commitAll "$r" "marketplace change"
+expect "marketplace.json change, same version" "$r" 1 "not above the released 1.0.0"
+
+r="$(newRepo broken-tag-tree)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+moveOn "$r"
+broken="$(g -C "$r" rev-parse v1.0.0:plugin)"
+rm -f "$r/.git/objects/${broken:0:2}/${broken:2}"
+pluginFile "$r" b
+expect "git ls-tree failing on a broken plugin tree at the tag" "$r" 1 "git ls-tree on v1.0.0 failed"
+
+r="$(newRepo broken-tag-root)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+moveOn "$r"
+broken="$(g -C "$r" rev-parse 'v1.0.0^{tree}')"
+rm -f "$r/.git/objects/${broken:0:2}/${broken:2}"
+expect "git diff failing on a broken root tree at the tag" "$r" 1 "git diff against v1.0.0 failed"
 
 source="$(newRepo shallow-source)"
 manifest "$source" 1.0.0; pluginFile "$source" a; commitAll "$source" plugin

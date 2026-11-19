@@ -45,7 +45,20 @@ if ! grep -Eq '^[[:space:]]*origin/main$' <<< "$CONTAINING"; then
 fi
 
 # Claude Code keeps an installed plugin by its version number, so a release that changed
-# plugin/ under the old number would reach nobody.
+# plugin/ under the old number would reach nobody. The check reads the working tree, and users
+# get the plugin from main, so an uncommitted change or a number raised only here would pass
+# the check while main keeps the old one.
+if ! PLUGIN_STATUS="$(git status --porcelain --untracked-files=all -- plugin .claude-plugin/marketplace.json 2>&1)"; then
+    echo "cannot read the state of plugin/ — refusing to package:" >&2
+    echo "$PLUGIN_STATUS" >&2
+    exit 1
+fi
+if [[ -n "$PLUGIN_STATUS" ]]; then
+    echo "refusing to package: plugin/ or .claude-plugin/marketplace.json has uncommitted changes," >&2
+    echo "which main and the users who fetch the plugin from it do not have:" >&2
+    echo "$PLUGIN_STATUS" >&2
+    exit 1
+fi
 ./Dev/plugin-version-check.sh
 
 # No fallback version. A failing PlistBuddy used to yield 0.1.0, so the image went out
