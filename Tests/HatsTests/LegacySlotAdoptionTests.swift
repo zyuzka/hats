@@ -5,20 +5,22 @@ final class LegacySlotAdoptionTests: XCTestCase {
     private let id = "adopt-\(UUID().uuidString.prefix(8))"
     private let old = credential(access: "legacy", expiresAt: 1_700_000_000_000)
     private let new = credential(access: "current", expiresAt: 1_800_000_000_000)
+    private var logged: [(operation: String, details: [String: String])] = []
 
     func testAHatWithOnlyTheOldSlotIsMovedUnderTheNewName() {
         let keychain = FakeKeychain([Slot.legacyParked(id): old])
 
-        keychain.world().adoptLegacyParked(id: id)
+        keychain.world().adoptLegacyParked(id: id) { self.logged.append(($0, $1)) }
 
         XCTAssertEqual(keychain.contents[Slot.parked(id)], old)
         XCTAssertNil(keychain.contents[Slot.legacyParked(id)], "the old slot goes once the new one holds it")
+        XCTAssertTrue(logged.isEmpty, "only a skip is journalled")
     }
 
     func testAHatThatAlreadyHasTheNewSlotKeepsItAndLosesTheOldOne() {
         let keychain = FakeKeychain([Slot.legacyParked(id): old, Slot.parked(id): new])
 
-        keychain.world().adoptLegacyParked(id: id)
+        keychain.world().adoptLegacyParked(id: id) { self.logged.append(($0, $1)) }
 
         XCTAssertEqual(keychain.contents[Slot.parked(id)], new, "the newer login is never overwritten by the old one")
         XCTAssertNil(keychain.contents[Slot.legacyParked(id)])
@@ -29,13 +31,17 @@ final class LegacySlotAdoptionTests: XCTestCase {
         let keychain = FakeKeychain([Slot.legacyParked(id): old, Slot.parked(id): new])
         keychain.readFailures = [Slot.parked(id)]
 
-        keychain.world().adoptLegacyParked(id: id)
+        keychain.world().adoptLegacyParked(id: id) { self.logged.append(($0, $1)) }
 
         XCTAssertTrue(keychain.writes.isEmpty,
                       "a read error said nothing about the slot; writing the old login there would put "
                           + "a dead credential over the one that works")
         XCTAssertEqual(keychain.contents[Slot.parked(id)], new)
         XCTAssertEqual(keychain.contents[Slot.legacyParked(id)], old, "and the old slot waits for the next launch")
+        XCTAssertEqual(logged.map(\.operation), ["hat.legacyAdoptionSkipped"], "the skip leaves a trace")
+        XCTAssertEqual(logged.first?.details["id"], id)
+        XCTAssertEqual(logged.first?.details["reason"]?.contains("interaction not allowed"), true)
+        XCTAssertEqual(logged.first.map { Set($0.details.keys) }, ["id", "reason"], "no credential bytes reach the journal")
     }
 
     func testOnlyOldSlotsAndNoIndexIsALostIndex() throws {
@@ -93,23 +99,30 @@ final class LegacySlotAdoptionTests: XCTestCase {
     }
 
     func testEveryStoreBuiltByATestIsGivenAFakeKeychain() throws {
-        let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-        let ownName = URL(fileURLWithPath: #filePath).lastPathComponent
-        let files = try FileManager.default.contentsOfDirectory(atPath: tests.path)
-            .filter { $0.hasSuffix(".swift") && $0 != ownName }
+        let own = URL(fileURLWithPath: #filePath)
+        let tests = own.deletingLastPathComponent().deletingLastPathComponent()
+        let walk = try XCTUnwrap(FileManager.default.enumerator(at: tests, includingPropertiesForKeys: nil))
+        let files = walk.compactMap { $0 as? URL }
+            .filter { $0.pathExtension == "swift" && $0.standardizedFileURL != own.standardizedFileURL }
         var found = 0
         var bare: [String] = []
-        for name in files {
-            let text = try String(contentsOf: tests.appendingPathComponent(name), encoding: .utf8)
-            for call in Self.findConstructorCalls(in: text) {
-                found += 1
-                if !call.contains("keychain:") { bare.append("\(name): \(call)") }
-            }
+        for file in files {
+            let text = try String(contentsOf: file, encoding: .utf8)
+            let calls = Self.findConstructorCalls(in: text)
+            found += calls.count
+            bare += calls
+                .filter { !$0.contains("keychain:") || Self.isRealKeychain($0) }
+                .map { "\(file.lastPathComponent): \($0)" }
         }
 
         XCTAssertGreaterThan(found, 0, "the search has to see the stores the tests build")
         XCTAssertEqual(bare, [],
-                       "a store built without keychain: goes to /usr/bin/security and the live keychain")
+                       "a store built without keychain:, or with keychain: .real(...), goes to "
+                           + "/usr/bin/security and the live keychain")
+    }
+
+    private static func isRealKeychain(_ call: String) -> Bool {
+        call.contains("keychain: .real(") || call.contains("keychain: KeychainWorld.real(")
     }
 
     private static func findConstructorCalls(in text: String) -> [String] {

@@ -24,7 +24,7 @@ extension HatsCopy {
         guard let spoken = getUsageSpoken(reading, timeZone: timeZone, now: now) else { return nil }
         guard let rose, rose > 0 else { return spoken }
 
-        return spoken + ", up \(rose) while not being worn"
+        return spoken + ", up \(rose) percent while not being worn"
     }
 
     static func getWeekSpoken(

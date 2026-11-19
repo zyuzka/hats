@@ -276,4 +276,42 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertEqual(AutoSwitchWatch(wakes: NotificationCenter()).wakeDelay, 25,
                        "the network was answering within two minutes of that wake; 25 s is chosen, not measured")
     }
+
+    private func countLandingsAfterWakes(_ act: (AutoSwitchWatch, NotificationCenter) -> Void) -> Int {
+        let hats: AutoSwitchWatch.Hats = [("work", true)]
+        let wakes = NotificationCenter()
+        let watch = AutoSwitchWatch(wakes: wakes)
+        let slots = FakeSlots([:])
+        watch.makeWorld = { _ in slots.world(now: self.now, liveSlot: nil) }
+        watch.wakeDelay = 0.3
+        var landings = 0
+        watch.onReadings = { _ in landings += 1 }
+        watch.start(hats: { hats })
+        defer { watch.stop() }
+        act(watch, wakes)
+        let quiet = expectation(description: "the first timer poll is two seconds away")
+        quiet.isInverted = true
+        wait(for: [quiet], timeout: 1.2)
+
+        return landings
+    }
+
+    func testTwoWakesInsideTheDelayGiveOnePoll() {
+        let landings = countLandingsAfterWakes { _, wakes in
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+        }
+
+        XCTAssertEqual(landings, 1, "the second wake replaces the poll the first one scheduled")
+    }
+
+    func testARestartInsideTheDelayDropsThePollTheOldWakeScheduled() {
+        let landings = countLandingsAfterWakes { watch, wakes in
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+            watch.stop()
+            watch.start(hats: { [("personal", true)] })
+        }
+
+        XCTAssertEqual(landings, 0, "stop cancels the waiting wake poll, so no poll runs with the old hats")
+    }
 }

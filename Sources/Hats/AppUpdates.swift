@@ -90,9 +90,10 @@ final class UpdateInstallGate {
 
     func forgetTheWaitingInstall() {
         session += 1
+        let wasWaiting = hasAnInstallWaiting
         installWaitingForQuit = nil
         waitingVersion = ""
-        waitingChanged()
+        if wasWaiting { waitingChanged() }
     }
 
     func announceOnce(version: String) {
@@ -102,13 +103,9 @@ final class UpdateInstallGate {
     }
 
     private func ask(_ cost: String, version: String, install: @escaping () -> Void, in asked: Int) {
+        guard !hasTheSessionEnded(asked, version: version) else { return }
         let isConfirmed = confirm(cost)
-        guard asked == session else {
-            Journal.log("update.sessionEnded", [
-                "version": version,
-            ])
-            return
-        }
+        guard !hasTheSessionEnded(asked, version: version) else { return }
         guard isConfirmed else {
             installWaitingForQuit = install
             waitingVersion = version
@@ -123,5 +120,14 @@ final class UpdateInstallGate {
             "version": version,
         ])
         install()
+    }
+
+    private func hasTheSessionEnded(_ asked: Int, version: String) -> Bool {
+        guard asked != session else { return false }
+        Journal.log("update.sessionEnded", [
+            "version": version,
+        ])
+
+        return true
     }
 }

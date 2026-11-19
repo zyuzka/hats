@@ -32,7 +32,7 @@ enum RateLimitHeaders {
         let bounded = min(max(fraction, 0), 1)
         let posix = Locale(identifier: "en_US_POSIX")
         guard bounded == fraction,
-              let exact = Decimal(string: text.trimmingCharacters(in: .whitespaces), locale: posix),
+              let exact = Decimal(string: text, locale: posix),
               abs(NSDecimalNumber(decimal: exact).doubleValue - fraction) < 1e-9
         else { return Int((bounded * 100).rounded()) }
         var scaled = exact * 100

@@ -9,9 +9,11 @@ final class AutoSwitchWatch {
     private var timer: DispatchSourceTimer?
     private var inFlight = false
     private var pending: (hats: Hats, source: PollSource)?
+    private var pollStartedAt: Date?
     private var provider: (() -> Hats)?
     private let wakes: NotificationCenter
     private var wakeObserver: NSObjectProtocol?
+    private var wakePoll: DispatchWorkItem?
 
     private(set) var readings: [String: UsageReading] = [:]
     private(set) var parked = ParkedRises()
@@ -49,13 +51,14 @@ final class AutoSwitchWatch {
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            guard let delay = self?.wakeDelay else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                guard self?.timer != nil else { return }
-                self?.poll(hats(), from: .outOfBand)
-            }
-        }
+        ) { [weak self] _ in self?.pollAfterTheWake(hats) }
+    }
+
+    private func pollAfterTheWake(_ hats: @escaping () -> Hats) {
+        wakePoll?.cancel()
+        let poll = DispatchWorkItem { [weak self] in self?.poll(hats(), from: .outOfBand) }
+        wakePoll = poll
+        DispatchQueue.main.asyncAfter(deadline: .now() + wakeDelay, execute: poll)
     }
 
     func stop() {
@@ -63,6 +66,8 @@ final class AutoSwitchWatch {
         timer = nil
         if let wakeObserver { wakes.removeObserver(wakeObserver) }
         wakeObserver = nil
+        wakePoll?.cancel()
+        wakePoll = nil
     }
 
     func poll(_ hats: Hats, from source: PollSource = .outOfBand) {
@@ -73,7 +78,9 @@ final class AutoSwitchWatch {
         inFlight = true
         let osAccount = osAccount
         let makeWorld = makeWorld
-        let allowed = backoff.allowing(hats.map(\.id), at: Date())
+        let started = Date()
+        pollStartedAt = started
+        let allowed = backoff.allowing(hats.map(\.id), at: started)
         queue.async { [weak self] in
             var world = makeWorld(osAccount)
             world.mayRenew = { allowed.contains($0) }
@@ -105,7 +112,7 @@ final class AutoSwitchWatch {
     func landed(_ batch: Batch, polled: Hats, from source: PollSource) {
         inFlight = false
         if !batch.renewals.isEmpty { onRenewals(batch.renewals) }
-        Self.noteOutcomes(into: &backoff, batch: batch, every: interval, at: Date())
+        Self.noteOutcomes(into: &backoff, batch: batch, every: interval, at: pollStartedAt ?? Date())
         guard timer != nil else {
             pending = nil
             return

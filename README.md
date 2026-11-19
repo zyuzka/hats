@@ -43,7 +43,8 @@ Not affiliated with Anthropic.
   live keeps working.
 - **It does not carry claude.ai connectors across hats.** A connector such as Slack or Atlassian is
   granted to one Claude account on Anthropic's side, so switching the hat changes which connectors
-  work. One connected under one hat asks you to sign in again under another.
+  work. A connector you connected while wearing one hat asks you to sign in again when you wear
+  another.
 
 ## Install
 

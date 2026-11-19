@@ -56,7 +56,11 @@ final class RateLimitHeadersTests: XCTestCase {
             ("1.5", 100),
         ]
         for (header, percent) in cases {
-            let read = try XCTUnwrap(findReading([RateLimitHeaders.sessionUtilization: header]))
+            let read = try XCTUnwrap(findReading([
+                RateLimitHeaders.sessionUtilization: header,
+                RateLimitHeaders.weeklyUtilization: header,
+            ]))
+            XCTAssertEqual(read.weekly?.used, percent, "\(header): the weekly header is read the same way")
             XCTAssertEqual(read.session?.used, percent,
                            "\(header): 0.285 * 100 is 28.499999999999996 in binary (so are 0.145, 0.565 "
                                + "and 0.575 among the three-digit halves; 0.845 is not), so the header is "

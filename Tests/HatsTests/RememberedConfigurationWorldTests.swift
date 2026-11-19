@@ -27,7 +27,12 @@ final class RememberedConfigurationWorldTests: XCTestCase {
         let system = FakeSystem(home: "/fake-home")
         system.table = { _ in nil }
 
-        XCTAssertThrowsError(try withFreshSessions { try CLIState.configurationRemembered(world: system.world()) }) {
+        guard isTheSessionMemoryStale() else {
+            return XCTFail("the shared one-second session memory stayed fresh for 1.5 s, so the sweep "
+                               + "this test is about would not run")
+        }
+
+        XCTAssertThrowsError(try CLIState.configurationRemembered(world: system.world())) {
             guard case .liveSessionsUnreadable = $0 as? CLIStateError else {
                 return XCTFail("a process table the world cannot read is an unreadable sweep, not an empty one: \($0)")
             }
@@ -51,12 +56,12 @@ final class RememberedConfigurationWorldTests: XCTestCase {
                        "the poll's keychain is the store's keychain, not a second declaration of it")
     }
 
-    private func withFreshSessions<T>(_ body: () throws -> T) rethrows -> T {
+    private func isTheSessionMemoryStale() -> Bool {
         let deadline = Date().addingTimeInterval(1.5)
         while RecentSessions.shared.value(within: RecentSessions.window) != nil, Date() < deadline {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
 
-        return try body()
+        return RecentSessions.shared.value(within: RecentSessions.window) == nil
     }
 }
