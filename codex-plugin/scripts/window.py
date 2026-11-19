@@ -21,10 +21,11 @@ With either threshold off (null) the hook asks for nothing: without a save thres
 compact by Hats' line, and without a warning threshold there is no point at which to ask.
 
 On both events, when the Hats folder exists, the hook writes <Hats folder>/codex-windows/<session id>.json
-(session, window, tokens, percent, cwd, written_at; mode 600, whole or not at all), from which Hats takes
-the model window; a failed write goes to the journal as window-not-recorded and the hook goes on. On Stop
-it removes such files older than 30 days and temporary files older than 10 minutes, and in the notes
-folder notes, state files and temporary files older than 30 days.
+(session, window, tokens, percent, cwd, event, written_at; mode 600, whole or not at all), from which Hats
+takes the model window and, by event "Stop", sees that the session ended a turn at that fill; a failed
+write goes to the journal as window-not-recorded and the hook goes on. On Stop it removes such files
+older than 30 days and temporary files older than 10 minutes, and in the notes folder notes, state files
+and temporary files older than 30 days.
 
 It never fails a turn: bad input, a session file without a usable token_count, an unexpected session id
 or any error leaves it silent with exit code 0; errors and requests go to the journal (hats_codex.py).
@@ -137,6 +138,7 @@ def record_window(data, session, reading):
         "tokens": tokens,
         "percent": percent,
         "cwd": cwd[:CWD_LIMIT] if isinstance(cwd, str) else None,
+        "event": data.get("hook_event_name"),
         "written_at": hats.get_now_stamp(),
     })
     if data.get("hook_event_name") == "Stop":

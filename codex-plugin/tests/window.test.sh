@@ -64,6 +64,7 @@ equal "40%: window for Hats" "$(json_field "$own" window)" 475000
 equal "40%: percent for Hats" "$(json_field "$own" percent)" 40
 equal "40%: cwd for Hats" "$(json_field "$own" cwd)" '"/work/proj"'
 equal "40%: file mode 600" "$(stat -f %Lp "$own" 2>/dev/null)" 600
+equal "40%: event for Hats" "$(json_field "$own" event)" '"UserPromptSubmit"'
 
 # 2. Warning threshold: start of a turn at 61% with 60/70 → write the note, tell the user in one line.
 reset; percent_of 61 > "$tr"
@@ -97,6 +98,8 @@ has "64% without the note: journal" "$(cat "$journal")" '"note-missing"'
 
 # 3c. Stop past the warning threshold asks nothing.
 out=$(run_window "$(input Stop)"); silent "Stop at 64%" "$out" $?
+equal "Stop at 64%: event for Hats" "$(json_field "$own" event)" '"Stop"'
+equal "Stop at 64%: percent for Hats" "$(json_field "$own" percent)" 64
 
 # 4. After the compaction: SessionStart compact with the note → the note goes back.
 printf 'Code word: BLUE-HERON-7\nNext step: the essay\n' > "$note"

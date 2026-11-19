@@ -39,6 +39,7 @@ struct AppSettings: Codable, Equatable {
     var popoverTab = Tool.claudeCode
     var codexAutoSwitch = AutoSwitchPolicy()
     var codexAutoSwitchRecord: AutoSwitchRecord?
+    var continuesCodexAfterCompaction = true
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -83,6 +84,8 @@ struct AppSettings: Codable, Equatable {
         codexAutoSwitch = (try? c.decodeIfPresent(AutoSwitchPolicy.self, forKey: .codexAutoSwitch))
             ?? AutoSwitchPolicy()
         codexAutoSwitchRecord = try? c.decodeIfPresent(AutoSwitchRecord.self, forKey: .codexAutoSwitchRecord)
+        continuesCodexAfterCompaction =
+            (try? c.decodeIfPresent(Bool.self, forKey: .continuesCodexAfterCompaction)) ?? true
     }
 
     static var defaultURL: URL {

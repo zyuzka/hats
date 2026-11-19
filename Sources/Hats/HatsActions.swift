@@ -21,6 +21,7 @@ protocol HatsActions: AnyObject {
     func updateAutoSwitch(_ policy: AutoSwitchPolicy)
     func updateCodexAutoSwitch(_ policy: AutoSwitchPolicy)
     func updateContextThresholds(_ thresholds: ContextThresholds)
+    func setCodexContinue(_ isOn: Bool)
     func updateLimitThresholds(_ thresholds: LimitThresholds)
     func setUsageDisplay(_ display: UsageDisplay)
     func setPopoverTab(_ tool: Tool)

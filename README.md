@@ -238,6 +238,47 @@ without the `# set by Hats` mark belongs to someone else and stays as it is; Hat
 With either threshold off, the hook asks for no note. The hooks never stop a turn: on any error they stay
 silent and write a line to `codex-hooks.log` in the Hats folder.
 
+### Continuing a Codex session after compaction
+
+A Codex thread that ends a turn past the save threshold stops there: Codex compacts it and hands the note
+back only with your next message. Hats can do that step for you, so the work goes on by itself. It is the
+switch "Continue Codex sessions after compaction" in Settings → Context, on by default; with it off, Hats
+does nothing and writes nothing about it.
+
+When the plugin's `Stop` hook has written that a turn ended at or past the anchor (save) threshold, the
+model has written its resume note, and the thread has stayed idle for 20 seconds since, Hats talks to the Codex service over its socket
+(`~/.codex/app-server-control/app-server-control.sock`):
+
+1. It reads the thread and goes on only when the thread is idle, kept in a file and not a subagent's.
+2. It reads the thread once more and compacts it ("Context compacted" shows in the window).
+3. It waits up to 60 seconds for the thread to go busy and then idle again, then reads it once more.
+4. It starts a turn with the text "Hats: this thread was compacted at the save threshold. Continue the task
+   from your resume note. If the note says the task is done, say so in one line and stop." The window shows this turn as if you had typed it. The plugin hands the note
+   back at the start of that turn, and the model goes on from it.
+
+Hats does this once per crossing: the same thread gets it again only after its window was below the warning
+threshold. A turn that ended more than 10 minutes ago is left alone. Both thresholds must be on. Without a
+note file the thread is left alone (`skipped reason=noNote`). When the compaction does not end within 60
+seconds (`compactTimeout`), no turn starts, and Hats does not try that thread again until its window falls
+below the warning threshold. Hats keeps in memory which threads it continued; after a restart of Hats it
+has forgotten them, so a thread whose turn ended past the threshold less than 10 minutes before may be
+continued once more.
+
+What to know:
+
+- Only windows in the shared Codex service are reached. A window started with `--no-daemon`, with a `-c`
+  flag or by `codex exec` has no socket; it compacts with your next message, as described above.
+- Codex has no way to compact a thread only if it is idle. If you start a turn in the instant between Hats'
+  last read and the compaction, the compaction cuts your turn off and your text comes back to the input
+  line. The 20 seconds of quiet make this rare, not impossible; the read right before the compaction narrows
+  the gap only a little.
+- What happens when the turn Hats started asks for a permission has not been measured. Hats does not answer
+  requests from the service; it writes `codexContinue.serviceRequest` with the method to its log.
+- The log says `codexContinue.done`, or `codexContinue.skipped` and `codexContinue.failed` with a reason
+  (`active`, `notLoaded`, `noNote`, `noService`, `compactTimeout` and others). A line is written when the
+  name, reason or thread differs from the previous line; the same line in a row is written once, so two
+  threads or two reasons taking turns each write again.
+
 ## The one thing to know before using it
 
 A switch takes effect immediately for **new** sessions. A session already running follows only if it

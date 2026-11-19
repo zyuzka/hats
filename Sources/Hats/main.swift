@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
     let contextChannel = ContextThresholdsChannel(launchedAt: Date())
     let codexCompact = CodexCompactLimitSync()
+    let codexContinue = CodexContinueRun()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()

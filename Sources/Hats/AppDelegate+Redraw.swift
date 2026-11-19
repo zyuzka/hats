@@ -51,7 +51,7 @@ extension AppDelegate {
         popover.model.snapshot = snapshot
         writeTheHatUsage()
         contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())
-        codexCompact.sync(savePercent: settings.contextThresholds.savePercent)
+        syncTheCodexWindow()
 
         if let blink {
             blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)
