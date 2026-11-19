@@ -302,7 +302,7 @@ while IFS= read -r line; do
   case "$line" in note:*) seen=$((seen+1)); has "скилл узнаёт строку «${line}», которую печатает скрипт" "\`$line\`" "$skill_text" ;; esac
 done <<<"$(steps)"
 is "скрипт печатает две строки note: для сверки со скиллом" "2" "$seen"
-has "скилл велит записать номер фоновой работы — без номера автоматическая очистка не знает, что работа в записке" "note its id (the number)" "$skill_text"
+has "скилл велит записать id фоновой работы как в списке задач — очистка сравнивает id текстом" "note its id exactly as the task list shows it" "$skill_text"
 lacks "скилл не разрешает записать фоновую работу одним именем" "id or name" "$skill_text"
 
 # --- не JSON: файл пропущен, другой действует

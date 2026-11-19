@@ -16,7 +16,8 @@ session after /clear ran in the process started the day before, measured 2026-11
 the process alone finds the note, whatever folder the session moved to; a new session lists the
 notes of closed processes launched in its folder. The hook never deletes a marker: SessionStart
 can fire twice or for a session that never opens; `save` retires markers of closed processes
-that point at the same note. After /clear a save is handed to one session: the hook records the
+that point at the same note, and those saved more than 30 days ago or at an unreadable time, with
+their `.handed`. After /clear a save is handed to one session: the hook records the
 receiving session id beside the marker (`<marker>.handed`, keyed to the save's time and note,
 so the marker itself is never rewritten under a concurrent `save`), gives the note again to that
 same session and stays silent for a later session of the process until the next `save`. An input
@@ -130,18 +131,19 @@ exists (Linux), else from lsof. Without fcntl (Windows) the run log is written w
 state is compared with local refs only — no fetch: a fetch runs commands from the named
 repository's config and needs the network, and a failed fetch made an old origin ref read as
 current (verification 2026-11-11). A fact about a remote-tracking ref (origin/ or any other remote)
-says so. GIT_* variables of the environment do not reach these git calls, so GIT_DIR cannot point
+says so, and so does one whose kind could not be checked in time. GIT_* variables of the environment do not reach these git calls, so GIT_DIR cannot point
 the check at another repository.
 
 The check: a number taken from another file goes into the note only inside a quote
 `(cite: <path>:<line> "exact text")`, with «», "" or “” as the quote marks, compared with that
 line of a regular file at number boundaries; a quote of the note itself, of Claude's memory or of
-any file in the notes folder is not a source; the note and the memory folder are matched as file
-system objects, so another letter case does not make them a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
+any file in the notes folder is not a source; for a quote the note and the memory folder are matched
+as file system objects, so another letter case does not make them a source (which notes `save`
+accepts is unchanged). `N of M (P%)` is recomputed on every line. A figure read off a command carries
 `(cmd: <command>)` in the same clause. A percent, "N percent", `N of M` or `N/M` outside all
 three — inline code included, fenced code (``` or ~~~, three marks or more, closed by the same
 mark at least as long) not — is reported as not verified; a code block left open is reported, since
-the lines after it are not checked; a `(cite:` that does
+the lines after it are not checked, and that problem comes first; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
 caught, and the check cannot tell whether the words next to a quote mean what the quote says.
 
@@ -614,10 +616,15 @@ def same_path(a, b):
 
 def in_memory(real):
     root = memory_root() + os.sep
-    if real.startswith(root):
-        parts = real[len(root):].split(os.sep)
-        if len(parts) == 3 and parts[1] == "memory":
-            return True
+    if not real.startswith(root):
+        return False
+    parts = real[len(root):].split(os.sep)
+    return len(parts) == 3 and parts[1] == "memory"
+
+
+def cite_in_memory(real):
+    if in_memory(real):
+        return True
     folder = os.path.dirname(real)
     project = os.path.dirname(folder)
     try:
@@ -933,7 +940,7 @@ def verify_cite(match, base_dir, note_real, cache):
     real = os.path.realpath(path)
     if note_real and (real == note_real or is_same_file(real, note_real)):
         return "quote of the note itself is not a source"
-    if in_memory(real):
+    if cite_in_memory(real):
         return f"quote of Claude's memory is not a source: {raw}"
     if is_in_notes_folder(real):
         return f"quote of the notes folder is not a source: {raw}"
@@ -1003,7 +1010,7 @@ def check_text(text, base_dir, note_real):
                 problems.append((number, "number with no quote and no source"))
                 break
     if fence is not None:
-        problems.append((fence_line, "code block not closed — the lines after it were not checked"))
+        problems.insert(0, (fence_line, "code block not closed — the lines after it were not checked"))
     return problems
 
 
@@ -1028,6 +1035,8 @@ def remote_mark(repo, ref):
         return mark
     code, name = run(["git", "-c", "core.fsmonitor=false", "-C", repo, "rev-parse", "--verify", "--quiet",
                       "--symbolic-full-name", "--end-of-options", ref], time_left(1.0))
+    if code is None:
+        return mark
     return mark if code == 0 and (name or "").startswith("refs/remotes/") else ""
 
 
@@ -2849,7 +2858,7 @@ def cmd_save(args):
         if other["_path"] == path:
             continue
         when = saved_time(other)
-        old = when is not None and now - when > MAX_AGE
+        old = when is None or now - when > MAX_AGE
         if not (old or same_path(other["note"], note)) or liveness(other) != "closed":
             continue
         try:
@@ -2868,7 +2877,8 @@ def cmd_save(args):
     if retired:
         print(f"removed markers of closed sessions with the same note: {retired}")
     if expired:
-        print(f"removed markers of closed sessions saved more than 30 days ago: {expired}")
+        print(f"removed markers of closed sessions saved more than {MAX_AGE.days} days ago "
+              f"or at an unreadable time: {expired}")
     print("\n".join(set_index(note, marker)))
     problems = checked(text, cwd, os.path.realpath(note))
     if problems:

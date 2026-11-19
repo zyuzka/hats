@@ -54,7 +54,7 @@ let one of them write the resume note instead of this skill.
    repository per command. Commit or push only what this session's work already called for and the
    project's rules allow; name everything else in the summary.
 2. **Background work** — list the background tasks, monitors and subagents still running, in this
-   turn, not from memory. Do not stop them to save. For each one note its id (the number), what it is for
+   turn, not from memory. Do not stop them to save. For each one note its id exactly as the task list shows it, what it is for
    and what it waits for: background commands and subagents outlive `/clear`, and the next session is
    told when one ends but not what it was for. A monitor ends with the session — note what it watched.
 3. **Resume note** — one note per task: two sessions in one folder work on different tasks and would

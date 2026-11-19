@@ -1042,6 +1042,15 @@ describe('the settings folder of Claude Code', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'saved', marker: scene.world.paths.marker })
   })
 
+  test('a relative CLAUDE_CONFIG_DIR is not taken: ~/.claude holds the markers and the memory, as in handoff.py', async ($, on) => {
+    const scene = createScene($, { on, configDir: 'rel/cfg' })
+    await scene.askToAnchor()
+
+    await scene.runAnchorTurn({ steps: getFullSave(scene) })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'saved', marker: scene.world.paths.marker })
+  })
+
   test('a marker outside the folder CLAUDE_CONFIG_DIR names is not read', async ($, on) => {
     const scene = createScene($, { on, configDir: '/alt' })
     await failsWith(scene, { steps: getFullSave(scene), reason: 'unreadable marker' })

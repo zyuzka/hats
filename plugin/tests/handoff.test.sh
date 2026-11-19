@@ -35,7 +35,7 @@ set -uo pipefail
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK_SOURCE="${HOOK_UNDER_TEST:-$plugin_root/scripts/handoff.py}"
 export CLAUDE_CODE_SESSION_ATTENDED=1; unset CLAUDE_CODE_ENTRYPOINT CLAUDE_PID CLAUDE_CONFIG_DIR
-pass=0; fail=0; failures=""
+pass=0; fail=0; failures=""; skipped=0; skips=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
 trap 'kill $(cat "$work/sleepers" 2>/dev/null) 2>/dev/null; rm -rf "$work"' EXIT
 mkdir -p "$work/loose"; HOOK="$work/loose/handoff.py"; cp "$HOOK_SOURCE" "$HOOK"
@@ -370,12 +370,16 @@ has "цитата на саму записку — не источник" "the n
 printf 'правила — 73%%\n' >"$note"
 has "цитата на память Claude — не источник" "Claude's memory" "$(checkline "итог (цит. $note:1 «правила — 73%»)")"
 upper_mem="${mem%/memory}/MEMORY"
+printf 'x\n' >"$mem/upper.md"; out=$(save "$proj" "$upper_mem/upper.md" "задача А"); rc=$?
+has "save: записка по пути памяти в другом регистре букв — отказ, как до правки цитат" "the note must be a file" "$out"
+if [ $rc -eq 1 ] && [ -z "$(ls "$markers" | grep '\.json$')" ]; then ok; else bad "save: путь памяти в другом регистре — код 1 и без отметки" "rc=$rc $(ls "$markers")"; fi
 if [ -e "$upper_mem/note.md" ]; then
   has "цитата на память Claude в другом регистре букв — не источник" "Claude's memory" "$(checkline "итог (цит. $upper_mem/note.md:1 «правила — 73%»)")"
   printf 'x (цит. %s:1 «x»)\n' "$upper_mem/n2.md" >"$mem/n2.md"
   has "цитата на саму записку в другом регистре букв — не источник" "the note itself" "$(env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$mem/n2.md" 2>&1)"
 else
-  bad "регистр букв" "файловая система различает регистр — случаи 51 не проверены"
+  skipped=$((skipped+2)); skips="$skips
+  пропущено 2: файловая система различает регистр букв — цитаты памяти и записки в другом регистре не проверены"
 fi
 mkfifo "$proj/pipe"; printf 'итог (цит. %s:1 «x»)\n' "$proj/pipe" >"$proj/n.md"
 out=$(timeout 5 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
@@ -396,6 +400,9 @@ has "команда-источник освобождает только сво�
 has "команда-источник не отменяет арифметику" "arithmetic" "$(checkline 'правила — 22 из 30 (43%) (система: wc -l x)')"
 has "числа в блоке кода не проверяются" "all verified" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
 has "незакрытый блок кода — замечание, а не тишина" "line 1: code block not closed" "$(printf '```\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
+out=$({ for i in $(seq 1 12); do echo "строка $i: $i%"; done; printf '```\nправила 73%%\n'; } >"$proj/n.md"; check "$proj/n.md")
+same "незакрытый блок кода — первое замечание, даже когда замечаний больше десяти" "- line 13: code block not closed — the lines after it were not checked" "$(printf '%s\n' "$out" | grep -m1 '^- line')"
+has "незакрытый блок кода не уходит в счёт «and N more»" "and 3 more" "$out"
 has "числа в блоке ~~~ не проверяются" "all verified" "$(printf '~~~\nправила 73%%\n~~~\n' >"$proj/n.md"; check "$proj/n.md")"
 has "блок из четырёх кавычек закрывается только четырьмя" "all verified" "$(printf '````\n```\nправила 73%%\n````\n' >"$proj/n.md"; check "$proj/n.md")"
 has "после закрытого блока числа снова проверяются" "line 4: number with no quote" "$(printf '~~~\n41%%\n~~~\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
@@ -436,6 +443,11 @@ has "upstream/main — подсказка про fetch не только об or
 git -C "$work/repo" branch -q feature/x "$second"
 printf '## СЕЙЧАС\n\n- git %s feature/x = %s\n' "$work/repo" "$second" >"$note"
 out=$(start clear); has "локальная ветка с косой чертой сверяется" "feature/x = $second: matches" "$out"; lacks "локальная ветка с косой чертой — без пометки fetch" "no fetch" "$out"
+real_git=$(command -v git); mkdir -p "$work/slowkind"
+printf '#!/bin/bash\nfor a in "$@"; do [ "$a" = --symbolic-full-name ] && exec sleep 5; done\nexec "%s" "$@"\n' "$real_git" >"$work/slowkind/git"; chmod +x "$work/slowkind/git"
+printf '## СЕЙЧАС\n\n- git %s feature/x = %s\n' "$work/repo" "$second" >"$note"
+out=$(CMP=0 start clear "$proj" PATH="$work/slowkind:$PATH")
+has "вид ссылки не узнан за срок — пометка fetch остаётся" "feature/x = $second: matches (local ref, no fetch)" "$out"
 printf '## СЕЙЧАС\n\n- git %s -x = %s\n' "$work/repo" "$second" >"$note"
 lacks "ссылка с минусом не разбирается как факт" "matches" "$(start clear)"
 printf '## СЕЙЧАС\n\n- git %s %s = %s\n' "$work/repo" "$branch" "$second" >"$note"
@@ -505,9 +517,14 @@ marker fresh 99996 "$dead_started" "$other" "$mem/other.md" "свежая зак
 printf '{}' >"$markers/old.handed"; printf '{}' >"$markers/oldlive.handed"; printf '{}' >"$markers/fresh.handed"
 out=$(save "$proj" "$note" "задача А")
 if [ ! -f "$markers/old.json" ] && [ ! -f "$markers/old.handed" ]; then ok; else bad "save: снимает закрытую старше 30 дней с её файлом передачи" "$(ls "$markers")"; fi
-has "save: говорит, сколько старых снято" "saved more than 30 days ago: 1" "$out"
+has "save: говорит, сколько старых снято" "saved more than 30 days ago or at an unreadable time: 1" "$out"
 if [ -f "$markers/oldlive.json" ] && [ -f "$markers/oldlive.handed" ]; then ok; else bad "save: старую живую не трогает" "$(ls "$markers")"; fi
 if [ -f "$markers/fresh.json" ] && [ -f "$markers/fresh.handed" ]; then ok; else bad "save: свежую закрытую с другой запиской не трогает" "$(ls "$markers")"; fi
+reset; printf 'x\n' >"$mem/other.md"
+marker garbled "$dead_pid" "$dead_started" "$other" "$mem/other.md" "время не разобрать" "вчера"
+printf '{}' >"$markers/garbled.handed"
+save "$proj" "$note" "задача А" >/dev/null
+if [ ! -f "$markers/garbled.json" ] && [ ! -f "$markers/garbled.handed" ]; then ok; else bad "save: закрытую с неразборным saved_at снимает, как старую" "$(ls "$markers")"; fi
 reset; printf '73%% без источника\n' >"$note"
 has "save: сообщает непроверенное" "not verified in the note" "$(save "$proj" "$note" "задача А")"
 reset; out=$(cd "$work/loose" && env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" CLAUDE_CONFIG_DIR=rel/cfg python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic t 2>&1)
@@ -2331,5 +2348,6 @@ while IFS=$'\t' read -r verdict _ label problem; do
 done <"$work/checks.log"
 
 total=$((pass+fail))
+if [ $skipped -gt 0 ]; then echo "handoff: пропущено $skipped$skips"; fi
 if [ $fail -eq 0 ]; then echo "handoff: $pass/$total прошли"; exit 0; fi
 echo "handoff: $pass/$total прошли, $fail упало$failures"; exit 1

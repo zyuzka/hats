@@ -124,6 +124,10 @@ if [ ! -e "$work/.claude" ]; then ok; else bad "CLAUDE_CONFIG_DIR: в ~/.claude 
 rm -rf "$work/.claude"
 input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR= python3 -I "$HOOK" >/dev/null 2>&1
 if [ -f "$work/.claude/state/anchor-nudge.tsv" ]; then ok; else bad "пустой CLAUDE_CONFIG_DIR — журнал в ~/.claude/state" "$(ls -R "$work" | head -5)"; fi
+rm -rf "$work/.claude" "$work/rel"
+(cd "$work" && input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR=rel/cfg python3 -I "$HOOK" >/dev/null 2>&1)
+if [ -f "$work/.claude/state/anchor-nudge.tsv" ] && [ ! -e "$work/rel" ]; then ok
+else bad "относительный CLAUDE_CONFIG_DIR — журнал в ~/.claude/state, не от текущей папки" "$(ls -R "$work" | head -8)"; fi
 rm -rf "$work/cfg"; mkdir -p "$work/cfg"; printf 'x' >"$work/cfg/state"
 out=$(input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR="$work/cfg" python3 -I "$HOOK" 2>&1); rc=$?
 if [ $rc -eq 0 ] && names_anchor "$out"; then ok; else bad "CLAUDE_CONFIG_DIR: журнал не записать — напоминание всё равно есть" "rc=$rc out=${out:0:200}"; fi

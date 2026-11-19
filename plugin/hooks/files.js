@@ -58,6 +58,7 @@ export async function getConfigRoot($) {
   if (!custom || custom.includes('\0')) return home === null ? null : `${home}/.claude`
   const isHomeRelative = (custom === '~' || custom.startsWith('~/')) && home !== null
   const path = isHomeRelative ? `${home}${custom.slice(1)}` : custom
+  if (!path.startsWith('/')) return home === null ? null : `${home}/.claude`
 
   return path.replace(/\/+$/, '') || '/'
 }

@@ -235,8 +235,10 @@ nothing. Each run of the session-start hook, silenced or not, adds one line to
 `<config>/state/handoff/runs.log`, where `<config>` is `~/.claude` unless `CLAUDE_CONFIG_DIR` gives a
 full path: the time, how long the hook took, why it ran (`startup`, `clear` and so on), the session
 id, the session's folder, the Claude process id and what the hook decided, with the error when it
-failed. The hook after Read adds a line, marked `took`, only when its input was unusable, the Claude
-process was not found or the hook failed. Over 256 KB the log moves to `runs.log.1`, so it never holds more than two files.
+failed. The hook after Read adds a line, marked `took`, when the file read was a note — what it
+recorded, or why it recorded nothing — and when its input was unusable (`bad-input`), its time ran
+out before it went through the markers (`incomplete`), the Claude process was not found
+(`no-process`) or the hook failed (`error`); a read of any other file leaves no line. Over 256 KB the log moves to `runs.log.1`, so it never holds more than two files.
 
 The plugin also tells Hats how full each session's context window is. After every prompt, every tool
 call, the end of every turn and a compaction it reads the end of the session's transcript and writes
