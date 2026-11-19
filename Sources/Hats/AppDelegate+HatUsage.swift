@@ -13,4 +13,8 @@ extension AppDelegate {
             lastHatUsageFailure.clear()
         }
     }
+
+    func hatsForUsage() -> [(id: String, isWearing: Bool)] {
+        ClaudeDoors.hatsForUsage(store.accounts, live: liveIdentity.email)
+    }
 }

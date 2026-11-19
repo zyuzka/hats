@@ -15,6 +15,7 @@ struct CodexConfigFile {
     let url: URL
     var rename: (URL, URL) throws -> Void = CodexHome.systemRename
     var beforeRename: (() -> Void)?
+    var journalName = "codexGateway.config"
 
     func apply(_ edit: (String?) -> CodexConfigEdit) throws -> CodexConfigOutcome {
         for attempt in 1...Self.attempts {
@@ -36,7 +37,7 @@ struct CodexConfigFile {
                 beforeRename?()
                 guard try read(path) == original else {
                     unlink(temporary.path)
-                    Journal.log("codexGateway.config.changedMeanwhile", ["attempt": String(attempt)])
+                    Journal.log("\(journalName).changedMeanwhile", ["attempt": String(attempt)])
                     continue
                 }
                 do {
@@ -46,13 +47,13 @@ struct CodexConfigFile {
                     throw error
                 }
                 guard try read(path) == text else {
-                    Journal.log("codexGateway.config.readBackDiffered", ["attempt": String(attempt)])
+                    Journal.log("\(journalName).readBackDiffered", ["attempt": String(attempt)])
                     continue
                 }
                 return .written
             }
         }
-        Journal.log("codexGateway.config.gaveUp")
+        Journal.log("\(journalName).gaveUp")
         throw CodexError.writeFailed("config.toml kept changing while Hats wrote it")
     }
 

@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastHatUsageFailure = NoteOnChange()
     let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
     let contextChannel = ContextThresholdsChannel(launchedAt: Date())
+    let codexCompact = CodexCompactLimitSync()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -125,10 +126,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .popover:
             popover.toggle(relativeTo: button)
         }
-    }
-
-    func hatsForUsage() -> [(id: String, isWearing: Bool)] {
-        ClaudeDoors.hatsForUsage(store.accounts, live: liveIdentity.email)
     }
 
     func redraw(ifTheLiveLoginMoved identity: LiveIdentity) {

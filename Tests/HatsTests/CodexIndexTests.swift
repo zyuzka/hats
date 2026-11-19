@@ -83,6 +83,7 @@ final class CodexIndexTests: XCTestCase {
     func testTheClaudeListAndThePollReadOnlyClaudeHats() throws {
         XCTAssertTrue(try source("AppDelegate+Redraw.swift")
             .contains("snapshot.rows = ClaudeDoors.claudeRows(store.accounts, live: liveIdentity.email) { hat, isWearing in"))
-        XCTAssertTrue(try source("main.swift").contains("ClaudeDoors.hatsForUsage(store.accounts, live: liveIdentity.email)"))
+        XCTAssertTrue(try source("AppDelegate+HatUsage.swift")
+            .contains("ClaudeDoors.hatsForUsage(store.accounts, live: liveIdentity.email)"))
     }
 }

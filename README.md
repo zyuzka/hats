@@ -188,6 +188,56 @@ as it does for Claude Code sessions on the Claude gateway, and names them as `co
 decides whether the Codex gateway should be running by the app's own rule — a Codex hat exists and the
 gateway is not switched off — from two values the app keeps in its settings.
 
+### The Codex note before compaction
+
+When a Codex session nears the end of its context window, Codex compacts the window into its own summary,
+and the thread of the work can get lost. The Codex plugin `hats`, in this repository, keeps a resume note
+for that moment. It is installed by hand, with two commands:
+
+```sh
+codex plugin marketplace add zyuzka/hats
+codex plugin add hats@hats
+```
+
+The next Codex window says that the plugin's hooks are new; choose to trust them there. Hats never trusts
+them for you and never edits `~/.codex/hooks.json`.
+
+The plugin uses the same window thresholds as the Claude plugin (Settings → Context; 60% and 70% when Hats
+has never run):
+
+- At the start of a turn past the warning threshold, the hook asks the model to write a resume note to
+  `$TMPDIR/hats-codex-notes/<session id>.md` and tell you so in one line.
+- At the start of every later turn, until the compaction, it asks the model to update the note, silently.
+- Codex compacts the window by itself at the save threshold. Right after that, the hook hands the note back
+  to the session, and the turn goes on by itself.
+- After the compaction the warning comes again the next time the window passes the warning threshold.
+
+The fill the hook sees is the input of the last answer over the model's window, from Codex's own session
+file, so it lags one answer behind. One long turn can jump past both thresholds at once; Codex then compacts
+before any request reached the model, and there is no note. If the model cannot write the note, it is told
+to tell you only once; later turns ask it to write the note again, and the hook journal says `note-missing`.
+
+The save threshold reaches Codex through one line Hats writes at the top of `~/.codex/config.toml`, like
+the gateway line:
+
+```toml
+model_auto_compact_token_limit = 332500 # set by Hats
+```
+
+The number is the save threshold of the model's window, which the hook writes for Hats into
+`codex-windows/<session id>.json` in the Hats folder. With several such files from the last 7 days, the
+smallest window counts, so no thread gets a limit above its own window; older files count for nothing. The
+first Codex session after the install teaches Hats the window: until then there is no line, and threads
+started before the line exists compact at Codex's own limit. Codex reads the line when a thread starts, so
+open threads keep the limit they started with.
+
+Hats writes no line when the number would be 40 000 or less (a compacted window alone takes about 20 000).
+It removes its line when the save threshold is turned off or no window is known any more, and puts it back
+the next time it looks (at most once in 10 seconds) when someone else deletes it. The line stays in `config.toml` after Hats quits. A line
+without the `# set by Hats` mark belongs to someone else and stays as it is; Hats writes that to its log.
+With either threshold off, the hook asks for no note. The hooks never stop a turn: on any error they stay
+silent and write a line to `codex-hooks.log` in the Hats folder.
+
 ## The one thing to know before using it
 
 A switch takes effect immediately for **new** sessions. A session already running follows only if it
@@ -450,6 +500,10 @@ session is told when one ends.
 | Stored logins | macOS Keychain, one item per hat |
 | The Codex login in use | `~/.codex/auth.json`, Codex's own file |
 | The Codex gateway address | one `openai_base_url` line in `~/.codex/config.toml`, only while the gateway runs |
+| The Codex compaction limit | one `model_auto_compact_token_limit` line in `~/.codex/config.toml`, marked `# set by Hats` |
+| Codex resume notes | `$TMPDIR/hats-codex-notes/<session id>.md`, written by the Codex session itself; beside it `<session id>.state.json`, whether you were told; both removed after 30 days |
+| Codex model windows | `codex-windows/<session id>.json` in the Hats folder: session id, working folder, window and fill; removed after 30 days |
+| Codex hook journal | `codex-hooks.log` in the Hats folder (`hooks.log` in the notes folder when there is no Hats folder) |
 | Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under
