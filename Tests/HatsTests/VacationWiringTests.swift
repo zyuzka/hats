@@ -5,6 +5,7 @@ final class VacationWiringTests: XCTestCase {
     private let since = Date(timeIntervalSince1970: 1_800_000_000)
     private var operations: [String] = []
     private var lines: [[String: String]] = []
+    private let keychain = FakeKeychain()
 
     private func createIsolatedStore() throws -> AccountStore {
         let override = ProcessInfo.processInfo.environment[StateDirectory.overrideName] ?? ""
@@ -13,7 +14,7 @@ final class VacationWiringTests: XCTestCase {
             "the store writes accounts.json through StateDirectory, and without HATS_STATE_HOME that is "
                 + "the developer's own list of hats"
         )
-        let store = AccountStore(osAccount: "vacation-wiring-test", keychain: FakeKeychain().world())
+        let store = AccountStore(osAccount: "vacation-wiring-test", keychain: keychain.world())
         store.journaling = { [unowned self] operation, line in
             operations.append(operation)
             lines.append(line)
@@ -93,6 +94,26 @@ final class VacationWiringTests: XCTestCase {
         XCTAssertEqual(lines.first?["id"], String(gone.id.prefix(8)))
     }
 
+    func testAKeyThatCouldNotBeDeletedIsJournaledWithItsFingerprintAndThrown() throws {
+        let store = try createIsolatedStore()
+        _ = try createHat(in: store)
+        let gone = try createHat(in: store)
+        let key = Data("parked-key".utf8)
+        keychain.contents[Slot.parked(gone.id)] = key
+        keychain.deleteFailures.insert(Slot.parked(gone.id))
+
+        XCTAssertThrowsError(try store.remove(gone.id)) { error in
+            guard case SwitchError.credentialNotDeleted = error else {
+                return XCTFail("expected credentialNotDeleted, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(operations, ["remove"])
+        XCTAssertEqual(lines.first?["payload"], Journal.fingerprint(key))
+        XCTAssertEqual(lines.first?["credentialDeleted"], "failed")
+        XCTAssertNotEqual(lines.first?["deletionFailure"], "none")
+    }
+
     func testTheRemovalLineSaysWhenTheCredentialStayed() {
         let failure = NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "locked"])
 
@@ -154,10 +175,14 @@ final class VacationWiringTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/Hats/AppDelegate+Actions.swift")
         let actions = try String(contentsOf: source, encoding: .utf8)
+        let start = try XCTUnwrap(actions.range(of: "func setVacation(")).lowerBound
+        let rest = actions[start...]
+        let setting = String(rest[..<(rest.range(of: "\n    }\n")?.lowerBound ?? rest.endIndex)])
 
-        XCTAssertTrue(actions.contains("self.usage.poll(self.hatsForUsage())"))
-        XCTAssertTrue(actions.contains("HatDialogs.present($0, title: \"Could not save that change\")"))
-        XCTAssertTrue(actions.contains("VacationChange("))
+        XCTAssertTrue(setting.contains("VacationChange("))
+        XCTAssertTrue(setting.contains("self.usage.poll(self.hatsForUsage())"))
+        XCTAssertTrue(setting.contains("HatDialogs.present($0, title: \"Could not save that change\")"))
+        XCTAssertTrue(setting.contains(".apply(id, on: on, at: Date(), in: store)"))
     }
 
     private func createSnapshot(_ hats: [Account]) -> HatsSnapshot {

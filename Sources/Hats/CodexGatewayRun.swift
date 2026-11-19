@@ -19,6 +19,7 @@ final class CodexGatewayRun: @unchecked Sendable {
     private var lastStamp: [Int64]?
 
     init(broker: CodexGatewayDesk, watchEvery: TimeInterval = watchEveryByDefault) {
+        precondition(watchEvery > 0, "a watch interval of zero or less would fire without pause")
         self.broker = broker
         self.watchEvery = watchEvery
         state = broker.state
@@ -107,11 +108,11 @@ final class CodexGatewayRun: @unchecked Sendable {
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
         timer.schedule(deadline: .now() + watchEvery, repeating: watchEvery)
         let path = broker.desk.world.home.auth.path
-        timer.setEventHandler { [weak self] in
-            guard let self else { return }
+        timer.setEventHandler { [weak self, weak timer] in
+            guard let self, let timer, self.locked({ self.watcher === timer }) else { return }
             let stamp = Self.stamp(of: path)
             let moved: Bool = self.locked {
-                guard stamp != self.lastStamp else { return false }
+                guard self.watcher === timer, stamp != self.lastStamp else { return false }
                 self.lastStamp = stamp
                 return true
             }

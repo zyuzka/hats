@@ -22,7 +22,8 @@ extension AppDelegate {
             own: codexPlugin.own,
             notify: { Notifier.postOpeningSettings(title: $0, body: $1) },
             settings: { [weak self] in self?.settings },
-            keep: { [weak self] in self?.settings = $0 }
+            keep: { [weak self] in self?.settings = $0 },
+            save: { [weak self] in self?.saveSettings() }
         )
         codexPlugin.refresh { notice.consider($0) }
     }

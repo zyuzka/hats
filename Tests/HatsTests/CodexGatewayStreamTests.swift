@@ -75,8 +75,6 @@ final class CodexGatewayStreamTests: CodexGatewayTestCase {
     }
 
     func testAnAnswerThatCarriesUsageWritesItsLineToTheJournal() throws {
-        let written = Locked<[String: [String: String]]>([:])
-        gateway.journaling = { operation, line in written.mutate { $0[operation] = line } }
         wear("hat-work-0123", workLogin)
         answers = { _ in
             .fixed(status: 200, headers: [
@@ -88,7 +86,10 @@ final class CodexGatewayStreamTests: CodexGatewayTestCase {
 
         XCTAssertEqual(ask().status, 200)
 
-        let line = try XCTUnwrap(written.value["codexGateway.usage"], "every answer that carries usage is journaled")
+        let line = try XCTUnwrap(
+            journaled.value.first { $0.operation == "codexGateway.usage" }?.line,
+            "every answer that carries usage is journaled"
+        )
         XCTAssertEqual(line["hat"], "hat-work")
         XCTAssertEqual(line["windows"], "300m=7%,10080m=41%")
         XCTAssertEqual(line, CodexUsageHeaders.journalEntry(
@@ -98,12 +99,10 @@ final class CodexGatewayStreamTests: CodexGatewayTestCase {
     }
 
     func testAnAnswerWithoutUsageWritesNoUsageLine() {
-        let written = Locked<[String]>([])
-        gateway.journaling = { operation, _ in written.mutate { $0.append(operation) } }
         wear("hat-work", workLogin)
 
         _ = ask()
 
-        XCTAssertEqual(written.value, [])
+        XCTAssertEqual(journaled.value.map(\.operation), [])
     }
 }

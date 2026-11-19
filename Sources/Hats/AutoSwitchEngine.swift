@@ -102,6 +102,21 @@ enum AutoSwitchEngine {
         return .blindTargetSpent
     }
 
+    static func strandedWhileBlind(
+        policy: AutoSwitchPolicy,
+        world: AutoSwitchWorld,
+        at now: Date
+    ) -> AutoSwitchDeadEnd.StrandedBy {
+        policy.strandedBy(
+            after: world.wearing,
+            among: world.eligible,
+            blocked: world.blocked,
+            onVacation: world.onVacation,
+            readings: world.readings,
+            at: now
+        )
+    }
+
     static func eligible(in rows: [HatRowState]) -> [String] {
         rows.filter { $0.isSwitchable && !$0.isSkippedByTheSwitch }.map(\.id)
     }

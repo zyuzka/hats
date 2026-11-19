@@ -141,6 +141,17 @@ extension AutoSwitchPolicy {
         ) {
             return .nowhereToGo(.unreadableAndOthersAreOnVacation(away))
         }
+        guard !candidates(after: wearing, among: eligible).isEmpty else {
+            let by = strandedBy(
+                after: wearing,
+                among: eligible,
+                blocked: blocked,
+                onVacation: onVacation,
+                readings: readings,
+                at: now
+            )
+            return .nowhereToGo(.unreadableAndStranded(by))
+        }
         let seen = candidatesReadInThisPoll(
             after: wearing,
             among: eligible,

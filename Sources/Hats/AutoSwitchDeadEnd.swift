@@ -15,9 +15,11 @@ struct HatOnVacation: Equatable {
 enum AutoSwitchDeadEnd: Equatable {
     case noFreshReading
     case unreadableAndOthersAreOnVacation([HatOnVacation])
+    case unreadableAndStranded(StrandedBy)
     case atALimit(UsageLimit, StrandedBy)
 
     static let othersAreOnVacationReason = "othersAreOnVacation"
+    static let othersAreSpentOrOnVacationReason = "othersAreSpentOrOnVacation"
 
     enum StrandedBy: Equatable {
         case noOtherHat
@@ -48,7 +50,7 @@ enum AutoSwitchDeadEnd: Equatable {
             case .noOtherHat: return "noOtherHat"
             case .othersNeedSigningIn: return "othersNeedSigningIn"
             case .othersAreSpent: return "othersAreSpent"
-            case .othersAreSpentOrOnVacation: return "othersAreSpentOrOnVacation"
+            case .othersAreSpentOrOnVacation: return AutoSwitchDeadEnd.othersAreSpentOrOnVacationReason
             case .othersAreOnVacation: return AutoSwitchDeadEnd.othersAreOnVacationReason
             }
         }
@@ -66,6 +68,7 @@ enum AutoSwitchDeadEnd: Equatable {
         switch self {
         case .noFreshReading: return "-"
         case .unreadableAndOthersAreOnVacation: return Self.othersAreOnVacationReason
+        case .unreadableAndStranded(let by): return by.journalReason
         case .atALimit(_, let by): return by.journalReason
         }
     }

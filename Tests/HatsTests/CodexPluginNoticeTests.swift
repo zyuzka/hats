@@ -69,23 +69,23 @@ final class CodexPluginNoticeTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
         var settings = AppSettings()
         settings.isGatewayEnabled = false
-        var kept = 0
+        var saves = 0
         let notice = CodexPluginNotice.remembering(
             own: "0.2.0",
             notify: { [unowned self] title, _ in notified.append(title) },
             settings: { settings },
-            keep: {
-                settings = $0
-                kept += 1
-            },
-            savingTo: url
+            keep: { settings = $0 },
+            save: {
+                saves += 1
+                try? settings.save(to: url)
+            }
         )
 
         notice.consider(.installed(version: "0.1.0", isEnabled: true))
         notice.consider(.installed(version: "0.1.0", isEnabled: true))
 
         XCTAssertEqual(notified, ["Codex plugin 0.2.0"], "the kept version stops the second notification")
-        XCTAssertEqual(kept, 1)
+        XCTAssertEqual(saves, 1, "saved once, after the version was kept")
         XCTAssertEqual(settings.codexPluginVersionToldAbout, "0.2.0")
         let saved = AppSettings.loaded(from: url)
         XCTAssertEqual(saved.codexPluginVersionToldAbout, "0.2.0", "told once even after Hats starts again")
@@ -112,13 +112,26 @@ final class CodexPluginNoticeTests: XCTestCase {
         XCTAssertEqual(snapshot.codexPlugin, flow.row)
     }
 
+    private func getText(of function: String, in text: String) throws -> String {
+        let start = try XCTUnwrap(text.range(of: function)).lowerBound
+        let rest = text[start...]
+        let end = rest.dropFirst().range(of: "\n    }\n")?.lowerBound ?? rest.endIndex
+
+        return String(rest[..<end])
+    }
+
     func testTheRedrawTakesTheRowAndTheLaunchNoticeRemembers() throws {
-        let redraw = try source("Sources/Hats/AppDelegate+Redraw.swift")
-        let wiring = try source("Sources/Hats/AppDelegate+CodexPlugin.swift")
+        let redraw = try getText(of: "func redraw()", in: source("Sources/Hats/AppDelegate+Redraw.swift"))
+        let offer = try getText(
+            of: "func offerTheCodexPluginUpdateOnce()",
+            in: source("Sources/Hats/AppDelegate+CodexPlugin.swift")
+        )
 
         XCTAssertTrue(redraw.contains("snapshot.showTheCodexPluginRow(of: codexPlugin)"))
-        XCTAssertTrue(wiring.contains("CodexPluginNotice.remembering("))
-        XCTAssertTrue(wiring.contains("keep: { [weak self] in self?.settings = $0 }"))
+        XCTAssertTrue(offer.contains("CodexPluginNotice.remembering("))
+        XCTAssertTrue(offer.contains("keep: { [weak self] in self?.settings = $0 }"))
+        XCTAssertTrue(offer.contains("save: { [weak self] in self?.saveSettings() }"))
+        XCTAssertTrue(offer.contains("codexPlugin.refresh { notice.consider($0) }"))
     }
 
     func testTheBundledVersionIsTheVersionOfThePluginAndOfTheMarketplace() throws {

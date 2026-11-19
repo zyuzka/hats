@@ -37,6 +37,7 @@ class CodexGatewayTestCase: XCTestCase {
     let state = CodexGatewayState()
     let broker = FakeCodexBroker()
     let seen = Locked<[NIOTestListener.Request]>([])
+    let journaled = Locked<[(operation: String, line: [String: String])]>([])
     let workLogin = CodexFixture.login(CodexFixture.work, refresh: "work-1")
     let personalLogin = CodexFixture.login(CodexFixture.personal, refresh: "personal-1")
     var upstream: NIOTestListener!
@@ -60,6 +61,7 @@ class CodexGatewayTestCase: XCTestCase {
             broker: broker,
             upstream: URL(string: "http://127.0.0.1:\(upstream.port)/backend-api/codex")!
         )
+        gateway.journaling = { [journaled] operation, line in journaled.mutate { $0.append((operation, line)) } }
         try gateway.start()
     }
 

@@ -41,9 +41,15 @@ extension HatsSnapshot {
         if let warning, let away = findHatsNamedOnVacation(in: warning) {
             return Set(away.map(\.id)) == Set(rows.filter(\.isSkippedByTheSwitch).map(\.id))
         }
-        guard case .nowhereToGoAtALimit(_, .othersNeedSigningIn(let first, let also)) = warning else {
+        let shutOut: (ShutOutHat, [ShutOutHat])
+        switch warning {
+        case .nowhereToGoAtALimit(_, .othersNeedSigningIn(let first, let also)),
+             .unreadableAndStranded(.othersNeedSigningIn(let first, let also)):
+            shutOut = (first, also)
+        default:
             return true
         }
+        let (first, also) = shutOut
 
         return ([first] + also).allSatisfy { named in
             rows.contains { $0.id == named.id && !$0.isSkippedByTheSwitch }
@@ -55,14 +61,19 @@ extension HatsSnapshot {
         case .unreadableAndOthersAreOnVacation(let away),
              .everyOtherHatIsSpentOrOnVacation(let away),
              .nowhereToGoAtALimit(_, .othersAreOnVacation(let away)),
-             .nowhereToGoAtALimit(_, .othersAreSpentOrOnVacation(_, let away)):
+             .nowhereToGoAtALimit(_, .othersAreSpentOrOnVacation(_, let away)),
+             .unreadableAndStranded(.othersAreOnVacation(let away)),
+             .unreadableAndStranded(.othersAreSpentOrOnVacation(_, let away)):
             return away
         case .willSwitchWhenItCan,
              .nowhereFreshToGo,
              .everyOtherHatIsSpent,
              .nowhereToGoAtALimit(_, .noOtherHat),
              .nowhereToGoAtALimit(_, .othersNeedSigningIn),
-             .nowhereToGoAtALimit(_, .othersAreSpent):
+             .nowhereToGoAtALimit(_, .othersAreSpent),
+             .unreadableAndStranded(.noOtherHat),
+             .unreadableAndStranded(.othersNeedSigningIn),
+             .unreadableAndStranded(.othersAreSpent):
             return nil
         }
     }

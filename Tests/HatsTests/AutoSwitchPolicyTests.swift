@@ -250,8 +250,9 @@ final class AutoSwitchPolicyTests: XCTestCase {
                            + "an improvement")
         XCTAssertEqual(decide(reading(session: 89, weekly: 0), policy: armed,
                               eligible: ["work"], blindness: blind(2, fresh: ["personal"])),
-                       .nowhereToGo(.noFreshReading),
-                       "no limit was crossed, so there is no limit to name in the answer")
+                       .nowhereToGo(.unreadableAndStranded(.noOtherHat)),
+                       "no limit was crossed, so there is no limit to name in the answer; with no "
+                           + "other hat at all the answer says so instead of blaming fresh readings")
     }
 
     func testAHatWithNoNumberAtAllIsNeverTheBlindDestination() {

@@ -19,6 +19,16 @@ final class CodexGatewayWatchTests: XCTestCase {
         return CodexGatewayRun(broker: broker, watchEvery: 0.05)
     }()
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        let override = ProcessInfo.processInfo.environment[StateDirectory.overrideName] ?? ""
+        try XCTSkipIf(
+            override.isEmpty,
+            "starting and stopping the gateway writes to the journal, and without HATS_STATE_HOME that is "
+                + "the developer's own operations.log"
+        )
+    }
+
     override func tearDown() {
         run.stop()
         try? FileManager.default.removeItem(at: home.url)
@@ -57,10 +67,16 @@ final class CodexGatewayWatchTests: XCTestCase {
     func testAStoppedGatewayNoLongerWatches() throws {
         try CodexFixture.login(CodexFixture.work, refresh: "work-1").write(to: home.auth)
         run.start(port: 0, secret: secret)
-        run.stop()
-
         try CodexFixture.login(CodexFixture.personal, refresh: "personal-1").write(to: home.auth)
+        XCTAssertEqual(
+            waitForTheWornHat("hat-personal", within: 0.9),
+            "hat-personal",
+            "the watch runs before the stop, so the check below is about the stop"
+        )
 
-        XCTAssertEqual(waitForTheWornHat("hat-personal", within: 0.3), "hat-work")
+        run.stop()
+        try CodexFixture.login(CodexFixture.work, refresh: "work-2").write(to: home.auth)
+
+        XCTAssertEqual(waitForTheWornHat("hat-work", within: 0.3), "hat-personal")
     }
 }
