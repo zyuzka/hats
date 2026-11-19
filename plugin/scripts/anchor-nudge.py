@@ -55,7 +55,7 @@ REMINDER = (
     "text, not the copy loaded earlier: that copy may be outdated and miss a step. A request to save "
     "in other words is not this command. Otherwise ignore this note."
 )
-COMMAND = re.compile(r"\s*/hats:anchor(?:\s.*)?", re.S)
+COMMAND = re.compile(r"\s*/(?:hats:)?anchor(?:\s.*)?", re.S)
 LOG = "anchor-nudge.tsv"
 LOG_LIMIT = 256_000
 

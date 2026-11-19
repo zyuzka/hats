@@ -58,7 +58,9 @@ silent "команда /hats:anchor после пробелов" "  /hats:anchor
 silent "команда /hats:anchor с аргументами" "/hats:anchor сейчас"
 silent "команда /hats:anchor, дальше новая строка с текстом" $'/hats:anchor\nи ещё'
 reminded "/hats:anchored — не эта команда" "/hats:anchored"
-reminded "/anchor без приставки — не эта команда" "/anchor"
+silent "набранная /anchor без приставки — та же команда" "/anchor"
+silent "набранная /anchor без приставки с аргументами" "/anchor сейчас"
+reminded "/anchored — не эта команда" "/anchored"
 reminded "команда внутри текста — напоминание" "запусти /hats:anchor"
 reminded "команда в другом регистре — напоминание" "/HATS:ANCHOR"
 rm -rf "$work/.claude"; run "/hats:anchor" >/dev/null

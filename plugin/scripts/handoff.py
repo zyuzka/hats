@@ -106,7 +106,7 @@ case is compared as written: a path typed in another case than `where` printed i
 `save`, loudly.
 
 The memory note is <config>/projects/<folder>/memory/<name>.md, where <config> is
-$CLAUDE_CONFIG_DIR or else ~/.claude; old markers and notes written there are still accepted. The
+$CLAUDE_CONFIG_DIR when it is an absolute path or else ~/.claude; old markers and notes written there are still accepted. The
 memory folder (or the project folder above it) may be a link to somewhere else; then the note must
 sit directly in the folder the link points at, `..` is resolved before the check, a note that is
 itself a link out of that folder is refused, and the path read is the one the check returned. Known
@@ -129,14 +129,19 @@ the nearest ancestor named `claude`. The process folder is read from /proc/<pid>
 exists (Linux), else from lsof. Without fcntl (Windows) the run log is written without its lock. Repository
 state is compared with local refs only — no fetch: a fetch runs commands from the named
 repository's config and needs the network, and a failed fetch made an old origin ref read as
-current (verification 2026-11-11).
+current (verification 2026-11-11). A fact about a remote-tracking ref (origin/ or any other remote)
+says so. GIT_* variables of the environment do not reach these git calls, so GIT_DIR cannot point
+the check at another repository.
 
 The check: a number taken from another file goes into the note only inside a quote
 `(cite: <path>:<line> "exact text")`, with «», "" or “” as the quote marks, compared with that
 line of a regular file at number boundaries; a quote of the note itself, of Claude's memory or of
-any file in the notes folder is not a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
+any file in the notes folder is not a source; the note and the memory folder are matched as file
+system objects, so another letter case does not make them a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
 `(cmd: <command>)` in the same clause. A percent, "N percent", `N of M` or `N/M` outside all
-three — inline code included, fenced code not — is reported as not verified; a `(cite:` that does
+three — inline code included, fenced code (``` or ~~~, three marks or more, closed by the same
+mark at least as long) not — is reported as not verified; a code block left open is reported, since
+the lines after it are not checked; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
 caught, and the check cannot tell whether the words next to a quote mean what the quote says.
 
@@ -420,7 +425,7 @@ NUMBER_CLAIM = re.compile(
     re.IGNORECASE,
 )
 CLAUSE_BREAK = re.compile(r";|\||\s—\s|\.\s|,\s|\sи\s|\sand\s")
-FENCE = re.compile(r"^\s*```[^`]*$")
+FENCE = re.compile(r"^\s*(?P<fence>`{3,}(?=[^`]*$)|~{3,})(?P<info>.*)$")
 GIT_FACT = re.compile(
     r"^\s*-\s+git\s+(?P<repo>\S+)\s+(?P<ref>[A-Za-z0-9_][A-Za-z0-9._/-]*)\s+=\s+(?P<sha>[0-9a-f]{7,40})\b"
 )
@@ -475,7 +480,7 @@ def out_of_time():
 
 def config_root():
     custom = os.environ.get("CLAUDE_CONFIG_DIR")
-    if usable(custom):
+    if usable(custom) and os.path.isabs(os.path.expanduser(custom)):
         return os.path.expanduser(custom)
     return os.path.join(os.path.expanduser("~"), ".claude")
 
@@ -508,7 +513,8 @@ def usable(path):
 def run(cmd, timeout):
     if timeout <= 0:
         return None, None
-    env = dict(os.environ, LC_ALL="C", TZ="UTC")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(LC_ALL="C", TZ="UTC")
     try:
         proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, text=True, env=env, start_new_session=True)
@@ -608,10 +614,18 @@ def same_path(a, b):
 
 def in_memory(real):
     root = memory_root() + os.sep
-    if not real.startswith(root):
+    if real.startswith(root):
+        parts = real[len(root):].split(os.sep)
+        if len(parts) == 3 and parts[1] == "memory":
+            return True
+    folder = os.path.dirname(real)
+    project = os.path.dirname(folder)
+    try:
+        projects = os.stat(memory_root())
+        memory = os.stat(os.path.join(project, "memory"))
+    except (OSError, ValueError):
         return False
-    parts = real[len(root):].split(os.sep)
-    return len(parts) == 3 and parts[1] == "memory"
+    return is_same_folder(os.path.dirname(project), projects) and is_same_folder(folder, memory)
 
 
 def note_in_memory(path):
@@ -917,7 +931,7 @@ def verify_cite(match, base_dir, note_real, cache):
     if not os.path.isabs(path):
         path = os.path.join(base_dir, path)
     real = os.path.realpath(path)
-    if note_real and real == note_real:
+    if note_real and (real == note_real or is_same_file(real, note_real)):
         return "quote of the note itself is not a source"
     if in_memory(real):
         return f"quote of Claude's memory is not a source: {raw}"
@@ -948,17 +962,23 @@ def check_text(text, base_dir, note_real):
     problems = []
     cache = {}
     lines = text.split("\n")
-    in_fence = False
+    fence = None
+    fence_line = 0
     for i in range(body_start(lines), len(lines)):
         number = i + 1
         if out_of_time():
             problems.append((number, "check ran out of time before the end of the note"))
+            fence = None
             break
         line = lines[i]
-        if FENCE.match(line):
-            in_fence = not in_fence
+        found = FENCE.match(line)
+        if fence is None and found:
+            fence, fence_line = found.group("fence"), number
             continue
-        if in_fence:
+        if fence is not None:
+            if found and found.group("fence")[0] == fence[0] and len(found.group("fence")) >= len(fence) \
+                    and not found.group("info").strip():
+                fence = None
             continue
         if len(line) > LINE_LENGTH_LIMIT:
             problems.append((number, "line longer than 5,000 characters — not checked"))
@@ -982,6 +1002,8 @@ def check_text(text, base_dir, note_real):
             if NUMBER_CLAIM.search(clause) and not SYSTEM_SOURCE.search(clause):
                 problems.append((number, "number with no quote and no source"))
                 break
+    if fence is not None:
+        problems.append((fence_line, "code block not closed — the lines after it were not checked"))
     return problems
 
 
@@ -1000,6 +1022,15 @@ def problem_lines(problems):
     return out
 
 
+def remote_mark(repo, ref):
+    mark = " (local ref, no fetch)"
+    if ref.startswith("origin/"):
+        return mark
+    code, name = run(["git", "-c", "core.fsmonitor=false", "-C", repo, "rev-parse", "--verify", "--quiet",
+                      "--symbolic-full-name", "--end-of-options", ref], time_left(1.0))
+    return mark if code == 0 and (name or "").startswith("refs/remotes/") else ""
+
+
 def state_lines(text):
     out = []
     for line in text.split("\n"):
@@ -1014,7 +1045,6 @@ def state_lines(text):
             out.append(f"- git: bad path, {ref} not checked")
             continue
         repo = os.path.realpath(os.path.expanduser(raw))
-        local = " (local ref, no fetch)" if ref.startswith("origin/") else ""
         if out_of_time():
             out.append(f"- git {repo} {ref}: no time to check")
             continue
@@ -1029,8 +1059,10 @@ def state_lines(text):
         elif code != 0 or not current:
             out.append(f"- git {repo} {ref}: not found")
         elif current.startswith(noted):
+            local = remote_mark(repo, ref)
             out.append(f"- git {repo} {ref} = {noted}: matches{local}")
         else:
+            local = remote_mark(repo, ref)
             out.append(f"- git {repo} {ref}: was {noted}, now {current[:len(noted)]}{local}")
     return out
 
@@ -1057,7 +1089,9 @@ def note_head(text):
 
 def fetch_hint(facts):
     if any("no fetch" in fact for fact in facts):
-        return ["origin/* refs were compared with local refs; what the server has now needs `git fetch`."]
+        if all(" origin/" in fact for fact in facts if "no fetch" in fact):
+            return ["origin/* refs were compared with local refs; what the server has now needs `git fetch`."]
+        return ["Remote refs were compared with local refs; what the server has now needs `git fetch`."]
     return []
 
 
@@ -1284,7 +1318,7 @@ def cmd_start(seen):
         return 0
     try:
         data = json.loads(sys.stdin.read() or "{}")
-    except ValueError:
+    except (ValueError, RecursionError):
         seen["outcome"] = "bad-input"
         return 0
     if not isinstance(data, dict):
@@ -2809,14 +2843,23 @@ def cmd_save(args):
         print(f"handoff: marker not written: {error}")
         return 1
     retired = 0
+    expired = 0
+    now = datetime.now(timezone.utc)
     for other in load_markers():
-        if other["_path"] == path or not same_path(other["note"], note) or liveness(other) != "closed":
+        if other["_path"] == path:
+            continue
+        when = saved_time(other)
+        old = when is not None and now - when > MAX_AGE
+        if not (old or same_path(other["note"], note)) or liveness(other) != "closed":
             continue
         try:
             os.remove(other["_path"])
-            retired += 1
         except OSError:
             continue
+        if old:
+            expired += 1
+        else:
+            retired += 1
         try:
             os.remove(handed_file(other))
         except OSError:
@@ -2824,6 +2867,8 @@ def cmd_save(args):
     print(f"marker: {path}")
     if retired:
         print(f"removed markers of closed sessions with the same note: {retired}")
+    if expired:
+        print(f"removed markers of closed sessions saved more than 30 days ago: {expired}")
     print("\n".join(set_index(note, marker)))
     problems = checked(text, cwd, os.path.realpath(note))
     if problems:

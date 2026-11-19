@@ -369,12 +369,24 @@ printf 'x (цит. %s:1 «x»)\n' "$mem/n2.md" >"$mem/n2.md"
 has "цитата на саму записку — не источник" "the note itself" "$(env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$mem/n2.md" 2>&1)"
 printf 'правила — 73%%\n' >"$note"
 has "цитата на память Claude — не источник" "Claude's memory" "$(checkline "итог (цит. $note:1 «правила — 73%»)")"
+upper_mem="${mem%/memory}/MEMORY"
+if [ -e "$upper_mem/note.md" ]; then
+  has "цитата на память Claude в другом регистре букв — не источник" "Claude's memory" "$(checkline "итог (цит. $upper_mem/note.md:1 «правила — 73%»)")"
+  printf 'x (цит. %s:1 «x»)\n' "$upper_mem/n2.md" >"$mem/n2.md"
+  has "цитата на саму записку в другом регистре букв — не источник" "the note itself" "$(env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$mem/n2.md" 2>&1)"
+else
+  bad "регистр букв" "файловая система различает регистр — случаи 51 не проверены"
+fi
 mkfifo "$proj/pipe"; printf 'итог (цит. %s:1 «x»)\n' "$proj/pipe" >"$proj/n.md"
 out=$(timeout 5 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
 has "цитата на канал не вешает проверку" "no regular file" "$out"; lacks "цитата на канал — не убита по сроку" "rc=124" "$out"
 python3 -I -c 'print("(цит. a:1 «" * 1300)' >"$proj/n.md"
 out=$(timeout 2 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
 lacks "длинная строка с цитатами разбирается быстро" "rc=124" "$out"
+has "длинная строка с цитатами — ответ проверки, а не падение" "line longer than 5,000 characters" "$out"
+python3 -I -c 'print("(цит. a:1 «" * 450)' >"$proj/n.md"
+out=$(timeout 2 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
+has "строка короче предела из незакрытых цитат разбирается быстро и ответом проверки" "quote not parsed" "$out"
 has "случай пробы: процент без источника" "no source" "$(checkline '73% потерь — постоянные правила')"
 has "случай пробы в обратных кавычках" "no source" "$(checkline '`73%` — постоянные правила')"
 has "своя арифметика сходится" "all verified" "$(checkline 'правила — 13 из 30 (43%)')"
@@ -383,6 +395,10 @@ has "число с командой-источником" "all verified" "$(chec
 has "команда-источник освобождает только свою часть" "no source" "$(checkline 'правила 73%; неделя 98% (система: cat x)')"
 has "команда-источник не отменяет арифметику" "arithmetic" "$(checkline 'правила — 22 из 30 (43%) (система: wc -l x)')"
 has "числа в блоке кода не проверяются" "all verified" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
+has "незакрытый блок кода — замечание, а не тишина" "line 1: code block not closed" "$(printf '```\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
+has "числа в блоке ~~~ не проверяются" "all verified" "$(printf '~~~\nправила 73%%\n~~~\n' >"$proj/n.md"; check "$proj/n.md")"
+has "блок из четырёх кавычек закрывается только четырьмя" "all verified" "$(printf '````\n```\nправила 73%%\n````\n' >"$proj/n.md"; check "$proj/n.md")"
+has "после закрытого блока числа снова проверяются" "line 4: number with no quote" "$(printf '~~~\n41%%\n~~~\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
 has "шапка записки не проверяется" "all verified" "$(printf -- '---\nname: x 50%%\n---\nтекст\n' >"$proj/n.md"; check "$proj/n.md")"
 out=$(for i in $(seq 1 15); do echo "строка $i: $i%"; done >"$proj/n.md"; check "$proj/n.md")
 has "замечаний сверх десяти — счётом" "and 5 more" "$out"
@@ -408,6 +424,18 @@ has "состояние сдвинулось" "was $first, now $second" "$(start
 printf '## СЕЙЧАС\n\n- git %s origin/main = %s\n' "$work/repo" "$second" >"$note"
 out=$(start clear); has "origin сверяется локально и так и подписано" "no fetch" "$out"
 if [ ! -e "$work/PWNED" ]; then ok; else bad "хук не запускает команды из настроек репозитория" "PWNED создан"; fi
+mkdir -p "$work/repo2"; git -C "$work/repo2" init -q
+git -C "$work/repo2" -c user.name=t -c user.email=t@t -c core.hooksPath=/dev/null commit -q --allow-empty -m other
+printf '## СЕЙЧАС\n\n- git %s %s = %s\n' "$work/repo" "$branch" "$second" >"$note"
+out=$(CMP=0 start clear "$proj" GIT_DIR="$work/repo2/.git" GIT_WORK_TREE="$work/repo2")
+has "GIT_DIR и GIT_WORK_TREE окружения не уводят сверку в другой репозиторий" "= $second: matches" "$out"
+git -C "$work/repo" update-ref refs/remotes/upstream/main "$second"
+printf '## СЕЙЧАС\n\n- git %s upstream/main = %s\n' "$work/repo" "$second" >"$note"
+out=$(CMP=0 start clear); has "upstream/main — тоже локальная ссылка без fetch" "upstream/main = $second: matches (local ref, no fetch)" "$out"
+has "upstream/main — подсказка про fetch не только об origin" "Remote refs were compared with local refs" "$out"
+git -C "$work/repo" branch -q feature/x "$second"
+printf '## СЕЙЧАС\n\n- git %s feature/x = %s\n' "$work/repo" "$second" >"$note"
+out=$(start clear); has "локальная ветка с косой чертой сверяется" "feature/x = $second: matches" "$out"; lacks "локальная ветка с косой чертой — без пометки fetch" "no fetch" "$out"
 printf '## СЕЙЧАС\n\n- git %s -x = %s\n' "$work/repo" "$second" >"$note"
 lacks "ссылка с минусом не разбирается как факт" "matches" "$(start clear)"
 printf '## СЕЙЧАС\n\n- git %s %s = %s\n' "$work/repo" "$branch" "$second" >"$note"
@@ -470,8 +498,21 @@ if [ ! -f "$markers/dead.handed" ]; then ok; else bad "save: снимает и �
 if [ -f "$markers/live.json" ]; then ok; else bad "save: живую с той же запиской не трогает" "пропала"; fi
 if [ -f "$markers/live.handed" ]; then ok; else bad "save: файл передачи живой не трогает" "пропал"; fi
 if [ -f "$markers/deadother.json" ]; then ok; else bad "save: закрытую с другой запиской не трогает" "пропала"; fi
+reset; printf 'x\n' >"$mem/other.md"
+marker old "$dead_pid" "$dead_started" "$other" "$mem/other.md" "старая закрытая" "2020-01-01T00:00:00Z"
+marker oldlive "$me_pid" "$me_started" "$other" "$mem/other.md" "старая живая" "2020-01-01T00:00:00Z"
+marker fresh 99996 "$dead_started" "$other" "$mem/other.md" "свежая закрытая"
+printf '{}' >"$markers/old.handed"; printf '{}' >"$markers/oldlive.handed"; printf '{}' >"$markers/fresh.handed"
+out=$(save "$proj" "$note" "задача А")
+if [ ! -f "$markers/old.json" ] && [ ! -f "$markers/old.handed" ]; then ok; else bad "save: снимает закрытую старше 30 дней с её файлом передачи" "$(ls "$markers")"; fi
+has "save: говорит, сколько старых снято" "saved more than 30 days ago: 1" "$out"
+if [ -f "$markers/oldlive.json" ] && [ -f "$markers/oldlive.handed" ]; then ok; else bad "save: старую живую не трогает" "$(ls "$markers")"; fi
+if [ -f "$markers/fresh.json" ] && [ -f "$markers/fresh.handed" ]; then ok; else bad "save: свежую закрытую с другой запиской не трогает" "$(ls "$markers")"; fi
 reset; printf '73%% без источника\n' >"$note"
 has "save: сообщает непроверенное" "not verified in the note" "$(save "$proj" "$note" "задача А")"
+reset; out=$(cd "$work/loose" && env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" CLAUDE_CONFIG_DIR=rel/cfg python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic t 2>&1)
+has "save: относительный CLAUDE_CONFIG_DIR — берётся ~/.claude" "marker: $markers/" "$out"
+if [ ! -e "$work/loose/rel" ]; then ok; else bad "save: относительный CLAUDE_CONFIG_DIR — папки от текущей нет" "$(ls -R "$work/loose/rel" | head -5)"; fi
 reset; out=$(save "$proj" "$mem/none.md" "задача А"); rc=$?
 has "save: нет файла записки" "the note must be a file" "$out"
 if [ $rc -ne 0 ]; then ok; else bad "save: нет файла записки — код не 0" "код 0"; fi
@@ -509,10 +550,12 @@ has "строка «\`\`\`73%%\`\`\`» не открывает ограду" "li
 python3 -I -c 'print("\n".join("1" * 4999 for _ in range(30)))' >"$proj/n.md"
 out=$(timeout 3 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
 lacks "длинные строки цифр разбираются быстро" "rc=124" "$out"
+has "длинные строки цифр — ответ проверки, а не падение" "quotes and numbers: all verified" "$out"
 python3 -I -c 'print("1" * 1500000)' >"$proj/big.txt"
 python3 -I -c 'import sys; print(" ".join("(цит. %s:1 «1»)" % sys.argv[1] for _ in range(30)))' "$proj/big.txt" >"$proj/n.md"
 out=$(timeout 3 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
 lacks "тридцать цитат в большой файл — быстро" "rc=124" "$out"
+has "тридцать цитат в большой файл — ответ проверки, а не падение" "big.txt:1: \"1\"" "$out"
 
 # --- медленные ps и git, уборка процессов
 reset; mkdir -p "$work/fakebin" "$work/repo"
@@ -524,9 +567,9 @@ same "ps молчит — пользователю «не успел прове�
 if [ $((e - s)) -le 5 ]; then ok; else bad "ps молчит — хук укладывается в 5 с" "$((e - s)) с"; fi
 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" PATH="$work/fakebin:$PATH" python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic t >/dev/null 2>&1
 if [ -f "$markers/a.json" ]; then ok; else bad "ps молчит — save не снимает отметку" "снята"; fi
-ms=$(IN="{\"cwd\":\"$proj\",\"source\":\"startup\"}" python3 -I -c 'import subprocess,sys,time,os; t=time.monotonic(); subprocess.run(sys.argv[1:], input=os.environ["IN"].encode(), capture_output=True); print(int((time.monotonic()-t)*1000))' \
-  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_BUDGET=1 PATH="$work/fakebin:$PATH" python3 -I "$HOOK" start)
-if [ "$ms" -le 1700 ]; then ok; else bad "ps молчит — общий срок на все вызовы ps" "${ms} мс при сроке 1000"; fi
+printf '{"cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_BUDGET=1 PATH="$work/fakebin:$PATH" python3 -I "$HOOK" start >/dev/null 2>&1
+ms=$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).read().splitlines()[-1]).get("ms", "нет"))' "$markers/runs.log" 2>&1)
+case "$ms" in ''|*[!0-9]*) bad "ps молчит — время хука из runs.log" "ms=$ms" ;; *) if [ "$ms" -le 1700 ]; then ok; else bad "ps молчит — общий срок на все вызовы ps (время хука из runs.log)" "${ms} мс при сроке 1000"; fi ;; esac
 reset; marker good "$dead_pid" "$dead_started" "$proj" "$note" "живая записка"
 python3 -I -c 'import json,sys; json.dump({"pid":99987,"started":"x","cwd":"/a\u0000b","note":sys.argv[2],"topic":"t","saved_at":sys.argv[3]},open(sys.argv[1],"w"))' "$markers/nul.json" "$note" "$(now)"
 has "отметка с нулевым байтом в папке не глушит список" "\"живая записка\"" "$(start startup)"
@@ -583,6 +626,12 @@ reset; mine; start clear "$proj" HANDOFF_OFF=1 >/dev/null
 has "журнал: выключатель" "outcome=off" "$(tl outcome)"
 reset; printf 'not json' | env HOME="$work" python3 -I "$HOOK" start >/dev/null 2>&1
 has "журнал: битый ввод" "outcome=bad-input" "$(tl outcome)"
+reset; python3 -I -c 'print("[" * 100000)' | env HOME="$work" python3 -I -c 'import json, json.scanner, runpy, sys
+json.scanner.make_scanner = json.scanner.py_make_scanner
+json._default_decoder = json.JSONDecoder()
+sys.argv = [sys.argv[1], "start"]
+runpy.run_path(sys.argv[0], run_name="__main__")' "$HOOK" >/dev/null 2>&1
+has "журнал: глубоко вложенный ввод (RecursionError разбора) — тот же битый ввод" "outcome=bad-input" "$(tl outcome)"
 reset; printf '[]' | env HOME="$work" python3 -I "$HOOK" start >/dev/null 2>&1
 has "журнал: ввод не словарь" "outcome=bad-input" "$(tl outcome)"
 reset; mine; start compact >/dev/null
@@ -2265,6 +2314,12 @@ old=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOM
 same "/clear, исключение в снимке читателей — модели текст 8b символ в символ" "$old" "$(printf '%s' "$out" | model_of)"
 same "/clear, исключение в снимке — пользователю строка 8b без пометки" "Hats handoff: continuing anchor \"своя\" — $real_note" "$(printf '%s' "$out" | user_of)"
 has "/clear, исключение в снимке — reader=error" "outcome=gave-note reader=error marks_error=RuntimeError" "$(tl outcome reader marks_error)"
+
+# --- README: как поставить плагин, как его выключить и что хук пишет на диск
+readme=$(cat "$plugin_root/../README.md" 2>/dev/null)
+has "README: как поставить плагин" "claude plugin install hats --marketplace zyuzka/hats" "$readme"
+has "README: выключатель хука" "HANDOFF_OFF=1" "$readme"
+has "README: что хук пишет на диск" "<config>/state/handoff/runs.log" "$readme"
 
 # --- сверка: форма вывода каждого вызова через помощники и совпадение с образцом
 if [ -s "$OLD_HOOK" ]; then ok; else bad "сверка: образец" "нет файла $OLD_HOOK"; fi
