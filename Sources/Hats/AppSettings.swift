@@ -40,6 +40,7 @@ struct AppSettings: Codable, Equatable {
     var codexAutoSwitch = AutoSwitchPolicy()
     var codexAutoSwitchRecord: AutoSwitchRecord?
     var continuesCodexAfterCompaction = true
+    var codexPluginVersionToldAbout: String?
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -86,6 +87,7 @@ struct AppSettings: Codable, Equatable {
         codexAutoSwitchRecord = try? c.decodeIfPresent(AutoSwitchRecord.self, forKey: .codexAutoSwitchRecord)
         continuesCodexAfterCompaction =
             (try? c.decodeIfPresent(Bool.self, forKey: .continuesCodexAfterCompaction)) ?? true
+        codexPluginVersionToldAbout = try? c.decodeIfPresent(String.self, forKey: .codexPluginVersionToldAbout)
     }
 
     static var defaultURL: URL {

@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inform: { HatDialogs.inform($0, $1) },
         show: { [weak self] in self?.redraw() }
     )
+    lazy var codexPlugin = CodexPluginFlow.real(CodexPluginProvenance.bundledVersion) { [weak self] in self?.redraw() }
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {

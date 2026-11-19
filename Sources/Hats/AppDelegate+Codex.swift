@@ -2,6 +2,7 @@ import AppKit
 
 extension AppDelegate {
     func startTheCodexHats() {
+        offerTheCodexPluginUpdateOnce()
         noticeTheWornCodexHat()
         listenToTheCodexGateway()
         syncTheCodexGateway()

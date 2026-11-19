@@ -15,6 +15,7 @@ extension AppDelegate {
             guard let self else { return }
             self.settingsWindow.show(model: self.popover.model)
             self.handoff.refresh(then: nil)
+            self.codexPlugin.refresh(then: nil)
         }
     }
 

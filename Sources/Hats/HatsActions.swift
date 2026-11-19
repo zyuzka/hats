@@ -38,6 +38,10 @@ protocol HatsActions: AnyObject {
     func installSessionHandoff()
     func updateSessionHandoff()
     func removeSessionHandoff()
+    func installCodexPlugin()
+    func updateCodexPlugin()
+    func refreshCodexPlugin()
+    func removeCodexPlugin()
     func quit()
 }
 

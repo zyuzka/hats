@@ -10,6 +10,8 @@ extension AppDelegate {
         MeterReading.of(usage.readings[id], readAt: usage.readAt[id], trouble: usage.troubles[id])
     }
 
+    var settleWanted: TimeInterval { TimeInterval(settings.gatewaySettleSeconds) }
+
     func afterThePopoverSettles(_ work: @escaping () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }

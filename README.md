@@ -192,15 +192,42 @@ gateway is not switched off — from two values the app keeps in its settings.
 
 When a Codex session nears the end of its context window, Codex compacts the window into its own summary,
 and the thread of the work can get lost. The Codex plugin `hats`, in this repository, keeps a resume note
-for that moment. It is installed by hand, with two commands:
+for that moment.
+
+Install it from Settings → General → Codex plugin, under the row of the Claude plugin. The row reads the
+state with Codex's own commands and changes it only after you agree in a window that shows the exact
+commands:
+
+- **Install…** runs `codex plugin marketplace add zyuzka/hats` (only when no marketplace named `hats` is
+  listed) and `codex plugin add hats@hats`.
+- **Update…** appears when Codex lists an older version of the plugin than the one this Hats comes with. It
+  runs `codex plugin marketplace upgrade hats` and `codex plugin add hats@hats`. Hats tells you about a new
+  version once, with a notification.
+- Install and Update take the plugin from the `main` branch of `zyuzka/hats` on GitHub, not from the Hats
+  app: the app does not carry the plugin, so the version GitHub offers can lag behind the one this Hats
+  names.
+- **Remove…** runs `codex plugin remove hats@hats`. The marketplace stays.
+- When the plugin is switched off in Codex, the row says so.
+- A marketplace `hats` added from a folder is a developer's install: the row says "installed from a
+  folder" and offers no update. Codex keeps its own copy of the plugin in
+  `~/.codex/plugins/cache/hats/hats/<version>/` and does not refresh it when the folder changes; when the
+  copy and the folder differ, the row offers **Refresh…**, which runs `codex plugin add hats@hats` again.
+- A marketplace `hats` from another source, or another plugin named `hats`, is not ours: the row says so
+  and offers nothing.
+
+Hats finds `codex` in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` or on the `PATH` of a new login
+shell, and runs it with `CODEX_HOME` set the way Hats reads the Codex folder. Without `codex` the row says
+"Codex not found".
+
+Without Hats, the same install is two commands:
 
 ```sh
 codex plugin marketplace add zyuzka/hats
 codex plugin add hats@hats
 ```
 
-The next Codex window says that the plugin's hooks are new; choose to trust them there. Hats never trusts
-them for you and never edits `~/.codex/hooks.json`.
+After every install, update and refresh, the next Codex window says that the plugin's hooks are new or
+changed; choose to trust them there. Hats never trusts them for you and never edits `~/.codex/hooks.json`.
 
 The plugin uses the same window thresholds as the Claude plugin (Settings → Context; 60% and 70% when Hats
 has never run):

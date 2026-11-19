@@ -18,6 +18,14 @@ struct GeneralPanel: View {
                 remove: { model.actions?.removeSessionHandoff() }
             )
             Divider()
+            CodexPluginRowView(
+                row: snapshot.codexPlugin,
+                install: { model.actions?.installCodexPlugin() },
+                update: { model.actions?.updateCodexPlugin() },
+                refresh: { model.actions?.refreshCodexPlugin() },
+                remove: { model.actions?.removeCodexPlugin() }
+            )
+            Divider()
             if let checks = snapshot.checksForUpdatesAutomatically {
                 automaticUpdateChecksRow(checks)
                 Divider()

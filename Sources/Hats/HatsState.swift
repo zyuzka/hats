@@ -90,6 +90,7 @@ struct HatsSnapshot: Equatable {
     var autoSwitchWarning: AutoSwitchWarning?
     var codexAutoSwitchWarning: AutoSwitchWarning?
     var sessionHandoff = SessionHandoffRow()
+    var codexPlugin = CodexPluginRow()
     var contextRows: [ContextRow] = []
     var codexGateway = CodexGatewayFace()
 

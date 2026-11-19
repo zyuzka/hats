@@ -45,6 +45,7 @@ extension AppDelegate {
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         snapshot.sessionHandoff = handoff.row
+        snapshot.codexPlugin = codexPlugin.row
         snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
         syncTheCodexGatewayIfItsInputsMoved()
         snapshot.codexGateway = codexGatewayFace
@@ -128,8 +129,6 @@ extension AppDelegate {
             decideAutoSwitch(from: .aPollLanded)
         }
     }
-
-    var settleWanted: TimeInterval { TimeInterval(settings.gatewaySettleSeconds) }
 
     var wantsTheProcessTable: Bool {
         GatewayProcess.hasARetiredListener || popover.isShown || sessions.isVisible
