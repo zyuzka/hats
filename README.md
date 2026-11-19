@@ -132,7 +132,9 @@ Hats renews the parked Codex hats — right after a hat comes off, and on the us
 access token has less than a day left. The hat you wear is renewed by Codex, and also by Hats while the
 Codex gateway runs (below). Hats never signs a login out, because that revokes it on the server.
 
-The Codex hats are listed under Claude's, under "Codex".
+The menu has two tabs above the hats, "Claude" and "Codex"; each shows only its own hats, with the
+average use of those hats on top, and the header names the hat worn for that tab. The tab you chose last
+opens next time, also after a restart of Hats.
 
 ### The Codex gateway
 
@@ -470,6 +472,7 @@ own tmux pane is a session of its own to the plugin, and is warned and anchored 
 are 60%, 70% and the `/clear` offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
 `~/Library/Application Support/Hats` and puts the file back if it is removed; the plugin reads it at
 every decision, also while Hats is not running, and without it takes 60%, 70% and the `/clear` offer.
+The Codex plugin reads the same two thresholds from the same file (see "The Codex note before compaction").
 Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
 Hats made. A running Hats reads those files and shows one notification for each threshold a session
 crosses, titled with the session's name — the title you gave it, else its folder, else the start of
