@@ -19,7 +19,11 @@ jobs:
   build-and-test:
     runs-on: macos-15
     steps:
+      # The whole history and the tags: changelog-check reads every version Build/build-app.sh
+      # has ever stamped, and plugin-version-check compares plugin/ with the last v* tag.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
 
       - name: Toolchain
         run: swift --version
@@ -36,14 +40,23 @@ jobs:
 
       # The bundle stamps a version and the app shows CHANGELOG.md to whoever installs
       # it, so a version with no entry reads as a version that changed nothing.
-      - name: Every stamped version is described
-        run: |
-          stamped="$(sed -n '/CFBundleShortVersionString/{n;s|.*<string>\(.*\)</string>.*|\1|p;}' \
-            Build/build-app.sh)"
-          test -n "$stamped" || { echo "no version stamped in Build/build-app.sh" >&2; exit 1; }
-          grep -qE "^## ${stamped//./\\.}([[:space:]]|$)" CHANGELOG.md \
-            || { echo "CHANGELOG.md has no entry for $stamped" >&2; exit 1; }
-          echo "$stamped is described"
+      - name: Every version ever stamped is described
+        run: ./Dev/changelog-check.sh
+
+      - name: Signing identity choice
+        run: bash Dev/signing-identity.test.sh
+
+      - name: Gateway session probe of the build
+        run: bash Dev/gateway-session-probe.test.sh
+
+      - name: Plugin version check
+        run: bash Dev/plugin-version-check.test.sh
+
+      # Only on the release pull request into main: develop collects plugin changes between
+      # releases, and the number is raised once for the release that carries them.
+      - name: Plugin version is raised for the release
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: ./Dev/plugin-version-check.sh
 
   lint:
     runs-on: macos-15
@@ -91,6 +104,24 @@ jobs:
 
       - name: Limit waiting event of the mod
         run: bash plugin/tests/stage-limit-waiting.test.sh
+
+      # The mod tests run under Claude Code's own runner. No sign-in is needed: with an empty
+      # HOME and CLAUDE_CONFIG_DIR it passed all its tests on 2026-11-19. The version is pinned,
+      # the one the tests were last run with.
+      - name: Claude Code
+        run: |
+          npm install --global @anthropic-ai/claude-code@2.1.328
+          claude --version
+
+      - name: Mod tests
+        run: |
+          export CLAUDE_CONFIG_DIR="$(mktemp -d)"
+          claude plugin test plugin
+
+      - name: Mod as claude plugin validate sees it
+        run: |
+          export CLAUDE_CONFIG_DIR="$(mktemp -d)"
+          bash plugin/tests/mod-validate.test.sh
 
       - name: Plugin tests under the system Python
         run: |
