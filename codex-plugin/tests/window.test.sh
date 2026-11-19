@@ -258,6 +258,20 @@ reset; percent_of 61 > "$tr"
 python3 -c 'import sys; sys.stdout.write(("q" * 1023 + "\n") * (17 * 1024))' >> "$tr"
 out=$(run_window "$(input UserPromptSubmit)"); silent "count 17 MiB back: not read" "$out" $?
 
+# 17. The fill after the last answer: input 57 000 (12%) and a 7 000-token answer → end_percent 13;
+#     a count without a usable total → end_percent null, percent as before.
+reset; printf "$COUNT" 57000 64000 475000 > "$tr"
+out=$(run_window "$(input Stop)"); silent "Stop with a long answer" "$out" $?
+equal "long answer: percent is the input" "$(json_field "$own" percent)" 12
+equal "long answer: end_percent counts the answer" "$(json_field "$own" end_percent)" 13
+reset; printf "$COUNT" 57000 '"x"' 475000 > "$tr"
+out=$(run_window "$(input Stop)"); silent "Stop without a total" "$out" $?
+equal "no total: percent" "$(json_field "$own" percent)" 12
+equal "no total: end_percent null" "$(json_field "$own" end_percent)" null
+reset; printf "$COUNT" 57000 56000 475000 > "$tr"
+run_window "$(input Stop)" >/dev/null
+equal "total below input: end_percent null" "$(json_field "$own" end_percent)" null
+
 # 12. The output is one JSON line, nothing else on stdout or stderr.
 reset; percent_of 61 > "$tr"
 out=$(run_window "$(input UserPromptSubmit)")

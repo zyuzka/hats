@@ -5,6 +5,9 @@ struct CodexWindowMark: Equatable {
     let percent: Int
     let event: String?
     let writtenAt: Date
+    var endPercent: Int?
+
+    var fillAfterTheTurn: Int { max(percent, endPercent ?? percent) }
 }
 
 struct CodexWindowScan: Equatable {
@@ -59,7 +62,8 @@ enum CodexContinue {
             session: session,
             percent: percent,
             event: object["event"] as? String,
-            writtenAt: stamp ?? modified
+            writtenAt: stamp ?? modified,
+            endPercent: object["end_percent"] as? Int
         )
     }
 }
@@ -105,7 +109,7 @@ struct CodexContinueMemory: Equatable {
 
     private func isDue(_ mark: CodexWindowMark, save: Int, now: Date) -> Bool {
         let idle = now.timeIntervalSince(mark.writtenAt)
-        let hasEndedATurnAboveSave = mark.event == CodexContinue.endOfTurn && mark.percent >= save
+        let hasEndedATurnAboveSave = mark.event == CodexContinue.endOfTurn && mark.fillAfterTheTurn >= save
         let hasRestedLongEnough = idle >= CodexContinue.idleFor && idle <= CodexContinue.freshFor
         let isNew = acted[mark.session] == nil && handled[mark.session] != mark.writtenAt
 

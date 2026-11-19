@@ -21,8 +21,12 @@ With either threshold off (null) the hook asks for nothing: without a save thres
 compact by Hats' line, and without a warning threshold there is no point at which to ask.
 
 On both events, when the Hats folder exists, the hook writes <Hats folder>/codex-windows/<session id>.json
-(session, window, tokens, percent, cwd, event, written_at; mode 600, whole or not at all), from which Hats
-takes the model window and, by event "Stop", sees that the session ended a turn at that fill; a failed
+(session, window, tokens, percent, end_percent, cwd, event, written_at; mode 600, whole or not at all), from
+which Hats takes the model window and, by event "Stop", sees that the session ended a turn. end_percent is
+the fill after the last answer, last_token_usage.total_tokens / model_context_window (input and output), or
+null without a usable total: the answer is in the window when the next request goes out, and Codex
+compacts by its line before any request whose input would pass it, so a turn can end past the save
+threshold only by its last answer, which percent does not count yet; a failed
 write goes to the journal as window-not-recorded and the hook goes on. On Stop it removes such files
 older than 30 days and temporary files older than 10 minutes, and in the notes folder notes, state files
 and temporary files older than 30 days.
@@ -70,11 +74,14 @@ def get_count(line):
     window = info.get("model_context_window")
     if type(tokens) is not int or type(window) is not int or tokens < 0 or window <= 0:
         return None
-    return tokens, window
+    total = last.get("total_tokens")
+    if type(total) is not int or total < tokens:
+        total = None
+    return tokens, window, total
 
 
 def find_last_count(path):
-    """(tokens, window) of the last usable token_count in the last 16 MiB of the file, block by block."""
+    """(tokens, window, total or None) of the last usable token_count in the last 16 MiB of the file, block by block."""
     if not isinstance(path, str) or not path:
         return None
     try:
@@ -130,13 +137,14 @@ def record_window(data, session, reading):
     folder = hats.get_folder(os.path.join(root, hats.WINDOWS_FOLDER))
     if folder is None:
         return
-    tokens, window, percent = reading
+    tokens, window, percent, end_percent = reading
     cwd = data.get("cwd")
     hats.write_whole(folder, session + ".json", {
         "session": session,
         "window": window,
         "tokens": tokens,
         "percent": percent,
+        "end_percent": end_percent,
         "cwd": cwd[:CWD_LIMIT] if isinstance(cwd, str) else None,
         "event": data.get("hook_event_name"),
         "written_at": hats.get_now_stamp(),
@@ -208,10 +216,11 @@ def run(data):
     found = find_last_count(data.get("transcript_path"))
     if found is None:
         return None
-    tokens, window = found
+    tokens, window, total = found
     percent = tokens * 100 // window
+    end_percent = None if total is None else total * 100 // window
     try:
-        record_window(data, session, (tokens, window, percent))
+        record_window(data, session, (tokens, window, percent, end_percent))
     except OSError as error:
         hats.journal(SCRIPT, event, "window-not-recorded", error=type(error).__name__)
     warn, save, _ = hats.get_thresholds()

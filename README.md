@@ -247,7 +247,9 @@ does nothing and writes nothing about it.
 
 When the plugin's `Stop` hook has written that a turn ended at or past the anchor (save) threshold, the
 model has written its resume note, and the thread has stayed idle for 20 seconds since, Hats talks to the Codex service over its socket
-(`~/.codex/app-server-control/app-server-control.sock`):
+(`~/.codex/app-server-control/app-server-control.sock`). Here the fill counts the turn's last answer too
+(`end_percent` in the window file): Codex compacts by Hats' line before any request whose input would pass it,
+so a turn can end past the save threshold only by its last answer, which the lagging fill above does not see yet.
 
 1. It reads the thread and goes on only when the thread is idle, kept in a file and not a subagent's.
 2. It reads the thread once more and compacts it ("Context compacted" shows in the window).

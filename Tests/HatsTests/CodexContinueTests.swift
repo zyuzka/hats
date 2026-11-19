@@ -14,6 +14,16 @@ final class CodexContinueTests: XCTestCase {
         XCTAssertEqual(memory.due([mark(70)], warn: 60, save: 70, now: now), [mark(70)], "at the threshold counts")
     }
 
+    func testATurnWhoseLastAnswerTookTheWindowPastTheSaveThresholdIsDue() {
+        var memory = CodexContinueMemory()
+        var past = mark(12)
+        past.endPercent = 13
+        XCTAssertEqual(memory.due([past], warn: 10, save: 13, now: now), [past], "the last answer is not in percent yet")
+        var short = mark(12)
+        short.endPercent = 12
+        XCTAssertEqual(memory.due([short], warn: 10, save: 13, now: now), [])
+    }
+
     func testBelowTheSaveThresholdNothingIsDue() {
         var memory = CodexContinueMemory()
         XCTAssertEqual(memory.due([mark(65)], warn: 60, save: 70, now: now), [])
@@ -70,15 +80,15 @@ final class CodexContinueTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("hats-cc-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let good = #"{"session": "01a1-x", "window": 475000, "tokens": 1, "percent": 72, "cwd": "/w", "event": "Stop", "#
-            + #""written_at": "2026-11-19T15:12:00Z"}"#
+        let good = #"{"session": "01a1-x", "window": 475000, "tokens": 1, "percent": 72, "end_percent": 74, "cwd": "/w", "#
+            + #""event": "Stop", "written_at": "2026-11-19T15:12:00Z"}"#
         try Data(good.utf8).write(to: folder.appendingPathComponent("01a1-x.json"))
         try Data(#"{"session": "other", "percent": 72}"#.utf8).write(to: folder.appendingPathComponent("01a1-y.json"))
         try Data(#"{"session": "../x", "percent": 72}"#.utf8).write(to: folder.appendingPathComponent("..x.json"))
         try Data("not json".utf8).write(to: folder.appendingPathComponent("bad.json"))
         let scan = CodexContinue.scan(folder, now: Date())
         let stamp = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-19T15:12:00Z"))
-        XCTAssertEqual(scan.marks, [CodexWindowMark(session: "01a1-x", percent: 72, event: "Stop", writtenAt: stamp)])
+        XCTAssertEqual(scan.marks, [CodexWindowMark(session: "01a1-x", percent: 72, event: "Stop", writtenAt: stamp, endPercent: 74)])
         XCTAssertEqual(scan.present, ["01a1-x", "01a1-y", "bad"])
         let old = Date().addingTimeInterval(-(CodexContinue.freshFor + 60))
         try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: folder.appendingPathComponent("01a1-x.json").path)
