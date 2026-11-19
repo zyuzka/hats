@@ -33,6 +33,19 @@ enum MarkState: Equatable {
     }
 }
 
+extension HatsSnapshot {
+    var markState: MarkState {
+        MarkState.decide(
+            anyHatBlocked: hasABlockedHatInPlay,
+            gatewayEnabled: settings.isGatewayEnabled,
+            gatewayServing: gateway.isServing,
+            wearing: wearing != nil,
+            percent: wearing?.usage?.session?.percent,
+            autoSwitchWarnsAboutTheWornHat: showsAWarningAboutTheWornHat
+        )
+    }
+}
+
 enum Mark {
     static let letters = "hats"
     static let meterFrom = 70

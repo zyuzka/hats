@@ -39,3 +39,35 @@ final class CodexPluginNotice {
         return PluginVersion(own).map { told < $0 } ?? false
     }
 }
+
+extension CodexPluginNotice {
+    static func remembering(
+        own: String,
+        notify: @escaping (_ title: String, _ body: String) -> Void,
+        settings: @escaping () -> AppSettings?,
+        keep: @escaping (AppSettings) -> Void,
+        savingTo url: URL = AppSettings.defaultURL
+    ) -> CodexPluginNotice {
+        CodexPluginNotice(
+            own: own,
+            notify: notify,
+            findToldAbout: { settings()?.codexPluginVersionToldAbout },
+            setToldAbout: { version in
+                guard var changed = settings() else { return }
+                changed.codexPluginVersionToldAbout = version
+                keep(changed)
+                do {
+                    try changed.save(to: url)
+                } catch {
+                    Journal.log("settings.notSaved", ["reason": error.localizedDescription])
+                }
+            }
+        )
+    }
+}
+
+extension HatsSnapshot {
+    mutating func showTheCodexPluginRow(of flow: CodexPluginFlow) {
+        codexPlugin = flow.row
+    }
+}

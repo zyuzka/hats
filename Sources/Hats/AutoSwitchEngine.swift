@@ -89,6 +89,7 @@ enum AutoSwitchEngine {
             blocked: world.blocked,
             onVacation: world.onVacation
         ) == nil else { return .blindAndOthersAreOnVacation }
+        guard !policy.candidates(after: wearing, among: world.eligible).isEmpty else { return .blindAndNowhereToGo }
         guard world.blindness.isBlindEnoughToSwitch else { return .blindAndNear }
         guard policy.blindTarget(
             after: wearing,

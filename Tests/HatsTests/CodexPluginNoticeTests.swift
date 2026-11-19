@@ -64,6 +64,63 @@ final class CodexPluginNoticeTests: XCTestCase {
         XCTAssertNil(AppSettings().codexPluginVersionToldAbout)
     }
 
+    func testTheAppsNoticeKeepsAndSavesTheVersionItToldAbout() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("settings-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var settings = AppSettings()
+        settings.isGatewayEnabled = false
+        var kept = 0
+        let notice = CodexPluginNotice.remembering(
+            own: "0.2.0",
+            notify: { [unowned self] title, _ in notified.append(title) },
+            settings: { settings },
+            keep: {
+                settings = $0
+                kept += 1
+            },
+            savingTo: url
+        )
+
+        notice.consider(.installed(version: "0.1.0", isEnabled: true))
+        notice.consider(.installed(version: "0.1.0", isEnabled: true))
+
+        XCTAssertEqual(notified, ["Codex plugin 0.2.0"], "the kept version stops the second notification")
+        XCTAssertEqual(kept, 1)
+        XCTAssertEqual(settings.codexPluginVersionToldAbout, "0.2.0")
+        let saved = AppSettings.loaded(from: url)
+        XCTAssertEqual(saved.codexPluginVersionToldAbout, "0.2.0", "told once even after Hats starts again")
+        XCTAssertFalse(saved.isGatewayEnabled, "the rest of the settings is saved as it was")
+    }
+
+    func testTheRowOfTheFlowIsWhatTheSnapshotShows() {
+        let fake = FakePluginWorld.withCodex()
+        let flow = CodexPluginFlow(
+            own: "0.1.0",
+            perform: { work in work(fake.world()) },
+            onMain: { $0() },
+            ask: { _ in false },
+            inform: { _, _ in },
+            show: {},
+            journal: { _, _ in }
+        )
+        flow.refresh(then: nil)
+        var snapshot = HatsSnapshot()
+
+        snapshot.showTheCodexPluginRow(of: flow)
+
+        XCTAssertNotEqual(flow.row, CodexPluginRow(), "the read changed the row, so the check below means something")
+        XCTAssertEqual(snapshot.codexPlugin, flow.row)
+    }
+
+    func testTheRedrawTakesTheRowAndTheLaunchNoticeRemembers() throws {
+        let redraw = try source("Sources/Hats/AppDelegate+Redraw.swift")
+        let wiring = try source("Sources/Hats/AppDelegate+CodexPlugin.swift")
+
+        XCTAssertTrue(redraw.contains("snapshot.showTheCodexPluginRow(of: codexPlugin)"))
+        XCTAssertTrue(wiring.contains("CodexPluginNotice.remembering("))
+        XCTAssertTrue(wiring.contains("keep: { [weak self] in self?.settings = $0 }"))
+    }
+
     func testTheBundledVersionIsTheVersionOfThePluginAndOfTheMarketplace() throws {
         let plugin = try XCTUnwrap(JSONSerialization.jsonObject(
             with: Data(try source("codex-plugin/.codex-plugin/plugin.json").utf8)

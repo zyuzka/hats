@@ -45,7 +45,7 @@ extension AppDelegate {
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         snapshot.sessionHandoff = handoff.row
-        snapshot.codexPlugin = codexPlugin.row
+        snapshot.showTheCodexPluginRow(of: codexPlugin)
         snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
         syncTheCodexGatewayIfItsInputsMoved()
         snapshot.codexGateway = codexGatewayFace
@@ -55,9 +55,9 @@ extension AppDelegate {
         syncTheCodexWindow()
 
         if let blink {
-            blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)
+            blink.show(snapshot.markState, blinking: settings.blinksTheCursorInTheMenuBar)
         } else {
-            statusItem.button?.image = Mark.image(state: markState(snapshot))
+            statusItem.button?.image = Mark.image(state: snapshot.markState)
         }
         statusItem.button?.title = snapshot.menuBarTitle
         statusItem.button?.setAccessibilityLabel(snapshot.menuBarAccessibilityLabel)
@@ -69,17 +69,6 @@ extension AppDelegate {
 
     func showTheContextRows() {
         popover.model.snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
-    }
-
-    private func markState(_ snapshot: HatsSnapshot) -> MarkState {
-        MarkState.decide(
-            anyHatBlocked: snapshot.hasABlockedHatInPlay,
-            gatewayEnabled: settings.isGatewayEnabled,
-            gatewayServing: snapshot.gateway.isServing,
-            wearing: snapshot.wearing != nil,
-            percent: snapshot.wearing?.usage?.session?.percent,
-            autoSwitchWarnsAboutTheWornHat: snapshot.showsAWarningAboutTheWornHat
-        )
     }
 
     private func markBannerSeen(on tool: Tool) {

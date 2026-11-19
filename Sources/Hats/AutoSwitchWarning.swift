@@ -30,6 +30,8 @@ enum AutoSwitchWarning: Equatable {
             return onVacation.isEmpty ? .everyOtherHatIsSpent : .everyOtherHatIsSpentOrOnVacation(onVacation)
         case .blindAndOthersAreOnVacation:
             return .unreadableAndOthersAreOnVacation(onVacation)
+        case .blindAndNowhereToGo:
+            return .nowhereFreshToGo
         case .off, .noHatOn, .noReading, .underTheThresholds, .blindAndFar, .none:
             return nil
         }

@@ -72,11 +72,38 @@ final class CodexGatewayStreamTests: CodexGatewayTestCase {
         )
         XCTAssertEqual(CodexUsageHeaders.journalEntry(hatID: "hat-work-0123", reading: reading),
                        ["hat": "hat-work", "windows": "300m=7%,10080m=41%", "plan": "plus"])
-        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/Hats/CodexGatewayExchange+Decide.swift"), encoding: .utf8)
-        XCTAssertTrue(source.contains(
-            #"Journal.log("codexGateway.usage", CodexUsageHeaders.journalEntry(hatID: login.hatID, reading: reading))"#
-        ), "every answer that carries usage writes it to the journal")
+    }
+
+    func testAnAnswerThatCarriesUsageWritesItsLineToTheJournal() throws {
+        let written = Locked<[String: [String: String]]>([:])
+        gateway.journaling = { operation, line in written.mutate { $0[operation] = line } }
+        wear("hat-work-0123", workLogin)
+        answers = { _ in
+            .fixed(status: 200, headers: [
+                "x-codex-primary-window-minutes": "300", "x-codex-primary-used-percent": "7",
+                "x-codex-secondary-window-minutes": "10080", "x-codex-secondary-used-percent": "41",
+                "x-codex-plan-type": "plus",
+            ], body: "{}")
+        }
+
+        XCTAssertEqual(ask().status, 200)
+
+        let line = try XCTUnwrap(written.value["codexGateway.usage"], "every answer that carries usage is journaled")
+        XCTAssertEqual(line["hat"], "hat-work")
+        XCTAssertEqual(line["windows"], "300m=7%,10080m=41%")
+        XCTAssertEqual(line, CodexUsageHeaders.journalEntry(
+            hatID: "hat-work-0123",
+            reading: try XCTUnwrap(state.reading(for: "hat-work-0123"))
+        ))
+    }
+
+    func testAnAnswerWithoutUsageWritesNoUsageLine() {
+        let written = Locked<[String]>([])
+        gateway.journaling = { operation, _ in written.mutate { $0.append(operation) } }
+        wear("hat-work", workLogin)
+
+        _ = ask()
+
+        XCTAssertEqual(written.value, [])
     }
 }

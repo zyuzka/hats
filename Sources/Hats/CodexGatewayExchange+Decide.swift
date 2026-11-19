@@ -16,7 +16,7 @@ extension CodexGatewayExchange {
         ])
         guard let reading = CodexUsageHeaders.reading(in: { http.value(forHTTPHeaderField: $0) }) else { return }
         server.state.noteReading(reading, for: login.hatID)
-        Journal.log("codexGateway.usage", CodexUsageHeaders.journalEntry(hatID: login.hatID, reading: reading))
+        server.journaling("codexGateway.usage", CodexUsageHeaders.journalEntry(hatID: login.hatID, reading: reading))
     }
 
     func decide(_ http: HTTPURLResponse, _ held: Data) {

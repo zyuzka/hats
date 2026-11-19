@@ -18,14 +18,11 @@ extension AppDelegate {
     }
 
     func offerTheCodexPluginUpdateOnce() {
-        let notice = CodexPluginNotice(
+        let notice = CodexPluginNotice.remembering(
             own: codexPlugin.own,
             notify: { Notifier.postOpeningSettings(title: $0, body: $1) },
-            findToldAbout: { [weak self] in self?.settings.codexPluginVersionToldAbout },
-            setToldAbout: { [weak self] version in
-                self?.settings.codexPluginVersionToldAbout = version
-                self?.saveSettings()
-            }
+            settings: { [weak self] in self?.settings },
+            keep: { [weak self] in self?.settings = $0 }
         )
         codexPlugin.refresh { notice.consider($0) }
     }

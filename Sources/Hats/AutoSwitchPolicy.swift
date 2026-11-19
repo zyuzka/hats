@@ -92,6 +92,7 @@ enum AutoSwitchHold: String, Equatable {
     case blindAndFar
     case blindTargetSpent
     case blindAndOthersAreOnVacation
+    case blindAndNowhereToGo
 
     var isWorthAJournalLine: Bool { self != .off }
 }

@@ -47,7 +47,8 @@ enum AutoSwitchDeadEnd: Equatable {
             switch self {
             case .noOtherHat: return "noOtherHat"
             case .othersNeedSigningIn: return "othersNeedSigningIn"
-            case .othersAreSpent, .othersAreSpentOrOnVacation: return "othersAreSpent"
+            case .othersAreSpent: return "othersAreSpent"
+            case .othersAreSpentOrOnVacation: return "othersAreSpentOrOnVacation"
             case .othersAreOnVacation: return AutoSwitchDeadEnd.othersAreOnVacationReason
             }
         }

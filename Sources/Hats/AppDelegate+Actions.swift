@@ -115,18 +115,14 @@ extension AppDelegate: HatsActions {
     }
 
     func setVacation(_ id: String, on: Bool) {
-        do {
-            try store.setVacation(
-                id,
-                on: on,
-                at: Date()
-            )
-            redraw()
-            usage.poll(hatsForUsage())
-        } catch {
-            redraw()
-            HatDialogs.present(error, title: "Could not save that change")
-        }
+        VacationChange(
+            redraw: { [weak self] in self?.redraw() },
+            poll: { [weak self] in
+                guard let self else { return }
+                self.usage.poll(self.hatsForUsage())
+            },
+            sayItCouldNotSave: { HatDialogs.present($0, title: "Could not save that change") }
+        ).apply(id, on: on, at: Date(), in: store)
     }
 
     func remove(_ id: String) {

@@ -25,6 +25,7 @@ final class CodexGatewayServer: @unchecked Sendable {
     var holdWait = CodexHeldAnswer.maxWait
     var upstreamTimeout: TimeInterval = 600
     var maxBodyBytes = GatewayBodyLimit.maxBytes
+    var journaling: (String, [String: String]) -> Void = { Journal.log($0, $1) }
 
     private let group = MultiThreadedEventLoopGroup(numberOfThreads: 2)
     private let channelLock = NSLock()

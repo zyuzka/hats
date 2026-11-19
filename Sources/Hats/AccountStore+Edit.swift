@@ -25,12 +25,7 @@ extension AccountStore {
         } catch {
             deletionError = error
         }
-        Journal.log("remove", [
-            "id": String(id.prefix(8)),
-            "payload": Journal.fingerprint(payload),
-            "credentialDeleted": deletionError == nil ? "true" : "failed",
-            "deletionFailure": deletionError?.localizedDescription ?? "none",
-        ])
+        journaling("remove", HatJournalLine.removal(hat: id, payload: payload, deletionError: deletionError))
         if let deletionError {
             throw SwitchError.credentialNotDeleted(display, cause: deletionError.localizedDescription)
         }

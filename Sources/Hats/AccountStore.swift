@@ -43,6 +43,8 @@ final class AccountStore {
 
     var fetchingTokenIdentity: (String) -> ProfileFetch = { ProfileFetcher.fetch(token: $0) }
 
+    var journaling: (String, [String: String]) -> Void = { Journal.log($0, $1) }
+
     private func recordCompletedChange(_ what: String) throws {
         do {
             try save()
@@ -344,11 +346,7 @@ final class AccountStore {
         let before = snapshot
         accounts[index].vacationSince = on ? now : nil
         try persist(orRestore: before)
-        Journal.log("hat.vacation", [
-            "hat": String(id.prefix(8)),
-            "on": String(on),
-            "since": (on ? now : was).map { ISO8601DateFormatter().string(from: $0) } ?? "-",
-        ])
+        journaling("hat.vacation", HatJournalLine.vacation(hat: id, on: on, since: on ? now : was))
     }
 
     func commit(_ change: (inout [Account], inout String?) throws -> Void) throws {

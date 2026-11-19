@@ -296,7 +296,11 @@ final class VacationTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(try getJournalReason(seen), "othersAreSpent")
+        XCTAssertEqual(
+            try getJournalReason(seen),
+            "othersAreSpentOrOnVacation",
+            "the journal says a vacation was in the way, so operations.log tells it apart from a plain spent dead end"
+        )
         XCTAssertEqual(
             try getBody(seen),
             "A reached its 5-hour limit, and no other hat has room; C is on vacation. Something frees up "
@@ -436,6 +440,53 @@ final class VacationTests: XCTestCase {
             AutoSwitchWarning.isTheSameEpisode(first.warning, as: second.warning),
             "the second miss says what the first one already said, so nobody is told twice"
         )
+    }
+
+    func testWithTheUsageUnreadableAndNoOtherHatSignedInItDoesNotPromiseASwitch() throws {
+        let cases: [(String, [Account])] = [
+            ("the others need a login", [createHat("a"), createNeverSignedIn("b"), createNeverSignedIn("c")]),
+            ("one needs a login, one is on vacation", [createHat("a"), createNeverSignedIn("b"), createHat("c", away: true)]),
+        ]
+        for (name, hats) in cases {
+            let readings = [
+                "a": createReading(85),
+            ]
+            let first = getSeen(hats, readings: readings, missedPolls: 1, fresh: [])
+            let second = getSeen(hats, readings: readings, missedPolls: 2, fresh: [])
+
+            XCTAssertEqual(first.outcome.decision, .hold, name)
+            XCTAssertEqual(first.holding, .blindAndNowhereToGo, name)
+            XCTAssertEqual(first.holding?.isWorthAJournalLine, true, name)
+            let said = try getBody(first)
+            XCTAssertFalse(
+                said.contains("as soon as it can"),
+                "\(name): no other hat can be worn, so there is nothing to switch to"
+            )
+            XCTAssertEqual(second.outcome.decision, .nowhereToGo(.noFreshReading), name)
+            XCTAssertEqual(said, try getBody(second), name)
+            XCTAssertTrue(
+                AutoSwitchWarning.isTheSameEpisode(first.warning, as: second.warning),
+                "\(name): the second miss says what the first one already said, so nobody is told twice"
+            )
+        }
+    }
+
+    func testWithTheUsageUnreadableAndAnotherHatSignedInItStillPromisesASwitch() throws {
+        let seen = getSeen(
+            [
+                createHat("a"),
+                createHat("b"),
+                createNeverSignedIn("c"),
+            ],
+            readings: [
+                "a": createReading(85),
+            ],
+            missedPolls: 1,
+            fresh: []
+        )
+
+        XCTAssertEqual(seen.holding, .blindAndNear)
+        XCTAssertTrue(try getBody(seen).contains("as soon as it can"))
     }
 
     func testAWornHatThatNeedsALoginDoesNotStopTheVacationSentenceWhenTheUsageIsUnreadable() throws {
@@ -1059,46 +1110,14 @@ final class VacationTests: XCTestCase {
         return String(rest[..<end])
     }
 
-    func testTheJournalLineIsWrittenOnlyAfterTheFileWasSaved() throws {
-        let setting = try getText(
-            of: "func setVacation(",
-            in: getSource("AccountStore.swift"),
-            until: "\n    }\n"
-        )
-        let saved = try XCTUnwrap(setting.range(of: "try persist(orRestore: before)")).lowerBound
-        let logged = try XCTUnwrap(setting.range(of: "Journal.log(\"hat.vacation\"")).lowerBound
-
-        XCTAssertLessThan(
-            saved,
-            logged,
-            "a failed write throws out of the function before the line, so the journal never reports a "
-                + "vacation the file does not hold"
-        )
-    }
-
-    func testChangingAVacationAsksForAPollRightAwayAndSaysWhenItCouldNotSave() throws {
+    func testTheVacationActionStaysAboveRemove() throws {
         let actions = getSource("AppDelegate+Actions.swift")
-        let setting = try getText(
-            of: "func setVacation(",
-            in: actions,
-            until: "\n    }\n"
-        )
 
-        XCTAssertTrue(
-            setting.contains("usage.poll("),
-            "the warning and the next line are recomputed only when a poll lands, so without this a "
-                + "stale dead end stays up for five minutes"
-        )
-        XCTAssertTrue(setting.contains("HatDialogs.present(error, title: \"Could not save that change\")"))
         XCTAssertLessThan(
             try XCTUnwrap(actions.range(of: "func setVacation(")).lowerBound,
             try XCTUnwrap(actions.range(of: "func remove(")).lowerBound,
             "above remove, so the test that reads remove's poll from there to the end of the file "
                 + "cannot be satisfied by this one"
-        )
-        XCTAssertTrue(
-            getSource("AppDelegate+Redraw.swift").contains("anyHatBlocked: snapshot.hasABlockedHatInPlay"),
-            "the dot is drawn from the same list the dead end reads"
         )
     }
 

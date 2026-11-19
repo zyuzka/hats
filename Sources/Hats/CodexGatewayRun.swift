@@ -2,8 +2,9 @@ import Darwin
 import Foundation
 
 final class CodexGatewayRun: @unchecked Sendable {
-    static let watchEvery: TimeInterval = 2
+    static let watchEveryByDefault: TimeInterval = 2
 
+    let watchEvery: TimeInterval
     let state: CodexGatewayState
     let broker: CodexGatewayDesk
     let queue = DispatchQueue(label: "hats.codex-gateway", qos: .utility)
@@ -17,8 +18,9 @@ final class CodexGatewayRun: @unchecked Sendable {
     private var watcher: DispatchSourceTimer?
     private var lastStamp: [Int64]?
 
-    init(broker: CodexGatewayDesk) {
+    init(broker: CodexGatewayDesk, watchEvery: TimeInterval = watchEveryByDefault) {
         self.broker = broker
+        self.watchEvery = watchEvery
         state = broker.state
     }
 
@@ -103,7 +105,7 @@ final class CodexGatewayRun: @unchecked Sendable {
 
     private func watchTheLiveFile() {
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        timer.schedule(deadline: .now() + Self.watchEvery, repeating: Self.watchEvery)
+        timer.schedule(deadline: .now() + watchEvery, repeating: watchEvery)
         let path = broker.desk.world.home.auth.path
         timer.setEventHandler { [weak self] in
             guard let self else { return }
