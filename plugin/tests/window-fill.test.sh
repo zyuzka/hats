@@ -481,6 +481,13 @@ for case_ in "нет файла|$work/nope.jsonl" "путь сквозь фай�
   if [ ! -e "$failures_log" ] && [ ! -e "$own" ]; then ok
   else bad "переписка: ${case_%%|*} — пропуск, журнала ошибок нет" "$(ls -A "$folder")"; fi
 done
+for case_ in "нулевой байт в пути переписки|$(input PostToolUse "" "$tr\\u0000x")" \
+  "событие — список|$(printf '{"session_id":"%s","transcript_path":"%s","hook_event_name":["Stop"]}' "$sid" "$tr")"; do
+  reset_failures
+  quiet_run "${case_%%|*}" "${case_#*|}"
+  if [ ! -e "$failures_log" ] && [ ! -e "$own" ]; then ok
+  else bad "${case_%%|*} — плохой ввод: ни записи, ни журнала ошибок" "$(ls -A "$folder")"; fi
+done
 if [ "$(id -u)" -ne 0 ]; then
   reset_failures; chmod 000 "$tr"
   quiet_run "переписку не прочитать" "$(input)"

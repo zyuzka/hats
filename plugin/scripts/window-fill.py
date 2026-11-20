@@ -308,7 +308,9 @@ def record_window(data):
         return
     if not isinstance(session, str) or not SESSION.fullmatch(session):
         return
-    if not isinstance(transcript, str) or not transcript:
+    if not isinstance(transcript, str) or not transcript or "\0" in transcript:
+        return
+    if event is not None and not isinstance(event, str):
         return
     folder = get_prepared_folder(get_state_root())
     if folder is None:

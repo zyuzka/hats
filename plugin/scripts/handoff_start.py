@@ -168,10 +168,21 @@ def cmd_start(seen):
 
 def find_gone_marker(proc):
     for marker in load_markers():
-        if marker["pid"] == proc[0] and marker["started"] == proc[1] and not os.path.lexists(marker["note"]):
+        if marker["pid"] == proc[0] and marker["started"] == proc[1] and is_path_gone(marker["note"]):
             return marker
 
     return None
+
+
+def is_path_gone(path):
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except (OSError, ValueError):
+        return False
+
+    return False
 
 
 def is_handed_elsewhere(given, session):

@@ -665,6 +665,13 @@ has "записка переименована: журнал называет и
 reset; marker a 4242 "Tue Nov 10 10:00:00 2026" "$proj" "$mem/nope.md" "чужой запуск"
 start clear >/dev/null; same "записки нет у отметки другого запуска — «нет якоря»" "$told_no_anchor" "$(told)"
 has "записки нет у отметки другого запуска — журнал no-own-marker" "outcome=no-own-marker" "$(tl outcome)"
+if [ "$(id -u)" -ne 0 ]; then
+  reset; mine; chmod 000 "$mem"
+  start clear >/dev/null; got_told=$(told); got_outcome=$(tl outcome)
+  chmod 700 "$mem"
+  lacks "папку записки не открыть — это не «записка пропала»" "its note is gone" "$got_told"
+  same "папку записки не открыть — журнал no-own-marker" "outcome=no-own-marker" "$got_outcome"
+fi
 reset; mine; sid=n1; start clear >/dev/null
 has "журнал: отдал записку новой сессии" "outcome=gave-note receiver=new session=n1 source=clear pid=4242" "$(tl outcome receiver session source pid)"
 start clear >/dev/null
@@ -1470,6 +1477,19 @@ lines, first = inspect.getsourcelines(check.check_text)
 target = next(first + i + 1 for i, line in enumerate(lines) if "CITE.finditer" in line)
 check.out_of_time = lambda: sys._getframe(1).f_lineno == target')
 has "срок вышел среди цитат последней строки — это сказано, а не «проверено»" "check ran out of time before the end of the note" "$(printf '%s' "$out" | model_of)"
+reset; printf 'share 73%%\n' >"$proj/src.md"
+printf '## NOW\n\nx (cite: %s:1 "share 73%%") (cite: %s:1 "share 73%%")\nпосле\n' "$proj/src.md" "$proj/src.md" >"$note"; mine
+out=$(harness t2 'import inspect, sys
+check = sys.modules["handoff_check"]
+lines, first = inspect.getsourcelines(check.check_text)
+target = next(first + i + 1 for i, line in enumerate(lines) if "CITE.finditer" in line)
+spent = []
+def latched():
+    if sys._getframe(1).f_lineno == target:
+        spent.append(1)
+    return bool(spent)
+check.out_of_time = latched')
+same "срок вышел среди цитат и не вернулся — предупреждение одно" "1" "$(printf '%s' "$out" | model_of | grep -c 'check ran out of time before the end of the note')"
 for cwd_json in null '""' 5; do
   reset; out=$(printf '{"session_id":"s","cwd":%s,"source":"clear"}' "$cwd_json" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1)
   empty "негодная папка ($cwd_json) — тишина" "$out"; has "негодная папка ($cwd_json) — в журнале skipped" "outcome=skipped" "$(tl outcome)"
