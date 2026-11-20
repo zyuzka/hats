@@ -22,9 +22,10 @@ enum MarkState: Equatable {
         gatewayServing: Bool,
         wearing: Bool,
         percent: Int?,
-        autoSwitchWarnsAboutTheWornHat: Bool
+        autoSwitchWarnsAboutTheWornHat: Bool,
+        codexAsksForAttention: Bool = false
     ) -> MarkState {
-        let asksForAttention = anyHatBlocked || (gatewayEnabled && !gatewayServing)
+        let asksForAttention = anyHatBlocked || (gatewayEnabled && !gatewayServing) || codexAsksForAttention
         guard wearing else { return asksForAttention ? .attention : .idle }
         guard asksForAttention || autoSwitchWarnsAboutTheWornHat else { return .wearing(percent: percent) }
         guard autoSwitchWarnsAboutTheWornHat else { return .attention }
@@ -41,8 +42,20 @@ extension HatsSnapshot {
             gatewayServing: gateway.isServing,
             wearing: wearing != nil,
             percent: wearing?.usage?.session?.percent,
-            autoSwitchWarnsAboutTheWornHat: showsAWarningAboutTheWornHat
+            autoSwitchWarnsAboutTheWornHat: showsAWarningAboutTheWornHat,
+            codexAsksForAttention: codexAsksForAttention
         )
+    }
+
+    var codexAsksForAttention: Bool {
+        let wantsTheGateway = CodexGatewayWanted.isWanted(
+            hasCodexHats: codexGateway.hasCodexHats,
+            enabled: settings.isCodexGatewayEnabled
+        )
+
+        return !AutoSwitchEngine.blocked(in: codexRows).isEmpty
+            || (wantsTheGateway && !codexGateway.status.isServing)
+            || warningAboutTheWornHat(on: .codex) != nil
     }
 }
 
