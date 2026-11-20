@@ -3,7 +3,7 @@ import AppKit
 enum ProviderColors {
     static let claude = dynamic(light: 0xD97757, dark: 0xE8957A)
     static let codex = dynamic(light: 0x5C6370, dark: 0x9AA1AD)
-    static let vacation = dynamic(light: 0xD6336C, dark: 0xF783AC)
+    static let vacation = dynamic(light: 0xC2255C, dark: 0xE64980)
 
     static func dynamic(light: UInt32, dark: UInt32) -> NSColor {
         NSColor(name: nil) { appearance in
