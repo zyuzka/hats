@@ -2614,8 +2614,12 @@ while IFS=$'\t' read -r verdict _ label problem; do
 done <"$work/checks.log"
 
 # --- модули: состояние читается только через handoff_state.<имя>; байт-код не пишется
-state_imports=$(grep -nE "^[[:space:]]*from[[:space:]]+handoff_state[[:space:]]+import" "$plugin_root"/scripts/*.py)
+state_imports=$(grep -nE "^[[:space:]]*from[[:space:]]+handoff_state[[:space:]]+import" "$work/loose"/*.py)
 if [ -z "$state_imports" ]; then ok; else bad "никто не пишет «from handoff_state import» — копия значения не видит записей" "$state_imports"; fi
+mkdir -p "$work/linked"; ln -s "$work/loose/handoff.py" "$work/linked/handoff.py"
+linked=$(printf '{"session_id":"linked","cwd":"%s","source":"startup"}' "$work" | env HOME="$work" HANDOFF_TEST=1 python3 -I "$work/linked/handoff.py" start 2>&1); linked_rc=$?
+if [ "$linked_rc" -eq 0 ] && [[ "$linked" != *ModuleNotFoundError* ]]; then ok
+else bad "хук через символическую ссылку находит свои модули рядом с настоящим файлом" "rc=$linked_rc ${linked:0:300}"; fi
 if [ ! -e "$work/loose/__pycache__" ]; then ok; else bad "байт-код не пишется рядом с хуком" "$(ls "$work/loose/__pycache__")"; fi
 
 total=$((pass+fail))
