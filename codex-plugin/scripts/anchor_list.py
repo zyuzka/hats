@@ -11,15 +11,19 @@ Where handoff.py is: <config>/plugins/installed_plugins.json, entry "hats@hats",
 user or of a project whose folder is the session's folder; <config> is $CLAUDE_CONFIG_DIR when it is an
 absolute path, else ~/.claude. The plugin counts as switched off by the first explicit true or false for
 "hats@hats" in enabledPlugins of <cwd>/.claude/settings.local.json, then <cwd>/.claude/settings.json, then
-<config>/settings.json, as Claude Code reads them. The real path of <installPath>/scripts/handoff.py must
-lie inside the real <config>/plugins/cache and be a regular file of this user; anything else is refused and
+<config>/settings.json, as Claude Code reads them; disableAllHooks true in any of those three files stops it
+as it stops Claude Code's own hooks. The entry counts only when the marketplace "hats" in
+<config>/plugins/known_marketplaces.json comes from GitHub zyuzka/hats or from a folder (a developer's
+install) — the rule the app applies — so a plugin of the same name from elsewhere is never run. The real
+path of <installPath>/scripts/handoff.py must lie inside the real <config>/plugins/cache and be a regular file of this user; anything else is refused and
 never run. It runs as `python3 -I`, stdin closed, in a process group of its own, for at most 6 seconds (the
 list keeps to 3.5 seconds after its own start-up); past that the group is killed and its pipes closed
 unread. The child gets the environment without HANDOFF_PROCESS and HANDOFF_TEST*, so nothing there
 stretches its budget. HANDOFF_OFF=1 silences the hook before anything runs.
 
 It never fails a turn: whatever goes wrong, it prints nothing, exits 0 and writes one journal line
-(hats_codex.journal) — bad-input, handoff-off, no-claude-plugin, claude-plugin-off, refused-path,
+(hats_codex.journal) — bad-input, handoff-off, no-claude-plugin, foreign-plugin, claude-plugin-off,
+hooks-off, refused-path,
 no-list-command (a Claude plugin older than `list`), list-failed, timeout, bad-output, no-output,
 bad-session, bad-cwd, failed. A list passed on is `shown`, journalled after it is written. `shown` and
 `timeout` carry ms, the whole run of list.
@@ -40,6 +44,8 @@ import hats_codex as hats
 SCRIPT = "anchor_list"
 EVENT = "SessionStart"
 PLUGIN = "hats@hats"
+MARKETPLACE = "hats"
+REPOSITORY = "zyuzka/hats"
 LIST_TIMEOUT_S = 6.0
 CHILD_DROPPED = ("HANDOFF_PROCESS",)
 CHILD_DROPPED_PREFIX = "HANDOFF_TEST"
@@ -79,12 +85,38 @@ def find_install(config, cwd):
     raise Refused("no-claude-plugin")
 
 
-def is_switched_off(config, cwd):
-    for path in (
+def is_marketplace_ours(config):
+    data = hats.read_json(os.path.join(config, "plugins", "known_marketplaces.json"), FILE_LIMIT)
+    entry = data.get(MARKETPLACE) if data is not None else None
+    source = entry.get("source") if isinstance(entry, dict) else None
+    if not isinstance(source, dict):
+        return False
+    repo = source.get("repo")
+    if source.get("source") == "github":
+        return isinstance(repo, str) and repo.lower() == REPOSITORY
+
+    return source.get("source") == "directory"
+
+
+def get_settings_paths(config, cwd):
+    return (
         os.path.join(cwd, ".claude", "settings.local.json"),
         os.path.join(cwd, ".claude", "settings.json"),
         os.path.join(config, "settings.json"),
-    ):
+    )
+
+
+def has_hooks_disabled(config, cwd):
+    for path in get_settings_paths(config, cwd):
+        settings = hats.read_json(path, FILE_LIMIT)
+        if settings is not None and settings.get("disableAllHooks") is True:
+            return True
+
+    return False
+
+
+def is_switched_off(config, cwd):
+    for path in get_settings_paths(config, cwd):
         settings = hats.read_json(path, FILE_LIMIT)
         plugins = settings.get("enabledPlugins") if settings is not None else None
         if isinstance(plugins, dict) and isinstance(plugins.get(PLUGIN), bool):
@@ -189,8 +221,12 @@ def run(data):
         raise Refused("handoff-off")
     config = get_config_root()
     install = find_install(config, cwd)
+    if not is_marketplace_ours(config):
+        raise Refused("foreign-plugin")
     if is_switched_off(config, cwd):
         raise Refused("claude-plugin-off")
+    if has_hooks_disabled(config, cwd):
+        raise Refused("hooks-off")
     out, ms = run_list(get_script(config, install), cwd)
     if not out.strip():
         raise Refused("no-output")

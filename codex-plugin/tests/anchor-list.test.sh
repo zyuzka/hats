@@ -29,6 +29,11 @@ dead_started="Thu Jan  1 00:00:00 2026"
 mkdir -p "$home" "$state" "$proj" "$mem" "$markers" "$real_plugin"
 cp -R "$repo_root/plugin/scripts" "$repo_root/plugin/hooks" "$repo_root/plugin/.claude-plugin" "$real_plugin/"
 printf '# Note\n\n## NOW\n\nthe line of now\n' >"$note"
+marketplace() {  # marketplace <source json> [config] — known_marketplaces.json with the marketplace "hats"
+  printf '{"hats":{"source":%s}}' "$1" >"${2:-$cfg}/plugins/known_marketplaces.json"
+}
+ours='{"source":"github","repo":"zyuzka/hats"}'
+marketplace "$ours"
 
 ok()  { pass=$((pass+1)); }
 bad() { fail=$((fail+1)); failures="$failures
@@ -113,6 +118,20 @@ ln -s "$proj" "$work/proj-link"
 installed "$real_plugin" project "$work/proj-link"
 has "project install through a link to this folder: listed" "$(run_hook "$(input)")" "closed task"
 
+# 4a. A plugin hats@hats from another marketplace: never run.
+installed "$real_plugin"
+marketplace '{"source":"github","repo":"someone/hats"}'
+silent "marketplace hats from another repository" "$(run_hook "$(input)")" foreign-plugin
+rm -f "$cfg/plugins/known_marketplaces.json"
+silent "no record of the marketplace" "$(run_hook "$(input)")" foreign-plugin
+marketplace '{"source":"url","url":"https://example.com/m.json"}'
+silent "marketplace hats from a URL" "$(run_hook "$(input)")" foreign-plugin
+marketplace '{"source":"github","repo":"ZYUZKA/Hats"}'
+has "marketplace from zyuzka/hats in another case: listed" "$(run_hook "$(input)")" "closed task"
+marketplace "{\"source\":\"directory\",\"path\":\"$work/market\"}"
+has "marketplace from a folder (a developer's install): listed" "$(run_hook "$(input)")" "closed task"
+marketplace "$ours"
+
 # 5. The Claude plugin switched off.
 installed "$real_plugin"
 printf '{"enabledPlugins":{"hats@hats":false}}' >"$cfg/settings.json"
@@ -125,6 +144,14 @@ silent "off in the project while on for the user" "$(run_hook "$(input)")" claud
 printf '{"enabledPlugins":{"hats@hats":true}}' >"$proj/.claude/settings.local.json"
 has "on in local while off in the project: listed" "$(run_hook "$(input)")" "closed task"
 rm -rf "$cfg/settings.json" "$proj/.claude"
+printf '{"disableAllHooks":true}' >"$cfg/settings.json"
+silent "all hooks switched off for the user" "$(run_hook "$(input)")" hooks-off
+rm -f "$cfg/settings.json"; mkdir -p "$proj/.claude"
+printf '{"disableAllHooks":true,"enabledPlugins":{"hats@hats":true}}' >"$proj/.claude/settings.local.json"
+silent "all hooks switched off in the folder" "$(run_hook "$(input)")" hooks-off
+printf '{"disableAllHooks":false}' >"$proj/.claude/settings.local.json"
+has "disableAllHooks false: listed" "$(run_hook "$(input)")" "closed task"
+rm -rf "$proj/.claude"
 
 # 5a. HANDOFF_OFF=1: nothing runs.
 silent "HANDOFF_OFF=1" "$(run_hook "$(input)" HANDOFF_OFF=1)" handoff-off
@@ -172,6 +199,7 @@ is_ms "timeout: journal carries ms of the list run" "$(last_field ms)"
 if [ "$took" -le 9 ]; then ok; else bad "timeout: the hook returns soon after 6 s" "took ${took} s"; fi
 slow=$(cat "$work/slow.pid" 2>/dev/null); grand=$(cat "$work/slow.pid.grand" 2>/dev/null)
 if [ -n "$slow" ] && ! kill -0 "$slow" 2>/dev/null; then ok; else bad "timeout: the list process is killed" "pid «${slow}» alive"; fi
+for _ in $(seq 1 30); do kill -0 "$grand" 2>/dev/null || break; sleep 0.1; done
 if [ -n "$grand" ] && ! kill -0 "$grand" 2>/dev/null; then ok; else bad "timeout: the grandchild in its group is killed" "pid «${grand}» alive"; fi
 kill "$grand" 2>/dev/null
 
@@ -208,13 +236,13 @@ silent "relative cwd" "$(run_hook "$(input startup proj)")" bad-cwd
 silent "cwd not a folder" "$(run_hook "$(input startup "$work/nope")")" bad-cwd
 
 # 11. Without CLAUDE_CONFIG_DIR the config is ~/.claude.
-mkdir -p "$home/.claude/plugins"; cp "$cfg/plugins/installed_plugins.json" "$home/.claude/plugins/"
+mkdir -p "$home/.claude/plugins"; cp "$cfg/plugins/installed_plugins.json" "$cfg/plugins/known_marketplaces.json" "$home/.claude/plugins/"
 out=$(printf '%s' "$(input)" | env -u CLAUDE_CONFIG_DIR HOME="$home" HATS_STATE_HOME="$state" python3 -I "$HOOK" 2>&1; echo "rc=$?")
 silent "no CLAUDE_CONFIG_DIR: the plugin under ~/.claude/plugins/cache is the only one accepted" "$out" refused-path
 rm -rf "$home/.claude"
 home_plugin="$home/.claude/plugins/cache/hats/hats/0.2.0"
 mkdir -p "$home_plugin"; cp -R "$real_plugin/." "$home_plugin/"
-installed "$home_plugin" user "" "$home/.claude"
+installed "$home_plugin" user "" "$home/.claude"; marketplace "$ours" "$home/.claude"
 out=$(printf '%s' "$(input)" | env -u CLAUDE_CONFIG_DIR HOME="$home" HATS_STATE_HOME="$state" python3 -I "$HOOK" 2>&1; echo "rc=$?")
 has "no CLAUDE_CONFIG_DIR: the plugin under ~/.claude is listed" "$out" "Hats handoff:"
 equal "no CLAUDE_CONFIG_DIR: journal" "$(last_outcome)" shown
