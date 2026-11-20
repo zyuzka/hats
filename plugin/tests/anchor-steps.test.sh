@@ -3,7 +3,7 @@
 # «до» и «после», общие раньше проектных; файл проекта — только для путей из projects общего.
 # Файлы лежат во временной папке, общий находится через HOME; рабочая папка — --cwd или подставной /proc.
 #   bash plugin/tests/anchor-steps.test.sh
-#   STEPS_UNDER_TEST=/path/to/candidate.py bash plugin/tests/anchor-steps.test.sh   (рядом с ним — handoff.py)
+#   STEPS_UNDER_TEST=/path/to/candidate.py bash plugin/tests/anchor-steps.test.sh   (рядом с ним — handoff.py, handoff_*.py и hats_common.py)
 set -uo pipefail
 unset CLAUDE_CONFIG_DIR CLAUDE_PID HANDOFF_TEST HANDOFF_PROCESS HANDOFF_TEST_PROC HATS_STATE_HOME
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

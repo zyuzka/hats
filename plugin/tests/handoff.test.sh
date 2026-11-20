@@ -7,6 +7,9 @@
 #
 # Хук гоняется из копии вне плагина: на своём месте он видит hooks/hooks.json плагина и
 # включён в любой папке. Плагин собирается во временной папке только в случаях подключения.
+# handoff.py — точка входа, его части лежат рядом (handoff_*.py, hats_common.py): каждая копия
+# хука кладётся вместе с ними (put_hook), а подмена функции в запуске через exec идёт через swap —
+# она меняет имя в каждом модуле handoff_*, который его держит.
 #
 # Сверка с образцом. Каждый вызов через помощники start и nobody и вызов команды из hooks.json
 # через sh -c проверяются одинаково: stdout — один объект JSON байтами UTF-8 с переводом строки
@@ -42,6 +45,26 @@ pass=0; fail=0; failures=""; skipped=0; skips=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
 trap 'kill $(cat "$work/sleepers" 2>/dev/null) 2>/dev/null; rm -rf "$work"' EXIT
 mkdir -p "$work/loose"; HOOK="$work/loose/handoff.py"; cp "$HOOK_SOURCE" "$HOOK"
+copy_parts() {  # copy_parts <откуда> <куда> — модули хука; без handoff_*.py или hats_common.py набор падает сразу
+  local part found=0
+  for part in "$1"/handoff_*.py; do [ -f "$part" ] && found=1 && cp "$part" "$2/"; done
+  if [ $found -eq 0 ]; then echo "handoff: рядом с хуком в $1 нет ни одного handoff_*.py"; exit 1; fi
+  if [ ! -f "$1/hats_common.py" ]; then echo "handoff: рядом с хуком нет $1/hats_common.py"; exit 1; fi
+  cp "$1/hats_common.py" "$2/"
+}
+copy_parts "$(dirname "$HOOK_SOURCE")" "$work/loose"
+put_hook() {  # put_hook <папка> — копия хука с его модулями в папку
+  cp "$HOOK" "$1/handoff.py"; copy_parts "$work/loose" "$1"
+}
+swap_py='def swap(name, value):
+    hits = [module for module in list(sys.modules.values())
+            if getattr(module, "__name__", "").startswith("handoff_") and name in vars(module)]
+    if not hits:
+        raise SystemExit("swap: no handoff module holds " + name)
+    old = getattr(hits[0], name)
+    for module in hits:
+        setattr(module, name, value)
+    return old'
 mkdir -p "$work/before"; OLD_HOOK="$plugin_root/tests/fixtures/handoff-reference.py"
 cat >"$work/before/run.py" <<'EOF'
 import sys
@@ -869,7 +892,7 @@ real_other=$(python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))'
 if [ "$(markerfield "$markers" cwd)" = "$real_other" ]; then ok; else bad "/proc: папка процесса берётся оттуда, без lsof" "ждали $real_other, получили $(markerfield "$markers" cwd) | ${out:0:150}"; fi
 
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "без fcntl"
-out=$(printf '{"session_id":"nofcntl","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, "start"]; exec(compile(open(path).read(), path, "exec"))' "$HOOK" 2>&1)
+out=$(printf '{"session_id":"nofcntl","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, "start"]; exec(compile(open(path).read(), path, "exec"), {"__name__": "__main__", "__file__": path})' "$HOOK" 2>&1)
 has "нет fcntl (Windows): хук грузится и даёт список" "\"без fcntl\"" "$(printf '%s' "$out" | model_of)"
 has "нет fcntl: строка журнала записана" "outcome=listed session=nofcntl" "$(tl outcome session)"
 
@@ -1382,6 +1405,7 @@ has "строка: stdout в Latin-1 — записка модели всё ра
 same "строка: stdout в Latin-1 — и строка пользователю" "Hats handoff: continuing anchor \"задача А\" — $real_note" "$(told)"
 harness() {  # harness <сессия> <код на Python, правит scope до запуска> — хук через exec, stdout и stderr вместе
   printf '{"session_id":"%s","cwd":"%s","source":"clear"}' "$1" "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
+'"$swap_py"'
 path = sys.argv[1]
 scope = {
     "__name__": "hook",
@@ -1391,21 +1415,21 @@ exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
 exec(sys.argv[2], {
     "scope": scope,
     "os": os,
+    "swap": swap,
 })
 sys.exit(scope["main"](["start"]))' "$HOOK" "$2" 2>&1
 }
 reset; mine; out=$(harness e1 'def broken(*args):
     raise RuntimeError("after the print")
-scope["record_handed"] = broken')
+swap("record_handed", broken)')
 same "строка: падение после печати — в выводе один объект" "1" "$(printf '%s\n' "$out" | grep -c .)"
 has "строка: падение после печати — это записка" "continues the note" "$(printf '%s' "$out" | model_of)"
 lacks "строка: падение после печати — строки об ошибке нет" "failed (" "$out"
 has "журнал: падение после печати" "outcome=error error=RuntimeError" "$(tl outcome error)"
-reset; mine; out=$(harness o1 'record = scope["record_handed"]
-def noted(*args):
+reset; mine; out=$(harness o1 'def noted(*args):
     os.write(2, b"RECORDED\n")
     record(*args)
-scope["record_handed"] = noted')
+record = swap("record_handed", noted)')
 has "после /clear сначала вывод и сброс буфера" "continues the note" "$(printf '%s\n' "$out" | sed -n 1p | model_of)"
 same "после /clear «отдано» записано после вывода" "RECORDED" "$(printf '%s\n' "$out" | sed -n 2p)"
 if [ -f "$markers/a.handed" ]; then ok; else bad "после /clear «отдано» записано" "a.handed нет"; fi
@@ -1420,7 +1444,7 @@ reset; empty "ввод с глубокой вложенностью — тиши
 # --- подключение плагином: hooks/hooks.json своего плагина читается, только если рядом .claude-plugin/plugin.json
 plug="$work/plug"
 plugin_at() {  # plugin_at <hooks.json или -> <yes|no — класть ли plugin.json>
-  rm -rf "$plug"; mkdir -p "$plug/scripts" "$plug/hooks"; cp "$HOOK" "$plug/scripts/handoff.py"; cp "$plugin_root/scripts/py.sh" "$plug/scripts/py.sh"
+  rm -rf "$plug"; mkdir -p "$plug/scripts" "$plug/hooks"; put_hook "$plug/scripts"; cp "$plugin_root/scripts/py.sh" "$plug/scripts/py.sh"
   [ "$1" = "-" ] || cp "$1" "$plug/hooks/hooks.json"
   [ "$2" = "no" ] || { mkdir -p "$plug/.claude-plugin"; cp "$plugin_root/.claude-plugin/plugin.json" "$plug/.claude-plugin/plugin.json"; }
 }
@@ -1437,7 +1461,7 @@ has "плагин: в hooks.json нет хука старта — выключе
 if [ $rc -eq 0 ] && [ -z "$(ls "$markers")" ]; then ok; else bad "плагин: без хука старта — код 0 и без отметки" "rc=$rc $(ls "$markers")"; fi
 reset; plugin_at - yes
 has "плагин: hooks.json нет — выключено" "handoff is off" "$(plugsave "$plug/scripts/handoff.py")"
-reset; mkdir -p "$work/.claude/hooks"; cp "$HOOK" "$work/.claude/hooks/handoff.py"; cp "$plugin_root/hooks/hooks.json" "$work/.claude/hooks/hooks.json"
+reset; mkdir -p "$work/.claude/hooks"; put_hook "$work/.claude/hooks"; cp "$plugin_root/hooks/hooks.json" "$work/.claude/hooks/hooks.json"
 has "живая копия: hooks.json рядом без plugin.json не включает" "handoff is off" "$(plugsave "$work/.claude/hooks/handoff.py")"
 printf '{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"python3 ~/.claude/hooks/handoff.py start"}]}]}}' >"$work/.claude/settings.json"
 has "живая копия: подключение из settings.json — как раньше" "marker:" "$(plugsave "$work/.claude/hooks/handoff.py")"
@@ -1701,6 +1725,7 @@ print(" ".join(f"{k}={d.get(k)}" for k in sys.argv[3:]))' "$trace" "$@" 2>&1
 harness_took() {  # harness_took <pid:started> <сессия> <путь> <код на Python> — took через exec, scope правится до запуска
   local call; call=$(mktemp -d "$work/call.XXXXXX"); took_in "$2" "$3" >"$call/in"
   env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$1" python3 -I -c 'import os,sys
+'"$swap_py"'
 path = sys.argv[1]
 scope = {
     "__name__": "hook",
@@ -1710,12 +1735,13 @@ exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
 exec(sys.argv[2], {
     "scope": scope,
     "os": os,
+    "swap": swap,
 })
 sys.exit(scope["main"](["took"]))' "$HOOK" "$4" <"$call/in" >"$call/out" 2>"$call/err"; echo $? >"$call/rc"
   judged "$call" "took с подменой, строка ${BASH_LINENO[0]}"; rm -rf "$call"
 }
 nofcntl() {  # nofcntl <ввод> <pid:started> <команда> — хук без модуля fcntl, как на Windows; печатает stdout
-  printf '%s' "$1" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$2" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, sys.argv[2]]; exec(compile(open(path).read(), path, "exec"))' "$HOOK" "$3" 2>&1
+  printf '%s' "$1" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$2" python3 -I -c 'import sys; sys.modules["fcntl"] = None; path = sys.argv[1]; sys.argv = [path, sys.argv[2]]; exec(compile(open(path).read(), path, "exec"), {"__name__": "__main__", "__file__": path})' "$HOOK" "$3" 2>&1
 }
 user_of() { python3 -I -c 'import json,sys
 try:
@@ -2105,7 +2131,7 @@ if [ ! -e "$taken" ]; then ok; else bad "took: процесс не опреде�
 reset; closed_note; A=$(live)
 out=$(harness_took "$A" sA "$note" 'def broken(*args):
     raise RuntimeError("boom")
-scope["find_snapshot"] = broken')
+swap("find_snapshot", broken)')
 empty "took: исключение — тишина" "$out$(heard)"
 has "took: исключение — в журнале тип и текст" "command=took outcome=error error=RuntimeError message=boom" "$(tl command outcome error message)"
 
@@ -2183,6 +2209,7 @@ has "список: пометка не влезает — пользовател
 has "список: пометка не влезает — marks_dropped" "outcome=listed marks=1 marks_dropped=1" "$(tl outcome marks marks_dropped)"
 reset; closed_note; mark_file "$real_note" "[$(reader_json "$me" sMe)]"
 out=$(printf '{"session_id":"mx","cwd":"%s","source":"startup"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
+'"$swap_py"'
 path = sys.argv[1]
 scope = {
     "__name__": "hook",
@@ -2191,7 +2218,7 @@ scope = {
 exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
 def broken(*args):
     raise RuntimeError("marks")
-scope["find_marks"] = broken
+swap("find_marks", broken)
 sys.exit(scope["main"](["start"]))' "$HOOK" 2>&1)
 has "исключение в пометках — список всё равно отдан" "\"закрытая\"" "$(printf '%s' "$out" | model_of)"
 lacks "исключение в пометках — модели пометки нет" "reading it" "$(printf '%s' "$out" | model_of)"
@@ -2323,6 +2350,7 @@ for kind in big fifo; do
 done
 reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
 out=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I -c 'import os,sys
+'"$swap_py"'
 path = sys.argv[1]
 scope = {
     "__name__": "hook",
@@ -2331,7 +2359,7 @@ scope = {
 exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
 def broken(*args):
     raise RuntimeError("snapshot")
-scope["find_snapshot"] = broken
+swap("find_snapshot", broken)
 sys.exit(scope["main"](["start"]))' "$HOOK" 2>&1)
 old=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" python3 -I "$work/before/run.py" "$OLD_HOOK")
 same "/clear, исключение в снимке читателей — модели текст 8b символ в символ" "$old" "$(printf '%s' "$out" | model_of)"
@@ -2492,7 +2520,7 @@ same "hooks.json: PreToolUse Write|Edit|Read → allow.sh, срок 5" "[('Write
 # --- allow.sh: без «/notes/» во вводе Python не запускается
 real_py=$(command -v python3); mkdir -p "$work/stubbin"
 printf '#!/bin/sh\n: >>"%s"\nexec "%s" "$@"\n' "$work/py-called" "$real_py" >"$work/stubbin/python3"; chmod +x "$work/stubbin/python3"
-mkdir -p "$work/allowkit/scripts"; cp "$plugin_root/scripts/allow.sh" "$plugin_root/scripts/py.sh" "$work/allowkit/scripts/"; cp "$HOOK" "$work/allowkit/scripts/handoff.py"
+mkdir -p "$work/allowkit/scripts"; cp "$plugin_root/scripts/allow.sh" "$plugin_root/scripts/py.sh" "$work/allowkit/scripts/"; put_hook "$work/allowkit/scripts"
 run_allow_sh() { printf '%s' "$1" | env PATH="$work/stubbin:$PATH" HOME="$work" HATS_STATE_HOME="$xs" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" sh "$work/allowkit/scripts/allow.sh" 2>"$work/allow.err"; echo $? >"$work/allow.rc"; }
 rm -f "$work/py-called"; out=$(run_allow_sh "$(allow_in Read "$proj/README.md")")
 quiet_ok "allow.sh: ввод без /notes/ — молчание, код 0" "$out"
@@ -2584,6 +2612,11 @@ if [ "$begun" -gt 0 ] && [ "$begun" -eq "$compared" ]; then ok; else bad "све
 while IFS=$'\t' read -r verdict _ label problem; do
   if [ "$verdict" = ok ]; then ok; else bad "$label" "$problem"; fi
 done <"$work/checks.log"
+
+# --- модули: состояние читается только через handoff_state.<имя>; байт-код не пишется
+state_imports=$(grep -nE "^[[:space:]]*from[[:space:]]+handoff_state[[:space:]]+import" "$plugin_root"/scripts/*.py)
+if [ -z "$state_imports" ]; then ok; else bad "никто не пишет «from handoff_state import» — копия значения не видит записей" "$state_imports"; fi
+if [ ! -e "$work/loose/__pycache__" ]; then ok; else bad "байт-код не пишется рядом с хуком" "$(ls "$work/loose/__pycache__")"; fi
 
 total=$((pass+fail))
 if [ $skipped -gt 0 ]; then echo "handoff: пропущено $skipped$skips"; fi
