@@ -70,7 +70,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import window_fill_count as count
-from hats_common import get_state_root, record_hook_failure, sweep, unattended, write_whole
+from hats_common import get_no_root_line, get_state_root, record_hook_failure, sweep, unattended, write_whole
 
 FOLDER = "session-windows"
 LOCK_NAME = ".lock"
@@ -325,7 +325,7 @@ def main(argv):
     if argv[1:] == ["where"]:
         root = get_state_root()
         if root is None:
-            print("window-fill: HATS_STATE_HOME is not an absolute path — no folder")
+            print(get_no_root_line("window-fill"))
             return 1
         print(os.path.join(root, FOLDER))
         return 0

@@ -13,7 +13,7 @@ from handoff_index import set_index
 from handoff_markers import enabled, handed_file, load_markers, marker_file, saved_time
 from handoff_paths import allowed_note, get_notes_root, get_project_folder, is_memory_folder, memory_root, state_dir
 from handoff_proc import claude_process, find_work_folder, liveness
-from hats_common import STATE_HOME, write_text_whole
+from hats_common import get_no_root_line, write_text_whole
 
 
 def cmd_save(args):
@@ -93,15 +93,11 @@ def cmd_save(args):
     return 0
 
 
-def get_no_root_line():
-    return f"handoff: {STATE_HOME}={os.environ.get(STATE_HOME)!r} is not an absolute path, so there is no notes folder"
-
-
 def get_refused_note_line(cwd, given):
     root = get_notes_root()
     memory = f"<Claude config>/projects/<folder>/memory/<name>.md, and {given} is not; marker not written"
     if root is None:
-        return f"{get_no_root_line()}: the note must be a file {memory}"
+        return f"{get_no_root_line('handoff')}: the note must be a file {memory}"
     own = os.path.join(root, get_project_folder(cwd))
 
     return f"handoff: the note must be a file {own}/<name>.md (the folder `where` prints) or {memory}"
@@ -110,7 +106,7 @@ def get_refused_note_line(cwd, given):
 def create_notes_folder(cwd):
     root = get_notes_root()
     if root is None:
-        return None, get_no_root_line()
+        return None, get_no_root_line("handoff")
     path = os.path.join(root, get_project_folder(cwd))
     try:
         os.makedirs(root, 0o700, exist_ok=True)

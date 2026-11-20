@@ -228,6 +228,19 @@ has "no Hats folder: still asks" "$(printf '%s' "$out" | context)" "do that at 7
 [ -e "$work/no-hats" ] && bad "no Hats folder" "the hook created it" || ok
 has "no Hats folder: journal in notes" "$(cat "$notes/hooks.log" 2>/dev/null)" '"asked-to-write"'
 
+# 10b. A relative HATS_STATE_HOME is no Hats folder: 60/70 (a thresholds file under the relative path is not
+# read), no window file there or in the default folder, the journal goes to the notes folder.
+reset; percent_of 61 > "$tr"; rm -rf "$work/run" "$work/home"
+mkdir -p "$work/run/rel" "$work/home/Library/Application Support/Hats"
+printf '{"warn_percent": 20, "save_percent": 30}' > "$work/run/rel/window-thresholds.json"
+out=$(printf '%s' "$(input UserPromptSubmit)" |
+  (cd "$work/run" && env HATS_STATE_HOME=rel HOME="$work/home" TMPDIR="$tmp" python3 -I "$WINDOW"))
+equal "relative root: code 0" "$?" 0
+has "relative root: still asks at 60/70" "$(printf '%s' "$out" | context)" "do that at 70%"
+has "relative root: journal in notes" "$(cat "$notes/hooks.log" 2>/dev/null)" '"asked-to-write"'
+equal "relative root: nothing written under the relative path" "$(ls -A "$work/run/rel")" "window-thresholds.json"
+equal "relative root: nothing written in the default folder" "$(ls -A "$work/home/Library/Application Support/Hats")" ""
+
 # 11. Stop sweeps window files older than 30 days and leaves fresh ones.
 reset; percent_of 20 > "$tr"
 mkdir -p "$root/codex-windows"

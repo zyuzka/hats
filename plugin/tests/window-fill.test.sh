@@ -617,6 +617,7 @@ rr_run() {  # rr_run <скрипт> <HATS_STATE_HOME | -unset> — запуск 
     codex) printf '{"session_id":"%s","transcript_path":"%s","cwd":"/w","hook_event_name":"UserPromptSubmit"}' "$sid" "$rr/codex.jsonl" |
       (cd "$rr/run" && env "${set_root[@]}" HOME="$rr/home" TMPDIR="$rr/tmp" python3 -I "$CODEX_WINDOW") ;;
   esac >"$rr/out" 2>&1
+  echo $? >"$rr/rc"
 }
 rr_made() {  # rr_made <скрипт> <корень> — файл, который скрипт оставляет в корне
   case $1 in
@@ -626,25 +627,32 @@ rr_made() {  # rr_made <скрипт> <корень> — файл, которы�
     codex) printf '%s' "$2/codex-windows/$sid.json" ;;
   esac
 }
-rr_listing() { find "$@" -mindepth 1 2>/dev/null | sort; }  # rr_listing <папка...>
+rr_listing() { find "$rr" -mindepth 1 -not -path "$rr/out" -not -path "$rr/rc" 2>/dev/null | sort; }
+rr_said() {  # rr_said <скрипт> <ждём> <HATS_STATE_HOME> <файл в корне> — ожидаемые «код вывод»
+  if [ "$1" != handoff ]; then printf '0 '; return; fi
+  if [ "$2" = none ]; then printf "1 handoff: HATS_STATE_HOME='%s' is not an absolute path, so there is no Hats folder" "$3"
+  else printf '0 %s' "$4"; fi
+}
 root_rule() {  # root_rule <HATS_STATE_HOME | -unset | -abs> <ждём: abs | default | none>
-  local value=$1 want=$2 script made extra value_now others before
+  local value=$1 want=$2 script made extra value_now base before said want_said
   for script in window-fill stop-snapshot handoff codex; do
-    rm -rf "$rr"; mkdir -p "$rr/run/rel" "$rr/run/x" "$rr/run/~/x" "$rr_hats" "$rr/abs" "$rr/tmp"
+    rm -rf "$rr"; mkdir -p "$rr/run/rel" "$rr/run/x" "$rr/run/~/x" "$rr/home/x" "$rr_hats" "$rr/abs" "$rr/tmp"
     ans m1 2 1035 448622 >"$tr"; printf "$CODEX_COUNT" >"$rr/codex.jsonl"
     if [ "$value" = -abs ]; then value_now="$rr/abs"; else value_now=$value; fi
     case $want in
-      abs) made="$rr/abs"; others=("$rr/run" "$rr_hats") ;;
-      default) made=$rr_hats; others=("$rr/run" "$rr/abs") ;;
-      none) made=""; others=("$rr/run" "$rr/abs" "$rr_hats") ;;
+      abs) base="$rr/abs" ;;
+      default) base=$rr_hats ;;
+      none) base="$rr/no-root" ;;
     esac
-    before=$(rr_listing "${others[@]}")
+    before=$(rr_listing)
     rr_run "$script" "$value_now"
-    extra=$(diff <(printf '%s\n' "$before") <(rr_listing "${others[@]}"))
-    if [ -n "$made" ]; then made=$(rr_made "$script" "$made"); else made="$rr"; fi
-    if [ -n "$made" ] && [ -e "$made" ] && [ -z "$extra" ] && ! grep -q Traceback "$rr/out"; then ok
+    extra=$(diff <(printf '%s\n' "$before") <(rr_listing) | grep -vF -- "> $base/" | grep '^[<>]')
+    if [ "$want" = none ]; then made="$rr"; else made=$(rr_made "$script" "$base"); fi
+    said="$(cat "$rr/rc") $(cat "$rr/out")"
+    want_said=$(rr_said "$script" "$want" "$value_now" "$made")
+    if [ -n "$made" ] && [ -e "$made" ] && [ -z "$extra" ] && [ "$said" = "$want_said" ]; then ok
     else bad "правило корня: $script, HATS_STATE_HOME «${value}» — ${want}" \
-      "made=$made extra=${extra:0:300} out=$(head -c 300 "$rr/out")"; fi
+      "made=$made extra=${extra:0:300} ждали «${want_said}» получили «${said:0:300}»"; fi
   done
 }
 root_rule -abs abs
@@ -653,12 +661,8 @@ root_rule "" default
 root_rule rel none
 root_rule ./x none
 root_rule "~/x" none
-rm -rf "$rr"; mkdir -p "$rr/run" "$rr_hats"
-rr_run handoff rel
-if [ "$(cat "$rr/out")" = "handoff: HATS_STATE_HOME='rel' is not an absolute path, so there is no notes folder" ]; then ok
-else bad "правило корня: handoff.py where без корня — одна строка" "$(head -c 300 "$rr/out")"; fi
 where=$(cd "$rr/run" && env HATS_STATE_HOME=rel python3 -I "$HOOK" where 2>&1); rc=$?
-if [ $rc -eq 1 ] && [ "$where" = "window-fill: HATS_STATE_HOME is not an absolute path — no folder" ]; then ok
+if [ $rc -eq 1 ] && [ "$where" = "window-fill: HATS_STATE_HOME='rel' is not an absolute path, so there is no Hats folder" ]; then ok
 else bad "правило корня: window-fill.py where без корня — одна строка, код 1" "rc=$rc $where"; fi
 got=$(env HATS_STATE_HOME=rel HOME="$rr/home" python3 -I -c 'import importlib.util, sys
 sys.dont_write_bytecode = True

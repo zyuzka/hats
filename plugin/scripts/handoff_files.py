@@ -97,6 +97,10 @@ def try_lock(fd):
     return True
 
 
+def get_too_large(limit):
+    return f"is larger than {limit // 1024} KB"
+
+
 def get_regular_bytes(fd, limit):
     if not stat.S_ISREG(os.fstat(fd).st_mode):
         return None, NOT_REGULAR
@@ -107,7 +111,7 @@ def get_regular_bytes(fd, limit):
             break
         data += chunk
     if len(data) > limit:
-        return None, f"is larger than {limit // 1024} KB"
+        return None, get_too_large(limit)
 
     return data, None
 

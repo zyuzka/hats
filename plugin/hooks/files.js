@@ -45,25 +45,23 @@ export async function getHome($) {
   return (await $.env.get('HOME')) || null
 }
 
-export async function getStateRoot($) {
-  const override = await $.env.get('HATS_STATE_HOME')
-  if (override) return override
-  const home = await getHome($)
-
-  return home === null ? null : `${home}/${HATS_FOLDER}`
-}
-
 const isAbsolutePath = value =>
   typeof value === 'string' &&
   value.startsWith('/') &&
   !value.includes('\0')
 
-export async function getNotesRoot($) {
+export async function getStateRoot($) {
   const override = await $.env.get('HATS_STATE_HOME')
-  if (isAbsolutePath(override)) return `${override}/${NOTES_NAME}`
+  if (override) return isAbsolutePath(override) ? override : null
   const home = await getHome($)
 
-  return home === null ? null : `${home}/${HATS_FOLDER}/${NOTES_NAME}`
+  return home === null ? null : `${home}/${HATS_FOLDER}`
+}
+
+export async function getNotesRoot($) {
+  const root = await getStateRoot($)
+
+  return root === null ? null : `${root}/${NOTES_NAME}`
 }
 
 export async function getConfigRoot($) {

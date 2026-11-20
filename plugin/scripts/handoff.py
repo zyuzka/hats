@@ -102,10 +102,10 @@ expanded, as Hats itself does not), ~/Library/Application Support/Hats/notes whe
 set (user, 2026-11-19: the notes follow the Hats state folder, so a probe with a temporary state folder
 writes no note into the live one), and no root at all for any other value, a relative path included
 (rule "Б", 2026-11-20, get_state_root of hats_common.py, the one rule of every plugin script): then
-`where` and `new` without --memory refuse with one line and exit 1, `save` accepts only a memory note,
-and no note of the notes folder is recognised; <project> is the first 16 hex digits of the sha256 of the real path of the working folder,
-so /a/b-c and /a-b/c get different folders. It works with Claude Code's memory switched off, survives
-the plugin's removal, and needs no running Hats. `where` creates it with mode 700 (a folder that
+`where` and `new` without --memory refuse with get_no_root_line of hats_common.py and exit 1, `save`
+accepts only a memory note, and no note of the notes folder is recognised; <project> is the first 16
+hex digits of the sha256 of the real path of the working folder, so /a/b-c and /a-b/c get different
+folders. It works with Claude Code's memory switched off, survives the plugin's removal, and needs no running Hats. `where` creates it with mode 700 (a folder that
 exists is left as it is) and prints it; `where` and `save` take the working folder from one function.
 The root is computed by one function, get_notes_root in handoff_paths.py, the same for `new`, `where`,
 `save`, `start`, `took`,
@@ -113,7 +113,9 @@ The root is computed by one function, get_notes_root in handoff_paths.py, the sa
 the agent writes the command. Without HATS_STATE_HOME, like any `~`, it follows HOME (the tests rely
 on that), and a `save` run under another HOME or HATS_STATE_HOME is checked again by the start hook
 under its own. Notes in the old folder are neither moved nor removed: with HATS_STATE_HOME set they
-are no longer recognised as notes, but a quote of them still does not count as a source (below). A
+are no longer recognised as notes, but a quote of them still does not count as a source (below); the
+same holds without a root: the default folder ~/Library/Application Support/Hats/notes still counts as
+a cited notes folder (get_cited_notes_roots), so a quote of a note there is never a source. A
 note there is accepted only when its real path is exactly
 <real root>/<project of the working folder>/<name>.md and a regular file, and that real path is
 what is read: a subfolder, `..`, a link out, or the folder of another project is refused. Letter
@@ -428,9 +430,11 @@ handoff_took.py     the took hook
 handoff_index.py    resume-index.md and its line in MEMORY.md
 handoff_save.py     save, check, where and new
 handoff_allow.py    the allow hook
-hats_common.py      get_state_root, unattended, write_text_whole, write_whole, record_failure,
-                    record_hook_failure and sweep, shared with window-fill.py and stop-snapshot.py
-A copy of the hook needs all of them beside handoff.py.
+hats_common.py      get_state_root and its default, the no-root line, unattended, write_text_whole,
+                    write_whole, record_failure, record_hook_failure and sweep, shared with
+                    window-fill.py, stop-snapshot.py and anchor-steps.py
+A copy of the hook needs all of them beside handoff.py. anchor-steps.py imports handoff.py and also
+needs hats_common.py and handoff_files.py beside it.
 """
 import argparse
 import os
