@@ -48,6 +48,6 @@ enum CodexUsageHeaders {
         guard let value = Double(text.trimmingCharacters(in: .whitespaces)), value.isFinite, value >= 0 else {
             return nil
         }
-        return Int(value.rounded())
+        return Int(min(value, 100).rounded())
     }
 }

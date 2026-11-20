@@ -34,6 +34,20 @@ final class CodexUsageHeadersTests: XCTestCase {
         XCTAssertNil(business?.window(minutes: 300))
     }
 
+    func testAHugePercentIsHeldAtAHundredInsteadOfStoppingTheApp() {
+        let huge = reading([
+            "x-codex-primary-window-minutes": "300",
+            "x-codex-primary-used-percent": "1e30",
+            "x-codex-secondary-window-minutes": "10080",
+            "x-codex-secondary-used-percent": "100.4",
+        ])
+        XCTAssertEqual(huge?.window(minutes: 300)?.percent, 100,
+                       "Int(1e30) traps, and the gateway reads this header on every answer")
+        XCTAssertEqual(huge?.window(minutes: 10080)?.percent, 100)
+        XCTAssertNil(reading(["x-codex-primary-window-minutes": "300", "x-codex-primary-used-percent": "-3"]))
+        XCTAssertNil(reading(["x-codex-primary-window-minutes": "300", "x-codex-primary-used-percent": "inf"]))
+    }
+
     func testAnAnswerWithoutUsageHasNoReading() {
         XCTAssertNil(reading(["x-codex-plan-type": "plus"]))
         XCTAssertNil(reading(["x-codex-primary-window-minutes": "300", "x-codex-primary-used-percent": "much"]))
