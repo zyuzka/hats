@@ -127,32 +127,44 @@ def cmd_start(seen):
         receiver = "none" if not session else ("new" if given is None else "same")
         seen.update(outcome="gave-note", receiver=receiver)
         return 0
-    else:
-        now = datetime.now(timezone.utc)
-        closed = []
-        unchecked = 0
-        for marker in markers:
-            late = out_of_time()
-            here = marker["cwd"] == cwd if late else same_path(marker["cwd"], cwd)
-            if not here:
-                continue
-            when = saved_time(marker)
-            if when is None or now - when > MAX_AGE:
-                continue
-            state = "unknown" if late else liveness(marker)
-            if state == "unknown":
-                unchecked += 1
-            if state != "closed":
-                continue
-            closed.append((when, marker))
-        seen["unchecked"] = unchecked
-        if not closed:
-            seen["outcome"] = "unchecked" if unchecked else "no-closed"
-            say(get_unlisted_line(unchecked), None)
-            return 0
-        closed.sort(key=lambda pair: pair[0], reverse=True)
-        shown = [marker for _, marker in closed[:LIST_LIMIT]]
-        blocks = get_list_blocks(shown)
+    say(*find_closed_list(cwd, markers, seen))
+    return 0
+
+
+def cmd_list(cwd):
+    if os.environ.get("HANDOFF_OFF") == "1":
+        return 0
+    handoff_state.tell = True
+    handoff_state.deadline = time.monotonic() + time_budget()
+    say(*find_closed_list(cwd, checked_markers(), {}))
+    return 0
+
+
+def find_closed_list(cwd, markers, seen):
+    now = datetime.now(timezone.utc)
+    closed = []
+    unchecked = 0
+    for marker in markers:
+        late = out_of_time()
+        here = marker["cwd"] == cwd if late else same_path(marker["cwd"], cwd)
+        if not here:
+            continue
+        when = saved_time(marker)
+        if when is None or now - when > MAX_AGE:
+            continue
+        state = "unknown" if late else liveness(marker)
+        if state == "unknown":
+            unchecked += 1
+        if state != "closed":
+            continue
+        closed.append((when, marker))
+    seen["unchecked"] = unchecked
+    if not closed:
+        seen["outcome"] = "unchecked" if unchecked else "no-closed"
+        return get_unlisted_line(unchecked), None
+    closed.sort(key=lambda pair: pair[0], reverse=True)
+    shown = [marker for _, marker in closed[:LIST_LIMIT]]
+    blocks = get_list_blocks(shown)
     user, model = find_marked_list(
         shown,
         len(closed) - len(shown),
@@ -161,9 +173,9 @@ def cmd_start(seen):
         markers,
         seen,
     )
-    say(user, model)
     seen.update(outcome="listed", listed=len(shown))
-    return 0
+
+    return user, model
 
 
 def find_gone_marker(proc):

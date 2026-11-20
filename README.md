@@ -276,6 +276,10 @@ without the `# set by Hats` mark belongs to someone else and stays as it is; Hat
 With either threshold off, the hook asks for no note. The hooks never stop a turn: on any error they stay
 silent and write a line to `codex-hooks.log` in the Hats folder.
 
+When the Claude plugin of [Session handoff](#session-handoff) is installed and switched on, a new Codex
+session also shows the anchors that closed Claude Code sessions left in its folder, the same list Claude
+Code shows: with your first message, as a line `↳ Hook · Hats handoff: …`, and the model is told about them.
+
 ### Continuing a Codex session after compaction
 
 A Codex thread that ends a turn past the save threshold stops there: Codex compacts it and hands the note
@@ -393,7 +397,8 @@ When a session starts, and after `/clear`, Claude Code shows one line from the p
 `/clear` it names the anchor the session continues and its note, or says that the anchor already went
 to another session or that this Claude process has none; in a new session it lists the notes that
 closed sessions left in this folder, or says there are none or that some could not be checked in
-time. The line is for you only: what the model receives is unchanged (checked with Claude Code
+time. A new Codex session in the folder shows the same list when the Codex plugin is installed too
+(see "The Codex note before compaction"). The line is for you only: what the model receives is unchanged (checked with Claude Code
 2.1.323), except for the mark below.
 
 The plugin also notices two sessions on one task. A session that reads a note with the Read tool is

@@ -4,6 +4,8 @@ Claude process, and the SessionStart hook gives the note back after /clear, or l
 of closed sessions when a new session starts in the same folder.
 
   handoff.py start                      SessionStart hook (matcher startup|clear), stdin = hook input
+  handoff.py list --cwd D               prints what `start` prints on startup in the absolute folder D,
+                                        writes nothing; the Codex plugin's startup hook runs it
   handoff.py took                       PostToolUse hook (matcher Read): who else reads this note
   handoff.py save --note P --topic T    after a save request: marker + check of the note + resume index
   handoff.py check P                    the check alone
@@ -257,6 +259,14 @@ rounds of 20. The marker, its `.handed` and the resume index are written whole b
 file removed when the write fails; it does not end in .json, so load_markers never reads a half-written
 marker. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE=<s> widens both windows so the tests can hit them.
 
+`list --cwd D` (task 87, user 2026-11-20: Claude and Codex must behave the same) prints what the
+startup branch of `start` prints in the absolute folder D: one function builds the list for both, so
+for the same markers the JSON is the same byte for byte. It differs from `start` in three things only:
+it does not ask whether the session has a person (the Codex hook runs it, and Codex's sign of a session
+without a person is not measured), it writes nothing — no runs.log line, no handed file, nothing in
+taken/ — and an error goes to stderr as one line with exit code 1. HANDOFF_OFF=1 makes it print
+nothing. Without --cwd, or with a relative one, argparse refuses with exit code 2.
+
 `save` writes a marker only where the start hook is registered: in the folder's
 .claude/settings.local.json or .claude/settings.json, in <config>/settings.json, or, when these scripts
 sit in a plugin (`.claude-plugin/plugin.json` two folders above handoff_markers.py), in the plugin's
@@ -440,12 +450,13 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import handoff_state
 from handoff_allow import cmd_allow
 from handoff_consts import NOW_HEADING
+from handoff_files import usable
 from handoff_output import tell_failure
 from handoff_paths import get_notes_root
 from handoff_proc import claude_process, find_work_folder
 from handoff_runlog import write_trace
 from handoff_save import cmd_check, cmd_new, cmd_save, cmd_where
-from handoff_start import cmd_start
+from handoff_start import cmd_list, cmd_start
 from handoff_text import clip
 from handoff_took import run_took
 from hats_common import unattended
@@ -465,6 +476,8 @@ def main(argv):
     commands.add_parser("start")
     commands.add_parser("took")
     commands.add_parser("allow")
+    listing = commands.add_parser("list")
+    listing.add_argument("--cwd", required=True)
     save = commands.add_parser("save")
     save.add_argument("--note", required=True)
     save.add_argument("--topic", required=True)
@@ -479,6 +492,8 @@ def main(argv):
     new.add_argument("--memory")
     new.add_argument("--cwd")
     args = parser.parse_args(argv)
+    if args.command == "list" and (not usable(args.cwd) or not os.path.isabs(args.cwd)):
+        parser.error("--cwd must be an absolute path")
     if args.command == "start":
         began = time.monotonic()
         seen = {}
@@ -492,6 +507,12 @@ def main(argv):
             if handoff_state.check_errors:
                 seen["check_error"] = ",".join(sorted(set(handoff_state.check_errors)))
             write_trace(seen, began)
+    if args.command == "list":
+        try:
+            return cmd_list(args.cwd)
+        except Exception as error:
+            sys.stderr.write(f"handoff.py list: {type(error).__name__}: {clip(str(error))}\n")
+            return 1
     if args.command == "took":
         return run_took()
     if args.command == "allow":
