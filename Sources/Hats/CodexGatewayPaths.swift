@@ -64,6 +64,7 @@ enum CodexGatewayPaths {
     }
 
     static func upstreamURL(base: URL, path: String, query: String?) -> URL? {
+        if let query, URLComponents(string: "?" + query)?.percentEncodedQuery != query { return nil }
         var built = URLComponents(url: base, resolvingAgainstBaseURL: false)
         let root = built?.percentEncodedPath ?? ""
         built?.percentEncodedPath = (root.hasSuffix("/") ? root : root + "/") + path

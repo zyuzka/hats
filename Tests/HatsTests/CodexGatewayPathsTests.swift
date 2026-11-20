@@ -69,6 +69,19 @@ final class CodexGatewayPathsTests: XCTestCase {
         XCTAssertEqual(url?.absoluteString, "https://chatgpt.com/backend-api/codex/models?client_version=0.169.0")
     }
 
+    func testABadlyEncodedQueryIsRefusedInsteadOfStoppingTheApp() {
+        for query in ["a=%zz", "a=%", "a=b c", "a=|", "a=[x]", "a=\u{0}"] {
+            XCTAssertNil(CodexGatewayPaths.upstreamURL(base: CodexGatewayPaths.upstream, path: "models", query: query),
+                         "setting \(query) as an encoded query traps; the gateway answers that it cannot address it")
+        }
+        XCTAssertEqual(
+            CodexGatewayPaths.upstreamURL(base: CodexGatewayPaths.upstream, path: "models", query: "a=%20b&c=d")?
+                .absoluteString,
+            "https://chatgpt.com/backend-api/codex/models?a=%20b&c=d"
+        )
+        XCTAssertNotNil(CodexGatewayPaths.upstreamURL(base: CodexGatewayPaths.upstream, path: "models", query: ""))
+    }
+
     func testANewSecretIsLongEnoughAndUsable() {
         let one = CodexGatewayPaths.newSecret()
         XCTAssertGreaterThanOrEqual(one.count * 4, 128, "the secret carries at least 128 bits")

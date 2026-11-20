@@ -58,15 +58,18 @@ extension CodexGatewayRun {
 
     @discardableResult
     func hasRemovedConfig(secret: String?, createdByHats: inout Bool) -> Bool {
-        defer {
-            configWrittenFor = nil
-            configNote = nil
-        }
+        configWrittenFor = nil
+        configNote = nil
         guard let secret else { return true }
         do {
             let mayEmpty = createdByHats
             let isOurs: CodexIsOurs = { CodexGatewayPaths.isOurs($0, secret: secret) }
             let outcome = try configFile.apply { CodexConfigText.removing(in: $0, isOurs: isOurs, mayEmpty: mayEmpty) }
+            if outcome == .unsupported {
+                configNote = HatsCopy.codexConfigNotRemoved(configFile.url.path)
+                Journal.log("codexGateway.configNotRemoved", ["reason": "unsupported"])
+                return false
+            }
             guard outcome == .removed || outcome == .written else { return true }
             Journal.log("codexGateway.configRemoved", ["fileRemoved": String(outcome == .removed)])
             createdByHats = false

@@ -77,6 +77,23 @@ final class CodexGatewayRunConfigTests: XCTestCase {
         XCTAssertEqual(run.configNote, HatsCopy.codexConfigUnsupported(home.config.path))
     }
 
+    func testALineHatsCannotRemoveIsNotCountedAsRemovedAndIsToldInThePanel() throws {
+        try "model = \"x\"\n".write(to: home.config, atomically: true, encoding: .utf8)
+        XCTAssertTrue(run.serve(port: 0, secret: secret, recheck: false, createdByHats: &created).isServing)
+        let written = try XCTUnwrap(config)
+        try ("projects = [\n  \"a\",\n]\n" + written).write(to: home.config, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(run.hasRemovedConfig(secret: secret, createdByHats: &created),
+                       "a value over several lines on top stops Hats from removing its own line")
+        XCTAssertEqual(run.configNote, HatsCopy.codexConfigNotRemoved(home.config.path))
+        run.retire(secret: secret, createdByHats: &created)
+
+        XCTAssertFalse(run.isServing)
+        XCTAssertEqual(run.configNote, HatsCopy.codexConfigNotRemoved(home.config.path),
+                       "the note stays after the stop, so the panel says why Codex cannot connect")
+        XCTAssertTrue(config?.contains("openai_base_url") == true)
+    }
+
     func testTheSettingsKeepThePortAndWhetherHatsCreatedTheFile() throws {
         var settings = AppSettings()
         settings.codexGatewayPort = 9123

@@ -30,6 +30,12 @@ extension HatsCopy {
             + "Add openai_base_url there by hand, or move that value below a table."
     }
 
+    static func codexConfigNotRemoved(_ path: String) -> String {
+        "\(path) has a value over several lines before its first table, which Hats does not edit, so its "
+            + "openai_base_url line to the stopped gateway stays. Remove that line by hand: Codex threads "
+            + "started now cannot connect through it."
+    }
+
     static func codexConfigNotWritten(_ why: String) -> String {
         "openai_base_url could not be written to config.toml: \(why)"
     }
