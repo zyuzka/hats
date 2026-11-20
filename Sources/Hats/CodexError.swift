@@ -21,6 +21,7 @@ enum CodexError: LocalizedError, Equatable {
     case rollbackFailed(cause: String, rollback: String)
     case leftAlone(String)
     case notACodexHat(String)
+    case liveMoved(String)
 
     var errorDescription: String? {
         switch self {
@@ -70,6 +71,9 @@ enum CodexError: LocalizedError, Equatable {
                 + "meanwhile, so Hats left it as it is"
         case .notACodexHat(let id):
             return "no Codex hat with id \(id)"
+        case .liveMoved(let account):
+            return "Codex was signed in to another account (\(account)) meanwhile, so Hats left "
+                + "~/.codex/auth.json as it is"
         }
     }
 }

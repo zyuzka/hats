@@ -62,9 +62,10 @@ final class CodexGatewayDesk: CodexGatewayBroker {
                 tellAllAtLimit(hats, tried: tried)
                 return then(nil)
             }
+            let expected = hats.all.first { $0.id == refused.hatID }?.owner
             for hat in hats.next(after: refused.hatID, skipping: tried) {
                 do {
-                    let worn = try desk.wearNow(hat, among: hats.all)
+                    let worn = try desk.wearNow(hat, among: hats.all, over: expected)
                     Journal.log("codexGateway.autoWorn", [
                         "from": String(refused.hatID.prefix(8)),
                         "to": String(hat.id.prefix(8)),
@@ -76,6 +77,11 @@ final class CodexGatewayDesk: CodexGatewayBroker {
                     }
                     world.onMain { self.onWorn?(hat.id, worn, renewed) }
                     return then(state.login)
+                } catch CodexError.liveMoved {
+                    Journal.log("codexGateway.liveMovedAtLimit", ["from": String(refused.hatID.prefix(8))])
+                    readTheLiveFile()
+                    guard let now = state.login, !tried.contains(now.hatID) else { return then(nil) }
+                    return then(now)
                 } catch {
                     Journal.log("codexGateway.autoWearRefused", [
                         "to": String(hat.id.prefix(8)),
@@ -116,21 +122,23 @@ final class CodexGatewayDesk: CodexGatewayBroker {
     }
 
     func noticeTheLiveFile() {
-        world.run { [self] in
-            guard let live = try? world.home.readLiveChecked(), let owner = CodexAuth(data: live)?.owner,
-                  let hat = hats.all.first(where: { $0.owner == owner }) else {
-                if state.login != nil { Journal.log("codexGateway.nothingWorn") }
-                state.takeOff()
-                return
-            }
-            let before = state.login
-            guard let login = state.wear(hatID: hat.id, auth: live) else {
-                Journal.log("codexGateway.loginUnusable", ["hat": String(hat.id.prefix(8))])
-                state.takeOff()
-                return
-            }
-            guard login != before else { return }
-            Journal.log("codexGateway.loginRead", ["hat": String(hat.id.prefix(8)), "shift": String(login.shift)])
+        world.run { [self] in readTheLiveFile() }
+    }
+
+    private func readTheLiveFile() {
+        guard let live = try? world.home.readLiveChecked(), let owner = CodexAuth(data: live)?.owner,
+              let hat = hats.all.first(where: { $0.owner == owner }) else {
+            if state.login != nil { Journal.log("codexGateway.nothingWorn") }
+            state.takeOff()
+            return
         }
+        let before = state.login
+        guard let login = state.wear(hatID: hat.id, auth: live) else {
+            Journal.log("codexGateway.loginUnusable", ["hat": String(hat.id.prefix(8))])
+            state.takeOff()
+            return
+        }
+        guard login != before else { return }
+        Journal.log("codexGateway.loginRead", ["hat": String(hat.id.prefix(8)), "shift": String(login.shift)])
     }
 }
