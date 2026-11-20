@@ -33,7 +33,8 @@ SessionStart with the source compact measures as usual, so a manual /compact sho
 
 Not written: a subagent (agent_id on the input), a session without a person
 (CLAUDE_CODE_SESSION_ATTENDED=0, else CLAUDE_CODE_ENTRYPOINT starting with sdk — the rule of
-handoff.py), bad input, a transcript that is not a regular file, a session id that is not
+handoff.py), bad input, a transcript that is not a regular file or whose path leads nowhere (missing,
+through a file, too long, a loop of links, a socket), a session id that is not
 [A-Za-z0-9-]{1,80}, a missing root, a session-windows that is a link or not a folder, a lock busy for
 2 s, a tail with no answer and no boundary. The same rules hold for SessionEnd. On Stop and
 SessionEnd, under the lock, <id>.json files older than 30 days and .tmp-*.json files older than 10
@@ -53,6 +54,7 @@ use it to race two hooks. WINDOW_FILL_TEST=1 with WINDOW_FILL_TEST_FAIL=1 raises
 once the folder is ready, for the test of failures.log. Without WINDOW_FILL_TEST all three are
 ignored.
 """
+import errno
 import fcntl
 import json
 import os
@@ -73,6 +75,13 @@ LOCK_NAME = ".lock"
 SESSION = re.compile(r"[A-Za-z0-9-]{1,80}")
 OWN_FILE = re.compile(r"[A-Za-z0-9-]{1,80}\.json")
 LEFT_TEMPORARY = re.compile(r"\.tmp-[A-Za-z0-9_-]{1,64}\.json")
+BAD_TRANSCRIPT_PATH = frozenset((
+    errno.ENOENT,
+    errno.ENOTDIR,
+    errno.ENAMETOOLONG,
+    errno.ELOOP,
+    errno.ENXIO,
+))
 ENDED_PREFIX = ".ended-"
 ENDED_FILE = re.compile(r"\.ended-[A-Za-z0-9-]{1,80}")
 LOCK_WAIT_S = 2.0
@@ -247,7 +256,9 @@ def measure(
     old = get_own_record(os.path.join(folder, name), session)
     try:
         found = count.find_in_transcript(data["transcript_path"])
-    except OSError:
+    except OSError as error:
+        if error.errno not in BAD_TRANSCRIPT_PATH:
+            raise
         return
     if is_testing() and os.environ.get("WINDOW_FILL_TEST_PAUSE"):
         with open(
