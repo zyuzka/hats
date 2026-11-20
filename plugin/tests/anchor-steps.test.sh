@@ -5,7 +5,7 @@
 #   bash plugin/tests/anchor-steps.test.sh
 #   STEPS_UNDER_TEST=/path/to/candidate.py bash plugin/tests/anchor-steps.test.sh   (рядом с ним — handoff.py)
 set -uo pipefail
-unset CLAUDE_CONFIG_DIR CLAUDE_PID HANDOFF_TEST HANDOFF_PROCESS HANDOFF_TEST_PROC
+unset CLAUDE_CONFIG_DIR CLAUDE_PID HANDOFF_TEST HANDOFF_PROCESS HANDOFF_TEST_PROC HATS_STATE_HOME
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT="${STEPS_UNDER_TEST:-$plugin_root/scripts/anchor-steps.py}"
 pass=0; fail=0; failures=""
@@ -47,6 +47,15 @@ reset
 is "папка .claude есть, файлов нет — «no own steps»" "no own steps" "$(steps)"
 reset; put "$general" '{}'
 is "общий файл без списков — «no own steps»" "no own steps" "$(steps)"
+
+# --- общий файл в HATS_STATE_HOME, когда путь абсолютный; иначе в папке Hats
+reset; mkdir -p "$work/xs"; put "$work/xs/anchor-steps.json" '{"before":["из временной"]}'; put "$general" '{"before":["из живой"]}'
+out=$(env HOME="$work" HATS_STATE_HOME="$work/xs" python3 -I "$SCRIPT" --cwd "$proj" 2>&1)
+has "HATS_STATE_HOME: общий файл — из него" "1. [general] из временной" "$out"
+lacks "HATS_STATE_HOME: живой общий файл не читается" "из живой" "$out"
+out=$(env HOME="$work" HATS_STATE_HOME="relative/xs" python3 -I "$SCRIPT" --cwd "$proj" 2>&1)
+has "относительный HATS_STATE_HOME — общий файл папки Hats" "1. [general] из живой" "$out"
+rm -rf "$work/xs"
 
 # --- оба файла, проект отмечен: «до» — общие, затем проекта; «после» — так же
 reset

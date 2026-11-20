@@ -487,7 +487,10 @@ ignores it.
   With Claude Code's memory switched off
   the notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
-  them. Your own steps run with it, from two optional files:
+  them. With `HATS_STATE_HOME` set to an absolute path (`~` is not expanded), the notes folder is
+  `$HATS_STATE_HOME/notes/` and the general steps file below sits in `$HATS_STATE_HOME`. A plugin
+  hook lets the session read a note of that folder, and write one of its own project, without asking. Your own steps
+  run with it, from two optional files:
   `~/Library/Application Support/Hats/anchor-steps.json` for every project, and
   `<project>/.claude/anchor-steps.json`, which counts only when the session runs in a folder listed in
   `projects` of the first one — that folder itself, not a subfolder. Each holds the lists `before` and

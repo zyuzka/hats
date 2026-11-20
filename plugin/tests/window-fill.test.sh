@@ -479,7 +479,7 @@ notes=$(env -u HATS_STATE_HOME HOME="$work/home" python3 -I -B -c 'import import
 spec = importlib.util.spec_from_file_location("handoff", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-print(os.path.dirname(os.path.expanduser(module.NOTES_ROOT)))' "$plugin_root/scripts/handoff.py" 2>&1)
+print(os.path.dirname(module.get_notes_root()))' "$plugin_root/scripts/handoff.py" 2>&1)
 if [ "$where" = "$work/home/Library/Application Support/Hats/session-windows" ] && [ "$where" = "$notes/session-windows" ]; then ok
 else bad "where без HATS_STATE_HOME — корень записок handoff.py" "where=$where handoff=$notes"; fi
 if [ ! -e "$work/x y" ]; then ok; else bad "where ничего не пишет" "$(ls -a "$work/x y")"; fi

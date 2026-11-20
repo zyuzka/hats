@@ -15,7 +15,7 @@ export const FILE_LIMIT = 64 * 1024
 export const THRESHOLDS_FILE = 'window-thresholds.json'
 export const STAGE_FOLDER = 'session-thresholds'
 export const HATS_FOLDER = 'Library/Application Support/Hats'
-export const NOTES_FOLDER = 'Library/Application Support/Hats/notes'
+export const NOTES_NAME = 'notes'
 export const SNAPSHOT_FOLDER = 'stop-snapshots'
 export const STOPPED = 'the session was stopped and nobody has sent input since'
 export const REMOVED = 'the command was removed from the queue before it ran'
@@ -186,7 +186,14 @@ export const getSavedLine = ({ percent, save, after }) => {
 
 export const getFailedLine = reason => `the session was not anchored: ${reason}. Say "anchor" to try again.`
 
-export const INTERRUPTED_LINE = 'anchoring was stopped; nothing else happens until you say "anchor".'
+export const CANCELLED_LINE = 'anchoring was cancelled before it started; the context was not saved.'
+
+export const STOPPED_SAVED_LINE = 'anchoring was stopped; the note was saved.'
+
+export const STOPPED_UNCHECKED_LINE =
+  'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.'
+
+export const getStoppedFailedLine = reason => `anchoring was stopped; the note was not saved: ${reason}. Say "anchor" to save.`
 
 export const RELOADED_LINE = 'anchoring was not checked: the plugin reloaded. Say "anchor" to save again.'
 

@@ -1,5 +1,4 @@
 import {
-  NOTES_FOLDER,
   REASONS,
   findHandoffCommand,
   findNewNote,
@@ -23,7 +22,7 @@ import {
   findTargetPath,
   findTextState,
   getConfigRoot,
-  getHome,
+  getNotesRoot,
 } from './files.js'
 
 export const createTurn = (id, startedAt) => ({
@@ -46,10 +45,10 @@ export const recordStepsOutput = (turn, call) => {
 }
 
 async function findNoteRoots($) {
-  const home = await getHome($)
+  const notes = await getNotesRoot($)
   const config = await getConfigRoot($)
   const memoryRoot = config === null ? null : await findRealPath($, `${config}/projects`)
-  const notesRoot = home === null ? null : await findRealPath($, `${home}/${NOTES_FOLDER}`)
+  const notesRoot = notes === null ? null : await findRealPath($, notes)
 
   return { memoryRoot, notesRoot }
 }

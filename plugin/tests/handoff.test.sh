@@ -34,7 +34,7 @@ set -uo pipefail
 
 plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK_SOURCE="${HOOK_UNDER_TEST:-$plugin_root/scripts/handoff.py}"
-export CLAUDE_CODE_SESSION_ATTENDED=1; unset CLAUDE_CODE_ENTRYPOINT CLAUDE_PID CLAUDE_CONFIG_DIR
+export CLAUDE_CODE_SESSION_ATTENDED=1; unset CLAUDE_CODE_ENTRYPOINT CLAUDE_PID CLAUDE_CONFIG_DIR HATS_STATE_HOME
 pass=0; fail=0; failures=""; skipped=0; skips=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/handoff-test.XXXXXX")
 trap 'kill $(cat "$work/sleepers" 2>/dev/null) 2>/dev/null; rm -rf "$work"' EXIT
@@ -1486,6 +1486,9 @@ if what == "wrapper":
     problems = []
     for event, command in entries:
         words = shlex.split(command.replace("${CLAUDE_PLUGIN_ROOT}", root))
+        allow_sh = os.path.join(root, "scripts", "allow.sh")
+        if words == ["sh", allow_sh] and os.path.isfile(allow_sh) and "py.sh\" --quiet" in open(allow_sh, encoding="utf-8").read():
+            continue
         if words[:3] != ["sh", wrapper, "--quiet"] or len(words) < 4 or not os.path.isfile(words[3]):
             problems.append(event + ": " + command)
     print("; ".join(problems) if problems else "wrapped=%d py.sh=%s" % (len(entries), os.path.isfile(wrapper)))
@@ -1501,7 +1504,7 @@ words = shlex.split(hook["command"].replace("${CLAUDE_PLUGIN_ROOT}", root))
 script = [w for w in words if w.endswith("anchor-nudge.py")][0]
 print("script=%s exists=%s timeout=%s" % (script, os.path.isfile(script), hook.get("timeout")))' "$1" "$plugin_root" 2>&1
 }
-has "hooks.json: все девять хуков идут через py.sh --quiet, их скрипты и py.sh есть" "wrapped=9 py.sh=True" "$(hooked wrapper)"
+has "hooks.json: все десять хуков идут через py.sh --quiet (allow — через allow.sh), их скрипты и py.sh есть" "wrapped=10 py.sh=True" "$(hooked wrapper)"
 read_hook=$(python3 -I -c 'import json,os,shlex,sys
 root = sys.argv[1]
 groups = json.load(open(os.path.join(root, "hooks", "hooks.json"), encoding="utf-8"))["hooks"]["PostToolUse"]
@@ -2253,7 +2256,7 @@ has "свежее состояние: /clear без Read создаёт taken/ (
 has "свежее состояние: и taken/.lock (600)" "0o600" "$(mode_of "$taken/.lock")"
 same "свежее состояние: /clear записал читателя" "$(pid_of "$A")/f1" "$(readers_of "$real_note")"
 B=$(live); out=$(took "$B" sB "$note")
-same "свежее состояние: Read другим процессом — предупреждён" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$A" f1 "$(at_of "$real_note" "$A")")" "$(told)"
+same "свежее состояние: Read другим процессом — предупреждён; автор, уже читатель, назван один раз" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$A" f1 "$(at_of "$real_note" "$A")")" "$(told)"
 reset; A=$(live); B=$(live); python3 -I -c 'print("## СЕЙЧАС\n"); print("\n".join("😀" * 60 for _ in range(110)))' >"$note"
 marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "смайлы"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
 sid=e1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A")
@@ -2331,6 +2334,172 @@ old=$(printf '{"session_id":"x1","cwd":"%s","source":"clear"}' "$proj" | env HOM
 same "/clear, исключение в снимке читателей — модели текст 8b символ в символ" "$old" "$(printf '%s' "$out" | model_of)"
 same "/clear, исключение в снимке — пользователю строка 8b без пометки" "Hats handoff: continuing anchor \"своя\" — $real_note" "$(printf '%s' "$out" | user_of)"
 has "/clear, исключение в снимке — reader=error" "outcome=gave-note reader=error marks_error=RuntimeError" "$(tl outcome reader marks_error)"
+
+# --- took: живой автор записки (запись 63) — отдельная строка; свой процесс, закрытый и непроверенный молчат
+since_of() { python3 -I -c 'import sys; from datetime import datetime; print(datetime.strptime(sys.argv[1].partition(":")[2], "%a %b %d %H:%M:%S %Y").strftime("%Y-%m-%dT%H:%M:%SZ"))' "$1"; }
+author_of() { printf 'pid %s (since %s)' "$(pid_of "$1")" "$(since_of "$1")"; }
+still_open='the session that saved this note is still open: '
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"
+out=$(took "$B" sB "$note")
+same "автор жив, B читает впервые — пользователю строка об авторе" "Hats handoff: $still_open$(author_of "$A")" "$(told)"
+same "автор жив — модели строка об авторе и просьба подтверждения" "[handoff] $still_open$(author_of "$A"). $ask_took" "$out"
+has "автор жив — журнал" "outcome=took-shared live=0 unknown=0 authors=1 warned=True" "$(tl outcome live unknown authors warned)"
+same "автор жив — автор не записан читателем" "$(pid_of "$B")/sB" "$(readers_of "$real_note")"
+out=$(took "$B" sB2 "$note")
+empty "автор жив, B читает второй раз — тишина" "$out$(heard)"
+has "автор жив, второе чтение — again" "outcome=again" "$(tl outcome)"
+reset; A=$(live); C=$(live); B=$(live); marker a1 "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; marker a2 "$(pid_of "$C")" "${C#*:}" "$other" "$note" "та же"
+out=$(took "$B" sB "$note")
+same "два живых автора — оба в строке" "Hats handoff: $still_open$(author_of "$A"), $(author_of "$C")" "$(told)"
+has "два живых автора — журнал" "authors=2" "$(tl authors)"
+reset; A=$(live); D=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mark_file "$real_note" "[$(reader_json "$D" sD)]"
+out=$(took "$B" sB "$note")
+same "живой автор и живой читатель — две строки пользователю" "Hats handoff: $still_open$(author_of "$A")
+Hats handoff: 1 other live session(s) reading this note: $(item_of "$D" sD)" "$(told)"
+same "живой автор и живой читатель — две строки модели, просьба одна" "[handoff] $still_open$(author_of "$A").
+[handoff] 1 other live session(s) reading this note: $(item_of "$D" sD). $ask_took" "$out"
+reset; A=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"
+out=$(took "$A" sA "$note")
+empty "читает сам автор — о себе ни слова" "$out$(heard)"
+has "читает сам автор — took, authors=0" "outcome=took live=0 unknown=0 authors=0 warned=False" "$(tl outcome live unknown authors warned)"
+reset; A=$(live); D=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mark_file "$real_note" "[$(reader_json "$D" sD)]"
+out=$(took "$A" sA "$note")
+same "читает сам автор при живом читателе — только о читателе" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$D" sD)" "$(told)"
+reset; closed_note; B=$(live); out=$(took "$B" sB "$note")
+empty "автор закрыт — тишина" "$out$(heard)"
+has "автор закрыт — authors=0" "outcome=took authors=0" "$(tl outcome authors)"
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mkps 'exit 1'
+out=$(took "$B" sB "$note" PATH="$work/psbin:$PATH")
+empty "автор не проверен (ps — код 1) — о нём ни слова" "$out$(heard)"
+has "автор не проверен — authors=0" "outcome=took authors=0" "$(tl outcome authors)"
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "Thu Nov 20 10:00:00 2026" "$proj" "$note" "своя"
+mkps "case \" \$* \" in *\" $(pid_of "$A") \"*) echo 'Thu Nov 20 10:00:00 2026'; exit 0 ;; esac; exec /bin/ps \"\$@\""
+out=$(took "$B" sB "$note" PATH="$work/psbin:$PATH")
+same "время запуска автора — в формате меток (записано руками)" "Hats handoff: ${still_open}pid $(pid_of "$A") (since 2026-11-20T10:00:00Z)" "$(told)"
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "not a start time" "$proj" "$note" "своя"
+mkps "case \" \$* \" in *\" $(pid_of "$A") \"*) echo 'not a start time'; exit 0 ;; esac; exec /bin/ps \"\$@\""
+out=$(took "$B" sB "$note" PATH="$work/psbin:$PATH")
+same "время запуска автора не разбирается — как напечатал ps" "Hats handoff: ${still_open}pid $(pid_of "$A") (since not a start time)" "$(told)"
+reset; A=$(live); B=$(live); marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "своя"; mkdir -p "$taken"
+holder=$(hold_lock "$taken/.lock" 8)
+took_ms "$B" sB "$note" >/dev/null; kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+same "блокировка занята — строка об авторе по снимку" "Hats handoff: $still_open$(author_of "$A")" "$(told)"
+has "блокировка занята, автор жив — not-recorded, warned" "outcome=not-recorded reason=lock-busy warned=True authors=1" "$(tl outcome reason warned authors)"
+out=$(took "$B" sB "$note")
+same "блокировка свободна — следующее чтение говорит снова" "Hats handoff: $still_open$(author_of "$A")" "$(told)"
+
+# --- папка записок слушает HATS_STATE_HOME (запись 77)
+xs="$work/xstate"
+xenv() { env HOME="$work" HATS_STATE_HOME="$xs" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@"; }
+reset; mkdir -p "$xs"; base_dir=$(notes_of "$proj")
+x_dir=$(xenv python3 -I "$HOOK" where --cwd "$proj" 2>&1)
+same "HATS_STATE_HOME: where — <HATS_STATE_HOME>/notes/<проект>" "$xs/notes/${base_dir##*/}" "$x_dir"
+x_note=$(xenv python3 -I "$HOOK" new --slug t --cwd "$proj" 2>&1)
+same "HATS_STATE_HOME: new — записка в той же папке" "$x_dir/resume-t.md" "$x_note"
+printf '# T\n\n## NOW\n\nиз временной папки\n' >"$x_note"
+out=$(xenv python3 -I "$HOOK" save --cwd "$proj" --note "$x_note" --topic "временная" 2>&1)
+has "HATS_STATE_HOME: save признаёт записку" "marker:" "$out"
+has "HATS_STATE_HOME: start после /clear отдаёт записку" "из временной папки" "$(CMP=0 start clear "$proj" HATS_STATE_HOME="$xs")"
+empty "HATS_STATE_HOME снят: та же отметка — записки нет" "$(CMP=0 start clear "$proj")"
+A=$(live); out=$(took "$A" sA "$x_note" HATS_STATE_HOME="$xs")
+has "HATS_STATE_HOME: took признаёт записку" "command=took outcome=took" "$(tl command outcome)"
+same "HATS_STATE_HOME: took записал читателя" "$(pid_of "$A")/sA" "$(readers_of "$(realp "$x_note")")"
+out=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$proj" --note "$x_note" --topic x 2>&1)
+has "без HATS_STATE_HOME записка временной папки — не записка" "the note must be a file" "$out"
+for value in "" "relative/state"; do
+  dir=$(env HOME="$work" HATS_STATE_HOME="$value" python3 -I "$HOOK" where --cwd "$proj" 2>&1)
+  same "HATS_STATE_HOME «${value}» — прежняя папка" "$base_dir" "$dir"
+done
+dir=$(env HOME="$work" HATS_STATE_HOME="~/tilde" python3 -I "$HOOK" where --cwd "$proj" 2>&1)
+same "HATS_STATE_HOME с ~ — не абсолютный, прежняя папка" "$base_dir" "$dir"
+printf 'share 73%%\n' >"$base_dir/x.md"; printf 'share 74%%\n' >"$x_dir/y.md"
+printf 'x (cite: %s:1 "share 73%%")\n' "$base_dir/x.md" >"$proj/n.md"
+has "HATS_STATE_HOME: цитата прежней папки — не источник" "quote of the notes folder is not a source" "$(env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1)"
+printf 'x (cite: %s:1 "share 74%%")\n' "$x_dir/y.md" >"$proj/n.md"
+has "HATS_STATE_HOME: цитата новой папки — не источник" "quote of the notes folder is not a source" "$(env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1)"
+steps_general=$(env HOME="$work" HATS_STATE_HOME="$xs" python3 -I -B -c 'import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("handoff", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+print(os.path.dirname(module.get_notes_root()))' "$HOOK" 2>&1)
+same "HATS_STATE_HOME: anchor-steps.json — в нём (папка над корнем записок)" "$xs" "$steps_general"
+
+# --- хук allow (PreToolUse): Read — записка любой папки проекта корня, Write и Edit — только своей; иначе молчит
+rm -rf "$work/proc"; mkdir -p "$work/proc/4242"; ln -s "$proj" "$work/proc/4242/cwd"
+allow_in() { printf '{"hook_event_name":"PreToolUse","tool_name":"%s","tool_input":{"file_path":"%s"},"session_id":"s1","cwd":"%s"}' "$1" "$2" "$proj"; }
+allow() {  # allow <инструмент> <путь> [env...] — stdout хука; процесс Claude 4242 в папке $proj; код — в $work/allow.rc, stderr — в $work/allow.err
+  local t="$1" f="$2"; shift 2
+  allow_in "$t" "$f" | env HOME="$work" HATS_STATE_HOME="$xs" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" "$@" \
+    python3 -I "$HOOK" allow 2>"$work/allow.err"; echo $? >"$work/allow.rc"
+}
+decision_of() { python3 -I -c 'import json,sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+    h = d["hookSpecificOutput"]
+    print("%s %s %s" % (sorted(d), h["hookEventName"], h["permissionDecision"]))
+except Exception:
+    print("не тот вывод: %r" % raw[:200])'; }
+quiet_ok() { if [ -z "$2" ] && [ "$(cat "$work/allow.rc")" = 0 ] && [ ! -s "$work/allow.err" ]; then ok; else bad "$1" "«${2:0:200}» rc=$(cat "$work/allow.rc") $(head -c 200 "$work/allow.err")"; fi; }
+allowed="['hookSpecificOutput'] PreToolUse allow"
+for tool in Write Edit Read; do
+  out=$(allow "$tool" "$x_dir/n.md")
+  same "allow: $tool записки своей папки проекта — allow" "$allowed" "$(printf '%s' "$out" | decision_of)"
+  if [ "$(cat "$work/allow.rc")" = 0 ] && [ ! -s "$work/allow.err" ]; then ok; else bad "allow: $tool — код 0, stderr пуст" "rc=$(cat "$work/allow.rc")"; fi
+done
+foreign="$xs/notes/0123456789abcdef"; mkdir -p "$foreign"; printf '## NOW\n\nчужая\n' >"$foreign/f.md"
+same "allow: Read записки другой папки проекта корня — allow" "$allowed" "$(allow Read "$foreign/f.md" | decision_of)"
+quiet_ok "allow: Write в другую папку проекта корня — молчание" "$(allow Write "$foreign/f.md")"
+quiet_ok "allow: Edit в другой папке проекта корня — молчание" "$(allow Edit "$foreign/f.md")"
+quiet_ok "allow: Write в папку проекта, которой ещё нет — молчание" "$(allow Write "$xs/notes/fedcba9876543210/new.md")"
+quiet_ok "allow: Read в папке проекта, которой нет — молчание" "$(allow Read "$xs/notes/fedcba9876543210/new.md")"
+if [ ! -e "$xs/notes/fedcba9876543210" ]; then ok; else bad "allow: папка проекта не создана хуком" "есть"; fi
+printf 'вне\n' >"$work/hard-target.md"; ln "$work/hard-target.md" "$x_dir/hard.md"
+quiet_ok "allow: Edit файла с жёсткой ссылкой наружу — молчание" "$(allow Edit "$x_dir/hard.md")"
+quiet_ok "allow: Write поверх файла с жёсткой ссылкой — молчание" "$(allow Write "$x_dir/hard.md")"
+same "allow: Read файла с жёсткой ссылкой — allow (Read ничего не меняет)" "$allowed" "$(allow Read "$x_dir/hard.md" | decision_of)"
+printf '## NOW\n\nодна ссылка\n' >"$x_dir/single.md"
+same "allow: Edit файла с одной ссылкой — allow" "$allowed" "$(allow Edit "$x_dir/single.md" | decision_of)"
+quiet_ok "allow: путь вне корня — молчание" "$(allow Write "$proj/n.md")"
+quiet_ok "allow: прежняя папка при HATS_STATE_HOME — молчание" "$(allow Read "$base_dir/x.md")"
+quiet_ok "allow: не .md — молчание" "$(allow Write "$x_dir/n.txt")"
+quiet_ok "allow: прямо в корне — молчание" "$(allow Write "$xs/notes/n.md")"
+mkdir -p "$x_dir/sub"; quiet_ok "allow: подпапка проекта — молчание" "$(allow Write "$x_dir/sub/n.md")"
+mkdir -p "$xs/notes/project"; quiet_ok "allow: папка не из 16 знаков hex — молчание" "$(allow Read "$xs/notes/project/n.md")"
+quiet_ok "allow: .. наружу — молчание" "$(allow Write "$x_dir/../../../n.md")"
+printf 'secret\n' >"$work/outside.md"; ln -s "$work/outside.md" "$x_dir/link.md"
+quiet_ok "allow: ссылка наружу — молчание" "$(allow Read "$x_dir/link.md")"
+mkdir -p "$x_dir/dir.md"; quiet_ok "allow: папка с именем .md — молчание" "$(allow Read "$x_dir/dir.md")"
+quiet_ok "allow: HANDOFF_OFF=1 — молчание" "$(allow Write "$x_dir/n.md" HANDOFF_OFF=1)"
+quiet_ok "allow: инструмент не из трёх — молчание" "$(allow Bash "$x_dir/n.md")"
+quiet_ok "allow: путь не абсолютный — молчание" "$(allow Write "n.md")"
+quiet_ok "allow: Write без процесса Claude в папке проекта — молчание" "$(allow Write "$x_dir/n.md" HANDOFF_TEST_PROC="$work/no-proc" HANDOFF_PROCESS="4243:$own_started")"
+out=$(printf 'not json' | env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" allow 2>"$work/allow.err"; echo $? >"$work/allow.rc")
+quiet_ok "allow: ввод не JSON — молчание" "$out"
+out=$(printf '{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"%s"}}' "$x_dir/n.md" | env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" allow 2>"$work/allow.err"; echo $? >"$work/allow.rc")
+quiet_ok "allow: другое событие — молчание" "$out"
+same "allow: без HATS_STATE_HOME — прежняя папка разрешена" "$allowed" "$(allow_in Read "$base_dir/x.md" | env -u HATS_STATE_HOME HOME="$work" python3 -I "$HOOK" allow | decision_of)"
+same "allow: относительный HATS_STATE_HOME — прежняя папка" "$allowed" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME=relative python3 -I "$HOOK" allow | decision_of)"
+same "allow: HATS_STATE_HOME с ~ — прежняя папка" "$allowed" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME="~/xstate" python3 -I "$HOOK" allow | decision_of)"
+hooks_allow=$(python3 -I -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+print([(e.get("matcher"), h["command"], h.get("timeout")) for e in d["hooks"].get("PreToolUse", []) for h in e["hooks"]])' "$plugin_root/hooks/hooks.json" 2>&1)
+same "hooks.json: PreToolUse Write|Edit|Read → allow.sh, срок 5" "[('Write|Edit|Read', 'sh \"\${CLAUDE_PLUGIN_ROOT}/scripts/allow.sh\"', 5)]" "$hooks_allow"
+
+# --- allow.sh: без «/notes/» во вводе Python не запускается
+real_py=$(command -v python3); mkdir -p "$work/stubbin"
+printf '#!/bin/sh\n: >>"%s"\nexec "%s" "$@"\n' "$work/py-called" "$real_py" >"$work/stubbin/python3"; chmod +x "$work/stubbin/python3"
+mkdir -p "$work/allowkit/scripts"; cp "$plugin_root/scripts/allow.sh" "$plugin_root/scripts/py.sh" "$work/allowkit/scripts/"; cp "$HOOK" "$work/allowkit/scripts/handoff.py"
+run_allow_sh() { printf '%s' "$1" | env PATH="$work/stubbin:$PATH" HOME="$work" HATS_STATE_HOME="$xs" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" HANDOFF_TEST_PROC="$work/proc" sh "$work/allowkit/scripts/allow.sh" 2>"$work/allow.err"; echo $? >"$work/allow.rc"; }
+rm -f "$work/py-called"; out=$(run_allow_sh "$(allow_in Read "$proj/README.md")")
+quiet_ok "allow.sh: ввод без /notes/ — молчание, код 0" "$out"
+if [ ! -e "$work/py-called" ]; then ok; else bad "allow.sh: ввод без /notes/ — Python не запускался" "заглушка python3 вызвана"; fi
+rm -f "$work/py-called"; out=$(run_allow_sh "$(allow_in Read "$x_dir/n.md")")
+same "allow.sh: записка папки записок — allow через Python" "$allowed" "$(printf '%s' "$out" | decision_of)"
+if [ -e "$work/py-called" ]; then ok; else bad "allow.sh: ввод с /notes/ — Python запущен" "заглушка не вызвана"; fi
+rm -f "$work/py-called"; out=$(run_allow_sh "$(allow_in Read "$proj/notes/n.md")")
+quiet_ok "allow.sh: /notes/ вне корня — Python запущен и молчит" "$out"
+if [ -e "$work/py-called" ]; then ok; else bad "allow.sh: /notes/ вне корня — проверку делает Python" "заглушка не вызвана"; fi
 
 # --- README: как поставить плагин, как его выключить и что хук пишет на диск
 readme=$(cat "$plugin_root/../README.md" 2>/dev/null)

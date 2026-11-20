@@ -8,8 +8,15 @@ import {
   STAGE_FILE,
   THRESHOLDS,
   createBashResult,
+  HOME,
+  PLUGIN,
+  SESSION,
+  STATE,
   createScene as createWorldScene,
 } from './world.ts'
+import { onRunRefused, setCurrentGetter } from '../../hooks/requests.js'
+import { STOPPED } from '../../hooks/thresholds.js'
+import { createLimits } from '../../hooks/limit-rules.js'
 
 const FILE_45_55 = { warn_percent: 45, save_percent: 55, after_save: 'offer_clear' }
 
@@ -53,6 +60,17 @@ const getFullSave = (scene: any) => [
   () => scene.writeNote(),
   scene.runSave,
 ]
+
+const createRefusalPlugin = () => {
+  const logs: string[] = []
+  const $ = {
+    session: { id: async () => SESSION },
+    ui: { log: async (text: string) => logs.push(text) },
+    env: { get: async () => undefined },
+  }
+
+  return { $, logs }
+}
 
 const failsWith = async (scene: any, failure: { steps: (() => Promise<unknown>)[]; reason: string }) => {
   await scene.askToAnchor()
@@ -553,7 +571,7 @@ describe('the check of the anchor turn', () => {
     })
   })
 
-  test('records an interrupted anchor turn and says only that anchoring stopped', async ($, on) => {
+  test('records an interrupted anchor turn without a marker and says the save could not be checked', async ($, on) => {
     const scene = createScene($, { on })
     await scene.askToAnchor()
 
@@ -567,7 +585,94 @@ describe('the check of the anchor turn', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted', reason: null })
     expect(scene.world.logs).toEqual([
       REQUEST_56,
-      'anchoring was stopped; nothing else happens until you say "anchor".',
+      'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.',
+    ])
+  })
+
+  test('Esc after a save whose marker is unreadable: the save could not be checked, not "not saved"', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    const broken = async () => {
+      await scene.runSave()
+      scene.world.setFile(MARKER, '{not json')
+    }
+
+    await scene.runAnchorTurn({ steps: [scene.createNote, () => scene.writeNote(), broken], reason: 'aborted' })
+
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.',
+    ])
+  })
+
+  test('Esc after a full save in a turn where a plugin hook failed: the save could not be checked', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    const failing = async () => {
+      scene.world.sessionIdDenials = 1
+      await scene.callTool(57, READ)
+    }
+
+    await scene.runAnchorTurn({ steps: [failing, ...getFullSave(scene)], reason: 'aborted' })
+
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.',
+    ])
+  })
+
+  test('Esc after a checked save: saved, still interrupted, and no /clear even with after clear', async ($, on) => {
+    const scene = createScene($, { on })
+    setThresholds(scene, { ...FILE_45_55, after_save: 'clear' })
+    await scene.askToAnchor()
+
+    await scene.runAnchorTurn({ steps: getFullSave(scene), reason: 'aborted' })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted', reason: null })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      'anchoring was stopped; the note was saved.',
+    ])
+    expect(scene.world.runs).toEqual(ONE_RUN)
+  })
+
+  test('Esc after a save whose check fails: not saved, with the reason and no promise', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+
+    await scene.runAnchorTurn({ steps: [scene.createNote, scene.runSave], reason: 'aborted' })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted' })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      'anchoring was stopped; the note was not saved: the note was not rewritten in this anchor. Say "anchor" to save.',
+    ])
+  })
+
+  test('the own anchor command refused as stopped before it ran: the line says the context was not saved', async () => {
+    const plugin = createRefusalPlugin()
+    const request = { sessionId: SESSION, isWindow: false, limits: [], previous: null }
+    const state = { id: SESSION, request, limits: createLimits() }
+    setCurrentGetter(() => state)
+
+    await onRunRefused(plugin.$, { state, request, error: new Error(`hats: $.command.run: ${STOPPED}`) })
+
+    expect(state.request).toBe(null)
+    expect(plugin.logs).toEqual([
+      'anchoring was cancelled before it started; the context was not saved.',
+    ])
+  })
+
+  test('the own anchor command refused for another reason: the failed line, no line about a cancel', async () => {
+    const plugin = createRefusalPlugin()
+    const request = { sessionId: SESSION, isWindow: false, limits: [], previous: null }
+    const state = { id: SESSION, request, limits: createLimits(), stage: null }
+    setCurrentGetter(() => state)
+
+    await onRunRefused(plugin.$, { state, request, error: new Error('hats: $.command.run: busy') })
+
+    expect(plugin.logs).toEqual([
+      'the session was not anchored: the anchor command was refused: hats: $.command.run: busy. Say "anchor" to try again.',
     ])
   })
 
@@ -588,6 +693,73 @@ describe('the check of the anchor turn', () => {
 
     expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the anchor turn was refused' })
   })
+})
+
+const OWN_FOLDER = '0123456789abcdef'
+const HATS_HOME = `${HOME}/Library/Application Support/Hats`
+
+const getOwnNoteSave = (scene: any, root: string) => {
+  const folder = `${root}/notes/${OWN_FOLDER}`
+  const note = `${folder}/resume-task.md`
+  const script = `sh "${PLUGIN}/scripts/py.sh" "${PLUGIN}/scripts/handoff.py"`
+  scene.world.setFolder(`${root}/notes`)
+  scene.world.setFolder(folder)
+
+  return [
+    () => {
+      scene.world.nextToolAnswer = createBashResult(`${note}\n`)
+      return scene.callTool(57, { tool: 'Bash', command: `${script} new --slug task` })
+    },
+    () => scene.callTool(57, { tool: 'Write', file_path: note, content: NOTE_TEXT }),
+    () => {
+      const savedAt = `${new Date(scene.world.clock.now()).toISOString().slice(0, 19)}Z`
+      const marker = { pid: 42, started: 'Sat Nov 14 12:00:00 2026', cwd: '/w', note, topic: 'task', saved_at: savedAt }
+      scene.world.setFile(scene.world.paths.marker, JSON.stringify(marker))
+      scene.world.nextToolAnswer = createBashResult(`marker: ${scene.world.paths.marker}\nquotes and numbers: all verified`)
+      return scene.callTool(58, { tool: 'Bash', command: `${script} save --note "${note}" --topic "task"` })
+    },
+  ]
+}
+
+describe('the notes folder of the plugin', () => {
+  test('follows HATS_STATE_HOME: a note in <HATS_STATE_HOME>/notes/<project> passes the check', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+
+    await scene.runAnchorTurn({ steps: getOwnNoteSave(scene, STATE) })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'saved' })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      SAVED_CLEAR,
+    ])
+  })
+
+  test('with HATS_STATE_HOME set, a note in the default folder is not a note of this anchor', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+
+    await scene.runAnchorTurn({ steps: getOwnNoteSave(scene, HATS_HOME) })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
+  })
+
+  for (const value of ['~/hats-tilde', 'relative/state']) {
+    test(`HATS_STATE_HOME "${value}" is not absolute: the notes go to the default folder`, async ($, on) => {
+      const scene = createScene($, { on, hasStateHome: false, env: { HATS_STATE_HOME: value } })
+      await scene.start()
+      const turnId = await scene.startTurn(10)
+      await scene.endTurn(turnId, { percent: 71 })
+
+      await scene.runAnchorTurn({ steps: getOwnNoteSave(scene, HATS_HOME) })
+
+      expect(scene.world.logs).toEqual([
+        'context 71% (anchor threshold 70%) — anchoring this session.',
+        'anchored at 71% of the context window (threshold 70%). ' +
+          'Type /clear to go on from the note in an empty context: the plugin gives it back.',
+      ])
+    })
+  }
 })
 
 describe('the request command', () => {

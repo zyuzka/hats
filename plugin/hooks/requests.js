@@ -1,11 +1,14 @@
 import {
-  INTERRUPTED_LINE,
+  CANCELLED_LINE,
   REASONS,
+  STOPPED_SAVED_LINE,
+  STOPPED_UNCHECKED_LINE,
   createPrevious,
   findRefusalOutcome,
   getPauseLine,
   getRequestLine,
   getSavedLine,
+  getStoppedFailedLine,
   getTurnFailure,
   isDrainOn,
   isSaveDue,
@@ -101,10 +104,44 @@ const countWindow = (state, job) => {
 async function findTurnVerdict($, job) {
   const { request, reason, turn } = job
   if (reason !== 'answer' && reason !== 'aborted') return getTurnFailure(reason)
-  if (reason === 'aborted') return null
   if (request.hasHookFailed) return REASONS.hookFailed
 
   return findVerdict($, { turn, askedAt: request.askedAt })
+}
+
+const UNCHECKED_VERDICTS = [
+  REASONS.noMarker,
+  REASONS.unreadable,
+  REASONS.hookFailed,
+]
+
+const getStoppedLine = verdict => {
+  if (verdict === null) return STOPPED_SAVED_LINE
+  if (UNCHECKED_VERDICTS.includes(verdict)) return STOPPED_UNCHECKED_LINE
+
+  return getStoppedFailedLine(verdict)
+}
+
+const setAbortedSaved = (state, job) => {
+  const { request, counted, reading, now } = job
+  setAsked(counted, now)
+  countWindow(state, { request, reading })
+  forgetCounted(state, { isWindow: request.isWindow, kinds: [...request.limits, ...counted].map(item => item.kind) })
+}
+
+async function finishAborted($, job) {
+  const { state, request, verdict, counted, now } = job
+  state.request = null
+  if (verdict === null) setAbortedSaved(state, job)
+  if (verdict !== null) setAskFailed(request.limits)
+  if (request.isWindow) setStage(state, { stage: 'interrupted' })
+  await queueStage($, state)
+  const limits = [
+    ...request.limits,
+    ...counted,
+  ]
+  if (verdict === null && limits.length > 0) tellUser($, getLimitSavedLine(limits, now))
+  tellUser($, getStoppedLine(verdict))
 }
 
 export async function finishRequest($, job) {
@@ -112,15 +149,11 @@ export async function finishRequest($, job) {
   const request = state.request
   if (request === null || request.turnId !== job.turnId) return
   const verdict = await findTurnVerdict($, { request, reason, turn })
-  const counted = reason === 'answer' && verdict === null ? await findLimitAsks($, state) : []
+  const counted = verdict === null ? await findLimitAsks($, state) : []
   const now = await $.clock.now()
   if (!(await isChainAlive($, { state, request }))) return
   if (reason === 'aborted') {
-    state.request = null
-    setAskFailed(request.limits)
-    if (request.isWindow) setStage(state, { stage: 'interrupted' })
-    await queueStage($, state)
-    tellUser($, INTERRUPTED_LINE)
+    await finishAborted($, { state, request, verdict, counted, reading, now })
     return
   }
   if (verdict !== null) {
@@ -161,6 +194,7 @@ export async function onRunRefused($, job) {
   }
   setRefusedBack(state, { request, outcome })
   await queueStage($, state)
+  tellUser($, CANCELLED_LINE)
 }
 
 export const setRefusedBack = (state, job) => {

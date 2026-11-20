@@ -442,11 +442,11 @@ describe('the limit request', () => {
     ])
   })
 
-  test('Esc in the anchor turn: the interrupted line, and it counts as the one failure of the episode', async ($, on) => {
+  test('Esc in the anchor turn without a save: the unchecked line, and it counts as the one failure of the episode', async ($, on) => {
     const scene = await askAt81($, on)
 
     await scene.runAnchorTurn({ steps: [], reason: 'aborted' })
-    expect(scene.world.logs.at(-1)).toBe('anchoring was stopped; nothing else happens until you say "anchor".')
+    expect(scene.world.logs.at(-1)).toBe('anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.')
     await endTurnAt(scene, { five: 82 })
     await scene.runAnchorTurn({ steps: [], reason: 'aborted' })
     await endTurnAt(scene, { five: 83 })
@@ -456,6 +456,21 @@ describe('the limit request', () => {
       'hats:anchor',
     ])
     expect(scene.world.getStage().stage).toBe(null)
+  })
+
+  test('Esc in the anchor turn after a checked save: the saved line, the save counts and nothing is asked again', async ($, on) => {
+    const scene = await askAt81($, on)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene), reason: 'aborted' })
+    expect(scene.world.logs.slice(-2)).toEqual([
+      getSavedLine(81, scene.world.clock.now()),
+      'anchoring was stopped; the note was saved.',
+    ])
+    await endTurnAt(scene, { five: 82 })
+    await endTurnAt(scene, { five: 83 })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(getLimitStage(scene).five_hour.asked).toMatchObject({ percent: 81 })
   })
 
   test('the same episode with the reset 2 minutes later: nothing again', async ($, on) => {
@@ -659,6 +674,24 @@ describe('the limit with the window', () => {
       WINDOW_SAVED_71,
     ])
     expect(scene.world.getStage()).toMatchObject({ stage: 'saved', save_round: 1 })
+  })
+
+  test('Esc after a checked save while the window passed its threshold: counted for the window, interrupted, no request after', async ($, on) => {
+    const scene = await startScene($, on)
+    const first = await scene.startTurn(10)
+    await scene.endTurn(first, { percent: 69 })
+    await endTurnAt(scene, { five: 81 }, 69)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene), endPercent: 71, reason: 'aborted' })
+    await endTurnAt(scene, { five: 81 }, 72)
+
+    expect(scene.world.logs).toEqual([
+      REQUEST_81,
+      getSavedLine(81, scene.world.clock.now()),
+      'anchoring was stopped; the note was saved.',
+    ])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted', save_round: 1 })
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
   })
 
   test('the limit passed 80 in the window anchor turn: counted, no limit request after', async ($, on) => {
