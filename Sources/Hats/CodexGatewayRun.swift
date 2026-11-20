@@ -67,7 +67,10 @@ final class CodexGatewayRun: @unchecked Sendable {
 
     @discardableResult
     func start(port: Int, secret: String) -> GatewayProcess.Status {
-        if let server, server.isServing, server.port == port, server.secret == secret { return .running }
+        if let server, server.isServing, server.port == port, server.secret == secret {
+            broker.noticeTheLiveFile()
+            return .running
+        }
         stop()
         state.forgetThreads()
         let candidate = CodexGatewayServer(port: port, secret: secret, state: state, broker: broker)

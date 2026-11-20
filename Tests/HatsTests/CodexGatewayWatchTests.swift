@@ -64,6 +64,27 @@ final class CodexGatewayWatchTests: XCTestCase {
         )
     }
 
+    func testAHatAddedForTheLoginAlreadyInTheFileIsWornWithoutAChangeOfTheFile() throws {
+        let broker = CodexGatewayDesk(
+            desk: CodexDesk(world: server.world(home: home, keychain: keychain)),
+            state: state
+        )
+        let work = CodexFixture.ticket("hat-work", CodexFixture.work)
+        let personal = CodexFixture.ticket("hat-personal", CodexFixture.personal)
+        broker.hats = CodexGatewayHats(all: [work], candidates: [work])
+        let own = CodexGatewayRun(broker: broker, watchEvery: 0.05)
+        defer { own.stop() }
+        try CodexFixture.login(CodexFixture.personal, refresh: "personal-1").write(to: home.auth)
+        XCTAssertEqual(own.start(port: 0, secret: secret), .running)
+        XCTAssertNil(state.login, "Codex is signed in to an account Hats does not know yet")
+
+        broker.hats = CodexGatewayHats(all: [work, personal], candidates: [work, personal])
+        XCTAssertEqual(own.start(port: 0, secret: secret), .running)
+
+        XCTAssertEqual(state.login?.hatID, "hat-personal",
+                       "adding the hat does not touch auth.json, so the watch alone would never see it")
+    }
+
     func testAStoppedGatewayNoLongerWatches() throws {
         try CodexFixture.login(CodexFixture.work, refresh: "work-1").write(to: home.auth)
         run.start(port: 0, secret: secret)

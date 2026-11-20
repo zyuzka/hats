@@ -29,12 +29,18 @@ enum AppUpdates {
 }
 
 extension GatewayStopDecision {
-    static func getForAnUpdate(ports: [Int], sessions: @autoclosure () -> [Session]?) -> GatewayStopDecision {
-        guard let cost = HatsCopy.getUpdateInstallCost(ports: ports, sessions: sessions()) else {
-            return .proceed
-        }
+    static func getForAnUpdate(
+        ports: [Int],
+        sessions: @autoclosure () -> [Session]?,
+        codexThreads: Int = 0
+    ) -> GatewayStopDecision {
+        let costs = [
+            HatsCopy.getUpdateInstallCost(ports: ports, sessions: sessions()),
+            HatsCopy.codexQuitCost(threads: codexThreads),
+        ].compactMap { $0 }
+        guard !costs.isEmpty else { return .proceed }
 
-        return .ask(cost)
+        return .ask(costs.joined(separator: " "))
     }
 }
 

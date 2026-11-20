@@ -64,10 +64,11 @@ extension AppDelegate {
     }
 
     func startTheUpdater() {
-        updater = SparkleUpdates.createIfConfigured {
+        updater = SparkleUpdates.createIfConfigured { [weak self] in
             GatewayStopDecision.getForAnUpdate(
                 ports: GatewayProcess.heldPorts,
-                sessions: SessionDiscovery.everySessionSeenRecently()
+                sessions: SessionDiscovery.everySessionSeenRecently(),
+                codexThreads: self?.codexThreadsThroughTheGateway ?? 0
             )
         }
         updater?.whenCanCheckNowChanges = { [weak self] in self?.redraw() }
@@ -85,9 +86,13 @@ extension AppDelegate {
         redraw()
     }
 
+    var codexThreadsThroughTheGateway: Int {
+        codex.gateway.isServing ? codex.gateway.state.threadIDs.count : 0
+    }
+
     func quit() {
         let live = SessionDiscovery.everySessionSeenRecently()
-        let threads = codex.gateway.isServing ? codex.gateway.state.threadIDs.count : 0
+        let threads = codexThreadsThroughTheGateway
         let costs = [
             HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown),
             HatsCopy.codexQuitCost(threads: threads),

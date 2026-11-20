@@ -48,6 +48,22 @@ final class AppUpdatesTests: XCTestCase {
         XCTAssertTrue(cost.contains("(pid 31) could not be read"), cost)
     }
 
+    func testALiveCodexThreadMakesTheUpdateAskWhileTheClaudeGatewayHoldsNoPort() throws {
+        let decision = GatewayStopDecision.getForAnUpdate(ports: [], sessions: [], codexThreads: 1)
+        guard case .ask(let cost) = decision else {
+            return XCTFail("the restart for an update stops the Codex gateway too, so it asks as quitting does")
+        }
+        XCTAssertEqual(cost, HatsCopy.codexQuitCost(threads: 1))
+        XCTAssertEqual(GatewayStopDecision.getForAnUpdate(ports: [], sessions: [], codexThreads: 0), .proceed)
+        guard case .ask(let both) = GatewayStopDecision.getForAnUpdate(
+            ports: gatewayPorts,
+            sessions: [session(4242, port: 8787)],
+            codexThreads: 2
+        ) else { return XCTFail("both gateways in use ask") }
+        XCTAssertTrue(both.contains("(pid 4242)"), both)
+        XCTAssertTrue(both.contains("2 Codex threads"), both)
+    }
+
     func testAnUnreadSessionCostsNothingWhileTheGatewayHoldsNoPort() {
         let decision = GatewayStopDecision.getForAnUpdate(
             ports: [],
