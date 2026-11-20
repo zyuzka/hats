@@ -9,7 +9,7 @@ plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${HOOK_UNDER_TEST:-$plugin_root/scripts/stop-snapshot.py}"
 PY_SH="$plugin_root/scripts/py.sh"
 export CLAUDE_CODE_SESSION_ATTENDED=1
-unset CLAUDE_CODE_ENTRYPOINT HATS_STATE_HOME STOP_SNAPSHOT_TEST STOP_SNAPSHOT_TEST_PAUSE STOP_SNAPSHOT_TEST_MARK
+unset CLAUDE_CODE_ENTRYPOINT HATS_STATE_HOME STOP_SNAPSHOT_TEST STOP_SNAPSHOT_TEST_PAUSE STOP_SNAPSHOT_TEST_MARK STOP_SNAPSHOT_TEST_FAIL
 pass=0; fail=0; failures=""
 work=$(mktemp -d "${TMPDIR:-/tmp}/stop-snapshot-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT INT TERM
@@ -166,6 +166,68 @@ done
 if [ ! -e "$folder" ] || [ -z "$(ls -A "$folder")" ]; then ok; else bad "негодный вход: ничего" "$(ls -A "$folder")"; fi
 out=$(printf '%s' "$(input)" | env HATS_STATE_HOME="$root" python3 -I "$HOOK" where 2>&1); rc=$?
 if [ -z "$out" ] && [ $rc -eq 0 ] && [ ! -e "$own" ]; then ok; else bad "лишний аргумент: молча, ничего" "rc=$rc out=$out"; fi
+
+# --- неожиданная ошибка: строка в failures.log, а не тишина ---
+failures_log="$folder/failures.log"
+failure_line() {  # failure_line [файл] — поля последней строки журнала ошибок
+  python3 -I -c 'import json,sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+d = json.loads(lines[-1])
+print(len(lines), sorted(d), d["script"], d["event"], d["error"], len(d["at"]))' "${1:-$failures_log}" 2>&1
+}
+reset_failures() { reset; :; mkdir -p "$folder"; }
+reset_failures
+quiet_run "неожиданная ошибка" "$(input)" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+got=$(failure_line)
+if [ "$got" = "1 ['at', 'error', 'event', 'script'] stop-snapshot.py Stop RuntimeError 20" ]; then ok
+else bad "неожиданная ошибка: одна строка {at, script, event, error}" "$got"; fi
+if [ "$(stat -f '%Lp' "$failures_log" 2>/dev/null || stat -c '%a' "$failures_log")" = 600 ]; then ok
+else bad "неожиданная ошибка: журнал 600" "$(ls -l "$failures_log")"; fi
+if [ ! -e "$own" ]; then ok; else bad "неожиданная ошибка: своего файла нет" "$(cat "$own")"; fi
+reset_failures
+quiet_run "ошибка без STOP_SNAPSHOT_TEST не включается" "$(input)" STOP_SNAPSHOT_TEST_FAIL=1
+if [ ! -e "$failures_log" ] && [ -f "$own" ]; then ok; else bad "STOP_SNAPSHOT_TEST_FAIL без STOP_SNAPSHOT_TEST: пишет файл, журнала нет" "$(ls -A "$folder")"; fi
+for data in 'не json' '[1]' ''; do
+  reset_failures
+  quiet_run "битый ввод «${data}» при готовой папке" "$data" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+  if [ ! -e "$failures_log" ]; then ok; else bad "битый ввод «${data}»: журнала ошибок нет" "$(cat "$failures_log")"; fi
+done
+reset_failures
+python3 -I -c 'import sys; open(sys.argv[1], "w").write("x" * 70000)' "$failures_log"
+quiet_run "ротация журнала ошибок" "$(input)" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+if [ "$(wc -c <"$failures_log.1" | tr -d ' ')" = 70000 ] && [ "$(failure_line | cut -d' ' -f1)" = 1 ]; then ok
+else bad "ротация: старый журнал в .1, новый с одной строкой" "$(ls -l "$folder")"; fi
+reset_failures
+quiet_run "журнал ниже предела не ротируется" "$(input)" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+quiet_run "журнал ниже предела не ротируется" "$(input)" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+if [ ! -e "$failures_log.1" ] && [ "$(failure_line | cut -d' ' -f1)" = 2 ]; then ok
+else bad "журнал ниже предела: две строки, без .1" "$(ls -l "$folder")"; fi
+reset_failures; ln -s "$work/fail-target" "$failures_log"; printf 'keep\n' >"$work/fail-target"
+quiet_run "журнал ошибок — ссылка" "$(input)" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1
+if [ "$(cat "$work/fail-target")" = keep ] && [ -L "$failures_log" ]; then ok
+else bad "журнал ошибок — ссылка: цель не тронута" "$(cat "$work/fail-target") $(ls -l "$folder")"; fi
+reset_failures; mkfifo "$failures_log"
+out=$(printf '%s' "$(input)" | timeout 3 env HATS_STATE_HOME="$root" STOP_SNAPSHOT_TEST=1 STOP_SNAPSHOT_TEST_FAIL=1 python3 -I "$HOOK" 2>&1); rc=$?
+if [ $rc -eq 0 ] && [ -z "$out" ]; then ok; else bad "журнал ошибок — канал: хук не ждёт и молчит, код 0" "rc=$rc out=${out:0:300}"; fi
+reset; mkdir -p "$work/elsewhere-f"; ln -s "$work/elsewhere-f" "$folder"
+got=$(env HATS_STATE_HOME="$root" python3 -I -c 'import importlib.util, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
+hook = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hook)
+hook.record_hook_failure({"hook_event_name": "x"}, RuntimeError("t"))
+print("ok")' "$HOOK" 2>&1)
+if [ "$got" = ok ] && [ -z "$(ls -A "$work/elsewhere-f")" ]; then ok; else bad "папка — ссылка: журнал ошибок сквозь неё не пишется" "$got $(ls -A "$work/elsewhere-f")"; fi
+rm -f "$folder"; rm -rf "$root"
+got=$(env HATS_STATE_HOME="$root" python3 -I -c 'import importlib.util, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
+hook = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hook)
+hook.record_hook_failure({}, RuntimeError("t"))
+print("ok")' "$HOOK" 2>&1)
+if [ "$got" = ok ] && [ ! -e "$root" ]; then ok; else bad "корня нет: журнал ошибок не пишется, корень не создан" "$got"; fi
+
 
 # --- корень по умолчанию
 home="$work/home"; mkdir -p "$home/Library/Application Support/Hats"

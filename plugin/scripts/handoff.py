@@ -177,6 +177,11 @@ mark at least as long) not — is reported as not verified; a code block left op
 the lines after it are not checked, and that problem comes first; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
 caught, and the check cannot tell whether the words next to a quote mean what the quote says.
+`check` and `save` say "quotes and numbers: all verified" only when the note made at least one claim
+— a quote, an `N of M (P%)` or a number outside code, with or without its source — and none failed; a
+note with no such claim (empty, only a header, numbers only in code blocks) gets "quotes and numbers:
+none outside code and the header — nothing checked" instead, and `check` still exits 0: nothing to check is not an
+error of the note, but it is not a verified note either.
 
 Language: the tool is used in more languages than Russian (user, 2026-11-11). The markers above
 and the `## NOW` heading are English, and everything the hook prints is English — the session
@@ -197,8 +202,11 @@ gives it to the model. `hookSpecificOutput` carries `hookEventName` SessionStart
 the model's text — character for character what the hook printed before, without the last newline
 (measured on Claude Code 2.1.323 in tmux). A run that gives the model a note or a list prints both. A
 run with nothing for the model prints `systemMessage` alone: no anchor saved in this Claude process, an
-anchor already given to another session, no Claude process found, no notes of closed sessions, notes
-that could not be checked in time, and an error raised before anything was printed. A note that could
+anchor whose note is gone (the marker of this process is there, nothing is left at its note's path —
+deleted, renamed or moved away: "anchor "<topic>" not given — its note is gone: <path>"; a note that is
+there but not allowed still reads as no anchor saved), an anchor already given to another session, no
+Claude process found, no notes of closed sessions, notes that could not be checked in time, and an
+error raised before anything was printed. A note that could
 not be checked is one of this folder, saved within 30 days, whose process `ps` could not tell in time
 or that the loop never reached because the budget ran out: it is counted, never reported as absent;
 once the budget is out, a marker's folder is compared with the session's as written, without resolving
@@ -224,7 +232,8 @@ recorded, as before.
 
 Every `start` run appends one JSON line to `runs.log` beside the markers: time, how long it took,
 source, session, folder, Claude process and the decision — `off`, `bad-input`, `skipped`,
-`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `note-unreadable` (the own note
+`unattended`, `no-process`, `no-own-marker`, `note-gone` (this process has a marker, but nothing is
+left at its note's path), `handed-elsewhere`, `note-unreadable` (the own note
 could not be read: no permission, over the size limit or not a regular file; the user gets "could not
 read the note of anchor …, not given", the model nothing, and nothing is recorded, so the note is given
 once it reads again; an empty note is read and given), `gave-note` (receiver `new`, `same`
@@ -240,9 +249,12 @@ Concurrent runs (measured 2026-11-11, 20 rounds of 30 parallel runs, before the 
 never broke a line, but rotation lost lines in 1 round and the previous history in 5 — two runs
 both saw a big log and both moved it. So the size check, the move and the append run under
 `flock` on `runs.lock`; a run that cannot take it within half a second appends without moving,
-so a line is never dropped for the lock. `save` writes its marker through a temporary file named
-by its own pid: with one shared name, parallel saves failed with FileNotFoundError in 14 rounds
-of 20. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE=<s> widens both windows so the tests can hit them.
+so a line is never dropped for the lock. `save` writes its marker through a temporary file of its
+own, never a shared name: with one shared name, parallel saves failed with FileNotFoundError in 14
+rounds of 20. The marker, its `.handed` and the resume index are written whole by write_text_whole
+(hats_common.py): a temporary `.tmp-*.tmp` beside the file, mode 600, then os.replace, the temporary
+file removed when the write fails; it does not end in .json, so load_markers never reads a half-written
+marker. With HANDOFF_TEST=1, HANDOFF_TEST_PAUSE=<s> widens both windows so the tests can hit them.
 
 `save` writes a marker only where the start hook is registered: in the folder's
 .claude/settings.local.json or .claude/settings.json, in <config>/settings.json, or, when these scripts
@@ -381,7 +393,8 @@ line of 8c: after /clear without a person the text is that of before.
 
 Known gaps of the marks: a file whose readers all left without /clear stays until a `took` of the same
 note; the .reads of such a process stays until a `took` sees it dead; the .tmp of a killed run stays;
-a process that read a note and dropped it without /clear stays a reader until it exits; a memory note
+a process that read a note and dropped it without /clear stays a reader until it exits; the
+`.tmp-*.tmp` of a run killed while it wrote a marker, a `.handed` or the index stays beside it; a memory note
 behind a link, read by its real path outside <config>/projects, is not caught; cat is not caught.
 
 HANDOFF_OFF=1 silences the hook. With HANDOFF_TEST=1, HANDOFF_PROCESS=<pid>:<start> stands in
@@ -411,7 +424,8 @@ handoff_took.py     the took hook
 handoff_index.py    resume-index.md and its line in MEMORY.md
 handoff_save.py     save, check, where and new
 handoff_allow.py    the allow hook
-hats_common.py      unattended and write_whole, shared with window-fill.py and stop-snapshot.py
+hats_common.py      unattended, write_text_whole, write_whole and record_failure, shared with
+                    window-fill.py and stop-snapshot.py
 A copy of the hook needs all of them beside handoff.py.
 """
 import argparse

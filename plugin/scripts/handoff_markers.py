@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from handoff_consts import MARKER_FIELDS, SESSION_ID
 from handoff_files import usable
 from handoff_paths import allowed_note, config_root, state_dir
+from hats_common import write_text_whole
 
 
 def checked_markers():
@@ -78,16 +79,14 @@ def handed_session(marker):
 
 def record_handed(marker, session):
     path = handed_file(marker)
-    tmp = f"{path}.{os.getpid()}.tmp"
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"key": handed_key(marker), "session": session}, f, ensure_ascii=False)
-        os.replace(tmp, path)
-    except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        write_text_whole(
+            os.path.dirname(path),
+            os.path.basename(path),
+            json.dumps({"key": handed_key(marker), "session": session}, ensure_ascii=False),
+        )
+    except (OSError, ValueError):
+        pass
 
 
 def session_id(data):

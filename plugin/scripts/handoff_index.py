@@ -28,6 +28,7 @@ from handoff_consts import (
 )
 from handoff_files import fcntl, get_small_text, is_regular_file, is_same_file, try_lock
 from handoff_paths import in_memory, is_service_name, note_in_memory, state_dir
+from hats_common import write_text_whole
 from handoff_text import cap_utf16, get_plain, is_indexable
 
 
@@ -134,22 +135,14 @@ def set_index_file(
         get_index_entry(name, marker),
         *kept[:INDEX_ENTRY_LIMIT - 1],
     ]
-    tmp = f"{path}.{os.getpid()}.tmp"
     try:
-        fd = os.open(
-            tmp,
-            os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
-            0o600,
+        write_text_whole(
+            os.path.dirname(path),
+            os.path.basename(path),
+            "\n".join(lines) + "\n",
+            before_replace=test_pause,
         )
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write("\n".join(lines) + "\n")
-        test_pause()
-        os.replace(tmp, path)
     except (OSError, ValueError) as error:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
         return f"{INDEX_NAME} cannot be written: {error}"
 
     return None
