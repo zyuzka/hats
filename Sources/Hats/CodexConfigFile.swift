@@ -82,7 +82,7 @@ struct CodexConfigFile {
         let folder = path.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var info = stat()
-        let mode = stat(path.path, &info) == 0 ? mode_t(info.st_mode & 0o777) : 0o644
+        let mode = stat(path.path, &info) == 0 ? mode_t(info.st_mode & 0o700) : 0o600
         let temporary = folder.appendingPathComponent(".config-hats-\(UUID().uuidString)")
         let fd = Darwin.open(temporary.path, O_CREAT | O_EXCL | O_WRONLY, mode)
         guard fd >= 0 else { throw CodexError.writeFailed(String(cString: strerror(errno))) }

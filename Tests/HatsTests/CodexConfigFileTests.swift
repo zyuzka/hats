@@ -34,6 +34,22 @@ final class CodexConfigFileTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: config.path))
     }
 
+    func testTheFileThatCarriesTheGatewaySecretIsReadableByItsOwnerOnly() throws {
+        let file = CodexConfigFile(url: config)
+        let mode = { try FileManager.default.attributesOfItem(atPath: self.config.path)[.posixPermissions] as? Int }
+
+        XCTAssertEqual(try file.apply(setting), .written)
+        XCTAssertEqual(try mode(), 0o600, "a new file is created for its owner only")
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: config.path)
+        XCTAssertEqual(try file.apply(removing), .removed)
+        try "model = \"x\"\n".write(to: config, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: config.path)
+        XCTAssertEqual(try file.apply(setting), .written)
+        XCTAssertEqual(try mode(), 0o600,
+                       "the secret in the gateway address is not left readable by other users of the Mac")
+    }
+
     func testTheRestOfTheFileAndItsModeSurviveTheRoundTrip() throws {
         let text = "# keep me\nmodel = \"x\"\n\n[tui]\nfullscreen = true\n"
         try text.write(to: config, atomically: true, encoding: .utf8)
