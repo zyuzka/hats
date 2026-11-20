@@ -54,13 +54,13 @@ import re
 import signal
 import stat
 import sys
-import tempfile
 import time
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import window_fill_count as count
+from hats_common import unattended, write_whole
 
 FOLDER = "session-windows"
 LOCK_NAME = ".lock"
@@ -104,13 +104,6 @@ def get_state_root():
         "Application Support",
         "Hats",
     )
-
-
-def is_unattended():
-    attended = os.environ.get("CLAUDE_CODE_SESSION_ATTENDED")
-    if attended is not None:
-        return attended.strip() == "0"
-    return os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
 
 
 def is_testing():
@@ -193,42 +186,6 @@ def get_lock(folder):
                 os.close(fd)
                 return None
             time.sleep(LOCK_STEP_S)
-
-
-def write_whole(
-    folder,
-    name,
-    record,
-):
-    fd, temporary = tempfile.mkstemp(
-        prefix=".tmp-",
-        suffix=".json",
-        dir=folder,
-    )
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(
-            fd,
-            "w",
-            encoding="utf-8",
-        ) as out:
-            fd = None
-            json.dump(
-                record,
-                out,
-                sort_keys=True,
-            )
-            out.write("\n")
-        os.replace(temporary, os.path.join(folder, name))
-        temporary = None
-    finally:
-        if fd is not None:
-            os.close(fd)
-        if temporary is not None:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
 
 
 def is_swept(name, info, now):
@@ -327,7 +284,7 @@ def record_window(data):
     session = data.get("session_id")
     transcript = data.get("transcript_path")
     event = data.get("hook_event_name")
-    if data.get("agent_id") is not None or is_unattended():
+    if data.get("agent_id") is not None or unattended():
         return
     if not isinstance(session, str) or not SESSION.fullmatch(session):
         return

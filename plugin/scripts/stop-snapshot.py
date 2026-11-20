@@ -36,10 +36,12 @@ import re
 import signal
 import stat
 import sys
-import tempfile
 import time
 
 sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from hats_common import unattended, write_whole
 
 FOLDER = "stop-snapshots"
 SESSION = re.compile(r"[A-Za-z0-9-]{1,80}")
@@ -63,13 +65,6 @@ def get_state_root():
         "Application Support",
         "Hats",
     )
-
-
-def is_unattended():
-    attended = os.environ.get("CLAUDE_CODE_SESSION_ATTENDED")
-    if attended is not None:
-        return attended.strip() == "0"
-    return os.environ.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk")
 
 
 def is_testing():
@@ -148,43 +143,6 @@ def pause_for_test():
     time.sleep(float(os.environ["STOP_SNAPSHOT_TEST_PAUSE"]))
 
 
-def write_whole(
-    folder,
-    name,
-    record,
-):
-    fd, temporary = tempfile.mkstemp(
-        prefix=".tmp-",
-        suffix=".json",
-        dir=folder,
-    )
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(
-            fd,
-            "w",
-            encoding="utf-8",
-        ) as out:
-            fd = None
-            json.dump(
-                record,
-                out,
-                sort_keys=True,
-            )
-            out.write("\n")
-        pause_for_test()
-        os.replace(temporary, os.path.join(folder, name))
-        temporary = None
-    finally:
-        if fd is not None:
-            os.close(fd)
-        if temporary is not None:
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
-
-
 def is_swept(
     name,
     info,
@@ -212,7 +170,7 @@ def sweep(folder):
 
 def record_snapshot(data, started_ms):
     session = data.get("session_id")
-    if data.get("agent_id") is not None or is_unattended():
+    if data.get("agent_id") is not None or unattended():
         return
     if not isinstance(session, str) or not SESSION.fullmatch(session):
         return
@@ -227,6 +185,7 @@ def record_snapshot(data, started_ms):
             session,
             started_ms,
         ),
+        before_replace=pause_for_test,
     )
     sweep(folder)
 

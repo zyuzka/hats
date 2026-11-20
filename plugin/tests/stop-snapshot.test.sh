@@ -259,6 +259,9 @@ assert hook == {"type": "command", "command": want, "timeout": 5}, hook
 print("ok")' "$plugin_root/hooks/hooks.json" 2>&1)
 if [ "$hooks_ok" = ok ]; then ok; else bad "hooks.json: одна запись на Stop, синхронно, через py.sh --quiet" "$hooks_ok"; fi
 
+if [ ! -e "$(dirname "$HOOK")/__pycache__" ]; then ok
+else bad "байт-код не пишется рядом с хуком" "$(ls "$(dirname "$HOOK")/__pycache__")"; fi
+
 total=$((pass+fail))
 if [ $fail -eq 0 ]; then echo "stop-snapshot: $pass/$total прошли"; exit 0; fi
 echo "stop-snapshot: $pass/$total прошли, $fail упало$failures"; exit 1

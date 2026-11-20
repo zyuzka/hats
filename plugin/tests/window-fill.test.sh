@@ -399,8 +399,19 @@ spec = importlib.util.spec_from_file_location("handoff", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 print("no" if module.unattended() else "yes")' "$plugin_root/scripts/handoff.py" 2>&1)
-  if [ "$got" = "$want" ] && [ "$handoff" = "$want" ]; then ok
-  else bad "без человека: $* — пишет $want, как handoff.unattended" "хук: $got, handoff: $handoff"; fi
+  local snapshot=no common
+  rm -rf "$work/snap"; mkdir -p "$work/snap"
+  printf '{"session_id":"s1","background_tasks":[],"session_crons":[]}' |
+    env -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT HATS_STATE_HOME="$work/snap" "$@" \
+    python3 -I "$plugin_root/scripts/stop-snapshot.py" >/dev/null 2>&1
+  [ -e "$work/snap/stop-snapshots/s1.json" ] && snapshot=yes
+  common=$(env -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT "$@" python3 -I -B -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import hats_common
+print("no" if hats_common.unattended() else "yes")' "$plugin_root/scripts" 2>&1)
+  if [ "$got" = "$want" ] && [ "$handoff" = "$want" ] && [ "$snapshot" = "$want" ] && [ "$common" = "$want" ]; then ok
+  else bad "без человека: $* — пишут $want window-fill, handoff, stop-snapshot и hats_common" \
+    "window-fill: $got, handoff: $handoff, stop-snapshot: $snapshot, hats_common: $common"; fi
 }
 attended_case no CLAUDE_CODE_SESSION_ATTENDED=0
 attended_case no "CLAUDE_CODE_SESSION_ATTENDED= 0 "
@@ -488,8 +499,8 @@ if [ ! -e "$work/home3" ]; then ok; else bad "Hats ни разу не запус
 printf '%s' "$(input)" | env HATS_STATE_HOME="$work/missing-root" python3 -I "$HOOK" >/dev/null 2>&1
 if [ ! -e "$work/missing-root" ]; then ok
 else bad "HATS_STATE_HOME нет на диске — ничего не создаётся" "$(find "$work/missing-root" | head -5)"; fi
-if [ -z "$(ls "$(dirname "$HOOK")/__pycache__" 2>/dev/null | grep window_fill)" ]; then ok
-else bad "байт-код window_fill_count не пишется в плагин" "$(ls "$(dirname "$HOOK")/__pycache__")"; fi
+if [ -z "$(find "$(dirname "$HOOK")/__pycache__" -name '*.pyc' 2>/dev/null)" ]; then ok
+else bad "байт-код соседей хука не пишется в плагин" "$(ls "$(dirname "$HOOK")/__pycache__")"; fi
 
 # --- уборка ---
 ago() { python3 -I -c 'import sys, time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - float(sys.argv[1]))))' "$1"; }
