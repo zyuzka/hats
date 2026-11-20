@@ -16,9 +16,10 @@ is only in the session's transcript, whose path comes on the hook's input. How i
 window_fill_count.py beside this script; the folder of this script goes onto sys.path by hand, since
 python3 -I leaves it out, and no bytecode is written into the plugin.
 
-The file: <root>/session-windows/<session_id>.json, where <root> is $HATS_STATE_HOME when it is set
-and not empty, else ~/Library/Application Support/Hats — the folder Hats calls StateDirectory.url,
-the same root handoff.py takes for its notes. The hook makes only session-windows (700) inside a root
+The file: <root>/session-windows/<session_id>.json, where <root> is get_state_root of hats_common.py:
+$HATS_STATE_HOME when it is an absolute path, ~/Library/Application Support/Hats when it is empty or not
+set (the folder Hats calls StateDirectory.url, the folder above handoff.py's notes root), and no root at
+all for any other value, a relative path included: then nothing is written. The hook makes only session-windows (700) inside a root
 that already exists; where Hats never ran there is no root, and nothing is written. Fields: session,
 cwd, title, tokens, window, percent, state ("read" or "compacted"), model, message, measured_at,
 compactions, compaction, compacted_at, event, written_at. Each file is written whole or not at all (a
@@ -35,10 +36,10 @@ Not written: a subagent (agent_id on the input), a session without a person
 (CLAUDE_CODE_SESSION_ATTENDED=0, else CLAUDE_CODE_ENTRYPOINT starting with sdk — the rule of
 handoff.py), bad input, a transcript that is not a regular file or whose path leads nowhere (missing,
 through a file, too long, a loop of links, a socket), a session id that is not
-[A-Za-z0-9-]{1,80}, a missing root, a session-windows that is a link or not a folder, a lock busy for
-2 s, a tail with no answer and no boundary. The same rules hold for SessionEnd. On Stop and
-SessionEnd, under the lock, <id>.json files older than 30 days and .tmp-*.json files older than 10
-minutes (left by a hook killed mid-write) are removed.
+[A-Za-z0-9-]{1,80}, a missing root or none at all, a session-windows that is a link or not a folder,
+a lock busy for 2 s, a tail with no answer and no boundary. The same rules hold for SessionEnd. On Stop
+and SessionEnd, under the lock, sweep of hats_common.py removes regular <id>.json files older than 30
+days and .tmp-*.json and .ended-<id> files older than 10 minutes (left by a hook killed mid-write).
 
 Stop waits for the turn to land before it reads: Claude Code starts the Stop hook before it appends
 the turn's last answer (probe 2026-11-13, 2.1.323: that line reached the transcript 43 ms after this
@@ -47,7 +48,8 @@ the Stop input carries the answer's text, not its usage. So on Stop the hook wat
 size: once it has grown and then stayed still for 0.3 s, or after 1.5 s at most, it takes the lock
 and reads. Other events read at once.
 
-`window-fill.py where` prints the folder and writes nothing (for the test that holds this path equal
+`window-fill.py where` prints the folder and writes nothing; with no root it prints one line saying so
+and exits 1 (for the test that holds this path equal
 to the one Hats computes). WINDOW_FILL_TEST=1 with WINDOW_FILL_TEST_PAUSE=<seconds> and
 WINDOW_FILL_TEST_READ=<file> pauses between reading and writing and marks that the read is done; tests
 use it to race two hooks. WINDOW_FILL_TEST=1 with WINDOW_FILL_TEST_FAIL=1 raises inside record_window
@@ -68,7 +70,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import window_fill_count as count
-from hats_common import record_failure, unattended, write_whole
+from hats_common import get_state_root, record_hook_failure, sweep, unattended, write_whole
 
 FOLDER = "session-windows"
 LOCK_NAME = ".lock"
@@ -94,6 +96,20 @@ MAX_AGE_S = 30 * 24 * 3600
 TEMPORARY_AGE_S = 10 * 60
 TITLE_LIMIT = 200
 EVENT_LIMIT = 40
+SWEPT_AGES = (
+    (
+        OWN_FILE,
+        MAX_AGE_S,
+    ),
+    (
+        LEFT_TEMPORARY,
+        TEMPORARY_AGE_S,
+    ),
+    (
+        ENDED_FILE,
+        TEMPORARY_AGE_S,
+    ),
+)
 SWEEPING_EVENTS = {
     "Stop",
     "SessionEnd",
@@ -106,19 +122,6 @@ NOT_COMPARED = (
     "event",
     "written_at",
 )
-
-
-def get_state_root():
-    override = os.environ.get("HATS_STATE_HOME", "")
-    if override:
-        return override
-
-    return os.path.join(
-        os.path.expanduser("~"),
-        "Library",
-        "Application Support",
-        "Hats",
-    )
 
 
 def is_testing():
@@ -147,7 +150,7 @@ def get_own_record(path, session):
 
 
 def get_prepared_folder(root):
-    if not os.path.isdir(root):
+    if root is None or not os.path.isdir(root):
         return None
     folder = os.path.join(root, FOLDER)
     try:
@@ -201,26 +204,6 @@ def get_lock(folder):
                 os.close(fd)
                 return None
             time.sleep(LOCK_STEP_S)
-
-
-def is_swept(name, info, now):
-    if stat.S_ISDIR(info.st_mode):
-        return False
-    if OWN_FILE.fullmatch(name):
-        return now - info.st_mtime > MAX_AGE_S
-    is_short_lived = LEFT_TEMPORARY.fullmatch(name) or ENDED_FILE.fullmatch(name)
-    return bool(is_short_lived) and now - info.st_mtime > TEMPORARY_AGE_S
-
-
-def sweep(folder):
-    now = time.time()
-    for name in os.listdir(folder):
-        path = os.path.join(folder, name)
-        try:
-            if is_swept(name, os.lstat(path), now):
-                os.unlink(path)
-        except OSError:
-            continue
 
 
 def remove_own(folder, name):
@@ -329,7 +312,7 @@ def record_window(data):
         else:
             measure_live(data, folder, session)
         if event in SWEEPING_EVENTS:
-            sweep(folder)
+            sweep(folder, SWEPT_AGES)
     finally:
         os.close(lock)
 
@@ -338,25 +321,13 @@ def stop_on_term(signum, frame):
     raise SystemExit(0)
 
 
-def record_hook_failure(data, error):
-    try:
-        folder = os.path.join(get_state_root(), FOLDER)
-        if not stat.S_ISDIR(os.lstat(folder).st_mode):
-            return
-    except Exception:
-        return
-    event = data.get("hook_event_name")
-    record_failure(
-        folder,
-        "window-fill.py",
-        event,
-        error,
-    )
-
-
 def main(argv):
     if argv[1:] == ["where"]:
-        print(os.path.join(get_state_root(), FOLDER))
+        root = get_state_root()
+        if root is None:
+            print("window-fill: HATS_STATE_HOME is not an absolute path — no folder")
+            return 1
+        print(os.path.join(root, FOLDER))
         return 0
     if len(argv) > 1:
         return 0
@@ -366,14 +337,24 @@ def main(argv):
     except (ValueError, RecursionError):
         return 0
     except Exception as error:
-        record_hook_failure({}, error)
+        record_hook_failure(
+            FOLDER,
+            "window-fill.py",
+            {},
+            error,
+        )
         return 0
     if not isinstance(data, dict):
         return 0
     try:
         record_window(data)
     except Exception as error:
-        record_hook_failure(data, error)
+        record_hook_failure(
+            FOLDER,
+            "window-fill.py",
+            data,
+            error,
+        )
     return 0
 
 

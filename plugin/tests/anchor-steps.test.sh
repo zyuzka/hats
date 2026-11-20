@@ -53,8 +53,9 @@ reset; mkdir -p "$work/xs"; put "$work/xs/anchor-steps.json" '{"before":["из �
 out=$(env HOME="$work" HATS_STATE_HOME="$work/xs" python3 -I "$SCRIPT" --cwd "$proj" 2>&1)
 has "HATS_STATE_HOME: общий файл — из него" "1. [general] из временной" "$out"
 lacks "HATS_STATE_HOME: живой общий файл не читается" "из живой" "$out"
-out=$(env HOME="$work" HATS_STATE_HOME="relative/xs" python3 -I "$SCRIPT" --cwd "$proj" 2>&1)
-has "относительный HATS_STATE_HOME — общий файл папки Hats" "1. [general] из живой" "$out"
+out=$(env HOME="$work" HATS_STATE_HOME="relative/xs" python3 -I "$SCRIPT" --cwd "$proj" 2>&1); rc=$?
+is "относительный HATS_STATE_HOME — папки Hats нет, одна строка, код 1" \
+  "1 anchor-steps: HATS_STATE_HOME='relative/xs' is not an absolute path, so there is no Hats folder" "$rc $out"
 rm -rf "$work/xs"
 
 # --- оба файла, проект отмечен: «до» — общие, затем проекта; «после» — так же

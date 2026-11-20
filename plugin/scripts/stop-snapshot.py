@@ -16,8 +16,10 @@ mod's own Stop hook does not run where Claude Code's guard is loaded. The mod re
 it clears the session after an anchor on the threshold: a running work whose id the note does not
 name, or a wake-up, keeps the session uncleared.
 
-The file: <root>/stop-snapshots/<session_id>.json, where <root> is $HATS_STATE_HOME when it is set
-and not empty, else ~/Library/Application Support/Hats — the root window-fill.py takes. The hook makes
+The file: <root>/stop-snapshots/<session_id>.json, where <root> is get_state_root of hats_common.py,
+the root window-fill.py takes: $HATS_STATE_HOME when it is an absolute path, ~/Library/Application
+Support/Hats when it is empty or not set, and no root at all for any other value, a relative path
+included: then nothing is written. The hook makes
 only stop-snapshots (700) inside a root that already exists. Fields: session, at_ms (the time this
 run started, in milliseconds), ok, tasks (records with id, type, status and description cut to 200
 characters) and crons (the number of wake-ups). ok is false, with no tasks and no wake-ups, when
@@ -27,9 +29,9 @@ os.replace.
 
 Not written: a subagent (agent_id on the input), a session without a person
 (CLAUDE_CODE_SESSION_ATTENDED=0, else CLAUDE_CODE_ENTRYPOINT starting with sdk), bad input, a session
-id that is not [A-Za-z0-9-]{1,80}, a missing root, a stop-snapshots that is a link or not a folder.
-After writing, at most 50 files older than 7 days are removed from the folder, own snapshots and
-temporary files left by a killed run alike.
+id that is not [A-Za-z0-9-]{1,80}, a missing root or none at all, a stop-snapshots that is a link or not a folder.
+After writing, sweep of hats_common.py removes from the folder at most 50 regular files older than 7
+days, own snapshots and temporary files left by a killed run alike.
 
 STOP_SNAPSHOT_TEST=1 with STOP_SNAPSHOT_TEST_PAUSE=<seconds> and STOP_SNAPSHOT_TEST_MARK=<file>
 marks that the temporary file is written and pauses before os.replace; tests use it to stop the hook
@@ -47,7 +49,7 @@ import time
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
-from hats_common import record_failure, unattended, write_whole
+from hats_common import get_state_root, record_hook_failure, sweep, unattended, write_whole
 
 FOLDER = "stop-snapshots"
 SESSION = re.compile(r"[A-Za-z0-9-]{1,80}")
@@ -58,19 +60,16 @@ DESCRIPTION_LIMIT = 200
 MAX_AGE_S = 7 * 24 * 3600
 SWEEP_LIMIT = 50
 RUN_LIMIT_S = 3.5
-
-
-def get_state_root():
-    override = os.environ.get("HATS_STATE_HOME", "")
-    if override:
-        return override
-
-    return os.path.join(
-        os.path.expanduser("~"),
-        "Library",
-        "Application Support",
-        "Hats",
-    )
+SWEPT_AGES = (
+    (
+        OWN_FILE,
+        MAX_AGE_S,
+    ),
+    (
+        LEFT_TEMPORARY,
+        MAX_AGE_S,
+    ),
+)
 
 
 def is_testing():
@@ -78,7 +77,7 @@ def is_testing():
 
 
 def get_prepared_folder(root):
-    if not os.path.isdir(root):
+    if root is None or not os.path.isdir(root):
         return None
     folder = os.path.join(root, FOLDER)
     try:
@@ -149,31 +148,6 @@ def pause_for_test():
     time.sleep(float(os.environ["STOP_SNAPSHOT_TEST_PAUSE"]))
 
 
-def is_swept(
-    name,
-    info,
-    now,
-):
-    if not stat.S_ISREG(info.st_mode) or now - info.st_mtime <= MAX_AGE_S:
-        return False
-    return bool(OWN_FILE.fullmatch(name) or LEFT_TEMPORARY.fullmatch(name))
-
-
-def sweep(folder):
-    now = time.time()
-    removed = 0
-    for name in os.listdir(folder):
-        if removed >= SWEEP_LIMIT:
-            return
-        path = os.path.join(folder, name)
-        try:
-            if is_swept(name, os.lstat(path), now):
-                os.unlink(path)
-                removed += 1
-        except OSError:
-            continue
-
-
 def record_snapshot(data, started_ms):
     session = data.get("session_id")
     if data.get("agent_id") is not None or unattended():
@@ -195,27 +169,15 @@ def record_snapshot(data, started_ms):
         ),
         before_replace=pause_for_test,
     )
-    sweep(folder)
+    sweep(
+        folder,
+        SWEPT_AGES,
+        SWEEP_LIMIT,
+    )
 
 
 def stop_now(signum, frame):
     raise SystemExit(0)
-
-
-def record_hook_failure(data, error):
-    try:
-        folder = os.path.join(get_state_root(), FOLDER)
-        if not stat.S_ISDIR(os.lstat(folder).st_mode):
-            return
-    except Exception:
-        return
-    event = data.get("hook_event_name")
-    record_failure(
-        folder,
-        "stop-snapshot.py",
-        event,
-        error,
-    )
 
 
 def main(argv):
@@ -230,14 +192,24 @@ def main(argv):
     except (ValueError, RecursionError):
         return 0
     except Exception as error:
-        record_hook_failure({}, error)
+        record_hook_failure(
+            FOLDER,
+            "stop-snapshot.py",
+            {},
+            error,
+        )
         return 0
     if not isinstance(data, dict):
         return 0
     try:
         record_snapshot(data, started_ms)
     except Exception as error:
-        record_hook_failure(data, error)
+        record_hook_failure(
+            FOLDER,
+            "stop-snapshot.py",
+            data,
+            error,
+        )
     return 0
 
 

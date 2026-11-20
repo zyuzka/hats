@@ -2498,12 +2498,20 @@ has "HATS_STATE_HOME: took признаёт записку" "command=took outcom
 same "HATS_STATE_HOME: took записал читателя" "$(pid_of "$A")/sA" "$(readers_of "$(realp "$x_note")")"
 out=$(env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" save --cwd "$proj" --note "$x_note" --topic x 2>&1)
 has "без HATS_STATE_HOME записка временной папки — не записка" "the note must be a file" "$out"
-for value in "" "relative/state"; do
-  dir=$(env HOME="$work" HATS_STATE_HOME="$value" python3 -I "$HOOK" where --cwd "$proj" 2>&1)
-  same "HATS_STATE_HOME «${value}» — прежняя папка" "$base_dir" "$dir"
+dir=$(env HOME="$work" HATS_STATE_HOME= python3 -I "$HOOK" where --cwd "$proj" 2>&1)
+same "HATS_STATE_HOME пустой — прежняя папка" "$base_dir" "$dir"
+for value in "relative/state" "~/tilde" "./x"; do
+  for command in where new; do
+    args=(--cwd "$proj"); [ "$command" = new ] && args+=(--slug t)
+    dir=$(cd "$proj" && env HOME="$work/rel-home" HATS_STATE_HOME="$value" python3 -I "$HOOK" "$command" "${args[@]}" 2>&1); rc=$?
+    same "HATS_STATE_HOME «${value}»: $command отказывает одной строкой, код 1" \
+      "1 handoff: HATS_STATE_HOME='$value' is not an absolute path, so there is no notes folder" "$rc $dir"
+  done
+  first=${value#./}; first=${first%%/*}
+  if [ ! -e "$work/rel-home" ] && [ ! -e "$proj/$first" ]; then ok
+  else bad "HATS_STATE_HOME «${value}»: ни в HOME, ни в папке запуска ничего не создано" \
+    "$(ls -a "$proj" "$work/rel-home" 2>&1 | head -5)"; fi
 done
-dir=$(env HOME="$work" HATS_STATE_HOME="~/tilde" python3 -I "$HOOK" where --cwd "$proj" 2>&1)
-same "HATS_STATE_HOME с ~ — не абсолютный, прежняя папка" "$base_dir" "$dir"
 printf 'share 73%%\n' >"$base_dir/x.md"; printf 'share 74%%\n' >"$x_dir/y.md"
 printf 'x (cite: %s:1 "share 73%%")\n' "$base_dir/x.md" >"$proj/n.md"
 has "HATS_STATE_HOME: цитата прежней папки — не источник" "quote of the notes folder is not a source" "$(env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1)"
@@ -2571,8 +2579,8 @@ quiet_ok "allow: ввод не JSON — молчание" "$out"
 out=$(printf '{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"%s"}}' "$x_dir/n.md" | env HOME="$work" HATS_STATE_HOME="$xs" python3 -I "$HOOK" allow 2>"$work/allow.err"; echo $? >"$work/allow.rc")
 quiet_ok "allow: другое событие — молчание" "$out"
 same "allow: без HATS_STATE_HOME — прежняя папка разрешена" "$allowed" "$(allow_in Read "$base_dir/x.md" | env -u HATS_STATE_HOME HOME="$work" python3 -I "$HOOK" allow | decision_of)"
-same "allow: относительный HATS_STATE_HOME — прежняя папка" "$allowed" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME=relative python3 -I "$HOOK" allow | decision_of)"
-same "allow: HATS_STATE_HOME с ~ — прежняя папка" "$allowed" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME="~/xstate" python3 -I "$HOOK" allow | decision_of)"
+same "allow: относительный HATS_STATE_HOME — корня нет, молчание" "" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME=relative python3 -I "$HOOK" allow 2>&1)"
+same "allow: HATS_STATE_HOME с ~ — корня нет, молчание" "" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME="~/xstate" python3 -I "$HOOK" allow 2>&1)"
 hooks_allow=$(python3 -I -c 'import json,sys
 d = json.load(open(sys.argv[1]))
 print([(e.get("matcher"), h["command"], h.get("timeout")) for e in d["hooks"].get("PreToolUse", []) for h in e["hooks"]])' "$plugin_root/hooks/hooks.json" 2>&1)

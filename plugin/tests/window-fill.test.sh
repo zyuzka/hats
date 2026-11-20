@@ -524,7 +524,12 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
-hook.record_hook_failure({"hook_event_name": "x"}, RuntimeError("t"))
+hook.record_hook_failure(
+    hook.FOLDER,
+    "window-fill.py",
+    {"hook_event_name": "x"},
+    RuntimeError("t"),
+)
 print("ok")' "$HOOK" 2>&1)
 if [ "$got" = ok ] && [ -z "$(ls -A "$work/elsewhere-f")" ]; then ok; else bad "папка — ссылка: журнал ошибок сквозь неё не пишется" "$got $(ls -A "$work/elsewhere-f")"; fi
 rm -f "$folder"; rm -rf "$root"
@@ -533,7 +538,12 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
-hook.record_hook_failure({}, RuntimeError("t"))
+hook.record_hook_failure(
+    hook.FOLDER,
+    "window-fill.py",
+    {},
+    RuntimeError("t"),
+)
 print("ok")' "$HOOK" 2>&1)
 if [ "$got" = ok ] && [ ! -e "$root" ]; then ok; else bad "корня нет: журнал ошибок не пишется, корень не создан" "$got"; fi
 
@@ -587,6 +597,93 @@ else bad "HATS_STATE_HOME нет на диске — ничего не созд�
 if [ -z "$(find "$(dirname "$HOOK")/__pycache__" -name '*.pyc' 2>/dev/null)" ]; then ok
 else bad "байт-код соседей хука не пишется в плагин" "$(ls "$(dirname "$HOOK")/__pycache__")"; fi
 
+# --- одно правило корня на четырёх скриптах: window-fill.py, stop-snapshot.py, handoff.py (get_state_root
+# в hats_common.py) и window.py плагина Codex (своя копия, hats_codex.get_hats_root). Абсолютный —
+# в нём; пустой или не задан — ~/Library/Application Support/Hats; любой другой — корня нет, ничего не пишется
+CODEX_WINDOW="$plugin_root/../codex-plugin/scripts/window.py"
+rr="$work/rr"
+rr_hats="$rr/home/Library/Application Support/Hats"
+CODEX_COUNT='{"timestamp":"t","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":'
+CODEX_COUNT+='{"input_tokens":190000,"cached_input_tokens":0,"output_tokens":7,"total_tokens":190000},'
+CODEX_COUNT+='"model_context_window":475000},"rate_limits":null}}\n'
+rr_run() {  # rr_run <скрипт> <HATS_STATE_HOME | -unset> — запуск из $rr/run с HOME=$rr/home; вывод — в $rr/out
+  local script=$1 value=$2 set_root=()
+  if [ "$value" = -unset ]; then set_root=(-u HATS_STATE_HOME); else set_root=(HATS_STATE_HOME="$value"); fi
+  case $script in
+    window-fill) printf '%s' "$(input UserPromptSubmit)" | (cd "$rr/run" && env "${set_root[@]}" HOME="$rr/home" python3 -I "$HOOK") ;;
+    stop-snapshot) printf '{"session_id":"s1","background_tasks":[],"session_crons":[]}' |
+      (cd "$rr/run" && env -u STOP_SNAPSHOT_TEST "${set_root[@]}" HOME="$rr/home" python3 -I "$plugin_root/scripts/stop-snapshot.py") ;;
+    handoff) (cd "$rr/run" && env "${set_root[@]}" HOME="$rr/home" python3 -I "$plugin_root/scripts/handoff.py" where --cwd "$rr/run") ;;
+    codex) printf '{"session_id":"%s","transcript_path":"%s","cwd":"/w","hook_event_name":"UserPromptSubmit"}' "$sid" "$rr/codex.jsonl" |
+      (cd "$rr/run" && env "${set_root[@]}" HOME="$rr/home" TMPDIR="$rr/tmp" python3 -I "$CODEX_WINDOW") ;;
+  esac >"$rr/out" 2>&1
+}
+rr_made() {  # rr_made <скрипт> <корень> — файл, который скрипт оставляет в корне
+  case $1 in
+    window-fill) printf '%s' "$2/session-windows/$sid.json" ;;
+    stop-snapshot) printf '%s' "$2/stop-snapshots/s1.json" ;;
+    handoff) printf '%s' "$(find "$2/notes" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)" ;;
+    codex) printf '%s' "$2/codex-windows/$sid.json" ;;
+  esac
+}
+rr_listing() { find "$@" -mindepth 1 2>/dev/null | sort; }  # rr_listing <папка...>
+root_rule() {  # root_rule <HATS_STATE_HOME | -unset | -abs> <ждём: abs | default | none>
+  local value=$1 want=$2 script made extra value_now others before
+  for script in window-fill stop-snapshot handoff codex; do
+    rm -rf "$rr"; mkdir -p "$rr/run/rel" "$rr/run/x" "$rr/run/~/x" "$rr_hats" "$rr/abs" "$rr/tmp"
+    ans m1 2 1035 448622 >"$tr"; printf "$CODEX_COUNT" >"$rr/codex.jsonl"
+    if [ "$value" = -abs ]; then value_now="$rr/abs"; else value_now=$value; fi
+    case $want in
+      abs) made="$rr/abs"; others=("$rr/run" "$rr_hats") ;;
+      default) made=$rr_hats; others=("$rr/run" "$rr/abs") ;;
+      none) made=""; others=("$rr/run" "$rr/abs" "$rr_hats") ;;
+    esac
+    before=$(rr_listing "${others[@]}")
+    rr_run "$script" "$value_now"
+    extra=$(diff <(printf '%s\n' "$before") <(rr_listing "${others[@]}"))
+    if [ -n "$made" ]; then made=$(rr_made "$script" "$made"); else made="$rr"; fi
+    if [ -n "$made" ] && [ -e "$made" ] && [ -z "$extra" ] && ! grep -q Traceback "$rr/out"; then ok
+    else bad "правило корня: $script, HATS_STATE_HOME «${value}» — ${want}" \
+      "made=$made extra=${extra:0:300} out=$(head -c 300 "$rr/out")"; fi
+  done
+}
+root_rule -abs abs
+root_rule -unset default
+root_rule "" default
+root_rule rel none
+root_rule ./x none
+root_rule "~/x" none
+rm -rf "$rr"; mkdir -p "$rr/run" "$rr_hats"
+rr_run handoff rel
+if [ "$(cat "$rr/out")" = "handoff: HATS_STATE_HOME='rel' is not an absolute path, so there is no notes folder" ]; then ok
+else bad "правило корня: handoff.py where без корня — одна строка" "$(head -c 300 "$rr/out")"; fi
+where=$(cd "$rr/run" && env HATS_STATE_HOME=rel python3 -I "$HOOK" where 2>&1); rc=$?
+if [ $rc -eq 1 ] && [ "$where" = "window-fill: HATS_STATE_HOME is not an absolute path — no folder" ]; then ok
+else bad "правило корня: window-fill.py where без корня — одна строка, код 1" "rc=$rc $where"; fi
+got=$(env HATS_STATE_HOME=rel HOME="$rr/home" python3 -I -c 'import importlib.util, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
+hook = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(hook)
+hook.record_hook_failure(
+    hook.FOLDER,
+    "window-fill.py",
+    {},
+    RuntimeError("t"),
+)
+print("ok")' "$HOOK" 2>&1)
+if [ "$got" = ok ] && [ -z "$(find "$rr_hats" -mindepth 1)" ]; then ok
+else bad "правило корня: журнал ошибок без корня не пишется" "$got $(find "$rr_hats" -mindepth 1 | head -3)"; fi
+
+# --- get_field: строка обрезается до 80 знаков, не строка — null
+fields=$(python3 -I -B -c 'import sys
+sys.path.insert(0, sys.argv[1])
+import hats_common
+print(len(hats_common.get_field("я" * 81)), hats_common.get_field("x" * 80) == "x" * 80, hats_common.get_field("ab"))
+print(*(hats_common.get_field(value) for value in (None, 7, ["a"], b"ab")))' "$plugin_root/scripts" 2>&1)
+if [ "$fields" = "80 True ab
+None None None None" ]; then ok; else bad "get_field: до 80 знаков, не строка — None" "$fields"; fi
+
 # --- уборка ---
 ago() { python3 -I -c 'import sys, time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - float(sys.argv[1]))))' "$1"; }
 litter() {  # litter — файлы для уборки с нужным возрастом
@@ -594,6 +691,8 @@ litter() {  # litter — файлы для уборки с нужным возр
     printf '{}' >"$folder/$name"
   done
   mkdir -p "$folder/old-dir.json"
+  printf 'keep' >"$work/link-target"; ln -sf "$work/link-target" "$folder/old-link.json"
+  touch -h -t "$(ago $((31 * 86400)))" "$folder/old-link.json"
   touch -t "$(ago $((31 * 86400)))" "$folder/old-1.json" "$folder/notes.txt" "$folder/.lock" "$folder/old-dir.json"
   touch -t "$(ago $((29 * 86400)))" "$folder/fresh-1.json"
   touch -t "$(ago 660)" "$folder/.tmp-oldone.json" "$folder/.tmp-old.txt"
@@ -602,8 +701,8 @@ litter() {  # litter — файлы для уборки с нужным возр
 swept_ok() {  # swept_ok <событие>
   if [ ! -e "$folder/old-1.json" ] && [ ! -e "$folder/.tmp-oldone.json" ]; then ok
   else bad "уборка на $1: файл старше 30 дней и временный старше 10 минут удалены" "$(ls -a "$folder")"; fi
-  for kept in fresh-1.json notes.txt .lock old-dir.json .tmp-newone.json .tmp-old.txt; do
-    if [ -e "$folder/$kept" ]; then ok; else bad "уборка на $1: $kept остаётся" "$(ls -a "$folder")"; fi
+  for kept in fresh-1.json notes.txt .lock old-dir.json old-link.json .tmp-newone.json .tmp-old.txt; do
+    if [ -e "$folder/$kept" ] || [ -L "$folder/$kept" ]; then ok; else bad "уборка на $1: $kept остаётся" "$(ls -a "$folder")"; fi
   done
 }
 reset; ans m1 2 1035 448622 >"$tr"; mkdir -p "$folder"; litter

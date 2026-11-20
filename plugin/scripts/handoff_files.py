@@ -5,6 +5,7 @@ import json
 import os
 import stat
 
+NOT_REGULAR = "is not a regular file"
 
 try:
     import fcntl
@@ -98,7 +99,7 @@ def try_lock(fd):
 
 def get_regular_bytes(fd, limit):
     if not stat.S_ISREG(os.fstat(fd).st_mode):
-        return None, "is not a regular file"
+        return None, NOT_REGULAR
     data = b""
     while len(data) <= limit:
         chunk = os.read(fd, limit + 1 - len(data))

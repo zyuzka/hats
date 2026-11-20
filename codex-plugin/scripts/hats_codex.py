@@ -1,8 +1,12 @@
 """Shared parts of the Codex hooks of Hats: folders, thresholds, the note path, files written whole, the journal.
 
-The Hats folder is $HATS_STATE_HOME when it is set and not empty, else ~/Library/Application Support/Hats —
-the folder Hats calls StateDirectory.url. The hooks never create it: where Hats never ran there is no Hats
-folder, and the hooks still work with the thresholds 60 and 70, but write no window file for Hats.
+The Hats folder is $HATS_STATE_HOME when it is an absolute path without a null byte, as written (no ~ is
+expanded), ~/Library/Application Support/Hats when it is empty or not set — the folder Hats calls
+StateDirectory.url — and none at all for any other value, a relative path included. This is the rule of
+get_state_root in the Claude plugin's hats_common.py; the Codex plugin has its own folder, so this module
+holds its own copy, and window-fill.test.sh checks both copies against one table. The hooks never create
+the Hats folder: where Hats never ran, or where there is none, the hooks still work with the thresholds 60
+and 70, but write no window file for Hats and no journal line into it.
 
 The notes folder is $TMPDIR/hats-codex-notes (/tmp when TMPDIR is not set): a folder the Codex sandbox may
 write to by default, so the model can write the note with its shell tool. Per session it holds the note,
@@ -38,15 +42,17 @@ SAVE_RANGE = range(11, 96)
 
 
 def get_hats_root():
-    override = os.environ.get("HATS_STATE_HOME", "")
-    if override:
-        return override
-    return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Hats")
+    custom = os.environ.get("HATS_STATE_HOME", "")
+    if not custom:
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support", "Hats")
+    if "\x00" in custom or not os.path.isabs(custom):
+        return None
+    return custom
 
 
 def get_existing_hats_root():
     root = get_hats_root()
-    return root if os.path.isdir(root) else None
+    return root if root is not None and os.path.isdir(root) else None
 
 
 def get_notes_folder():
@@ -116,7 +122,10 @@ def get_thresholds():
     origin is "default" without the file, "file" when it was used, and "unreadable: <what>" when it was not:
     the caller records that reason, so a fall back to 60 and 70 is never silent.
     """
-    path = os.path.join(get_hats_root(), THRESHOLDS_FILE)
+    root = get_hats_root()
+    if root is None:
+        return DEFAULT_WARN, DEFAULT_SAVE, "default"
+    path = os.path.join(root, THRESHOLDS_FILE)
     if not os.path.lexists(path):
         return DEFAULT_WARN, DEFAULT_SAVE, "default"
     data = read_json(path, THRESHOLDS_LIMIT)

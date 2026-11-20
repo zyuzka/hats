@@ -215,7 +215,12 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
-hook.record_hook_failure({"hook_event_name": "x"}, RuntimeError("t"))
+hook.record_hook_failure(
+    hook.FOLDER,
+    "stop-snapshot.py",
+    {"hook_event_name": "x"},
+    RuntimeError("t"),
+)
 print("ok")' "$HOOK" 2>&1)
 if [ "$got" = ok ] && [ -z "$(ls -A "$work/elsewhere-f")" ]; then ok; else bad "папка — ссылка: журнал ошибок сквозь неё не пишется" "$got $(ls -A "$work/elsewhere-f")"; fi
 rm -f "$folder"; rm -rf "$root"
@@ -224,7 +229,12 @@ sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
 hook = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hook)
-hook.record_hook_failure({}, RuntimeError("t"))
+hook.record_hook_failure(
+    hook.FOLDER,
+    "stop-snapshot.py",
+    {},
+    RuntimeError("t"),
+)
 print("ok")' "$HOOK" 2>&1)
 if [ "$got" = ok ] && [ ! -e "$root" ]; then ok; else bad "корня нет: журнал ошибок не пишется, корень не создан" "$got"; fi
 
