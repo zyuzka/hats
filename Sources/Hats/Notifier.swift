@@ -1,7 +1,38 @@
 import Foundation
 import UserNotifications
 
+final class NotifierListener: NSObject, UNUserNotificationCenterDelegate {
+    var openSettings: (() -> Void)?
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler(Notifier.getPresentation(notification.request.content.userInfo))
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let isClickOnOurs = Notifier.isClickOpeningSettings(
+            response.actionIdentifier,
+            response.notification.request.content.userInfo
+        )
+        if isClickOnOurs {
+            DispatchQueue.main.async { [weak self] in self?.openSettings?() }
+        }
+        completionHandler()
+    }
+}
+
 enum Notifier {
+    static let opensSettingsKey = "dev.tmk.hats.opensSettings"
+    static let showsInFrontKey = "dev.tmk.hats.showsInFront"
+    private static let listener = NotifierListener()
+
     private static var centre: UNUserNotificationCenter? {
         guard Bundle.main.bundleIdentifier != nil else { return nil }
         return UNUserNotificationCenter.current()
@@ -17,14 +48,68 @@ enum Notifier {
         }
     }
 
+    static func listen(openingSettings: @escaping () -> Void) {
+        guard let centre else { return }
+        listener.openSettings = openingSettings
+        centre.delegate = listener
+    }
+
+    static func isOpeningSettings(_ userInfo: [AnyHashable: Any]) -> Bool {
+        userInfo[opensSettingsKey] as? Bool == true
+    }
+
+    static func isShownInFront(_ userInfo: [AnyHashable: Any]) -> Bool {
+        isOpeningSettings(userInfo) || userInfo[showsInFrontKey] as? Bool == true
+    }
+
+    static func isClickOpeningSettings(_ action: String, _ userInfo: [AnyHashable: Any]) -> Bool {
+        action == UNNotificationDefaultActionIdentifier && isOpeningSettings(userInfo)
+    }
+
+    static func getPresentation(_ userInfo: [AnyHashable: Any]) -> UNNotificationPresentationOptions {
+        isShownInFront(userInfo)
+            ? [
+                .banner,
+                .list,
+            ]
+            : []
+    }
+
     static func post(title: String, body: String) {
-        guard let centre else {
-            Journal.log("notify.skipped", ["reason": "no bundle", "title": title])
-            return
-        }
+        deliver(createContent(title: title, body: body))
+    }
+
+    static func postOpeningSettings(title: String, body: String) {
+        deliver(createContentOpeningSettings(title: title, body: body))
+    }
+
+    static func createContent(title: String, body: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+
+        return content
+    }
+
+    static func createContentOpeningSettings(title: String, body: String) -> UNMutableNotificationContent {
+        let content = createContent(title: title, body: body)
+        content.userInfo = [opensSettingsKey: true]
+
+        return content
+    }
+
+    static func createContentShownInFront(title: String, body: String) -> UNMutableNotificationContent {
+        let content = createContent(title: title, body: body)
+        content.userInfo = [showsInFrontKey: true]
+
+        return content
+    }
+
+    static func deliver(_ content: UNMutableNotificationContent) {
+        guard let centre else {
+            Journal.log("notify.skipped", ["reason": "no bundle", "title": content.title])
+            return
+        }
         let request = UNNotificationRequest(
             identifier: UUID().uuidString,
             content: content,

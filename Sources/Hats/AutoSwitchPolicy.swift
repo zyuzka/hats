@@ -13,6 +13,7 @@ enum UsageLimit: String, Codable, Equatable {
 }
 
 struct AutoSwitchPolicy: Codable, Equatable {
+    static let thresholdRange = 50...100
     var isOn = false
     var sessionThresholdPercent: Int? = 90
     var weeklyThresholdPercent: Int? = 95
@@ -151,7 +152,7 @@ extension AutoSwitchPolicy {
             after: wearing,
             among: eligible,
             readings: readings,
-            fresh: blindness.fresh,
+            blindness: blindness,
             at: now
         ) else { return .hold }
 

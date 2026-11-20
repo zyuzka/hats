@@ -23,7 +23,9 @@ extension AutoSwitchWatch {
     static func fetched(_ hats: Hats, world: UsageWorld) -> Batch {
         var batch = Batch()
         for hat in hats.filter(\.isWearing) + hats.filter({ !$0.isWearing }) {
-            guard let service = hat.isWearing ? world.liveSlot() : Slot.parked(hat.id) else {
+            let slot = hat.isWearing ? world.liveSlot() : Slot.parked(hat.id)
+            if hat.isWearing { batch.liveSlot = slot }
+            guard let service = slot else {
                 batch.troubles[hat.id] = .liveSlotUnknown
                 continue
             }

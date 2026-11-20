@@ -68,16 +68,15 @@ final class GatewaySettleTests: XCTestCase {
     }
 
     func testTypedTextBecomesAValueOnlyWhenItIsUsableAndDifferent() {
-        let usable = AppSettings.isAUsableSettle
-        XCTAssertEqual(TypedNumber.applicable("7", current: 35, isUsable: usable), 7)
-        XCTAssertEqual(TypedNumber.applicable("  7 ", current: 35, isUsable: usable), 7,
-                       "a field people type into carries whitespace")
-        XCTAssertNil(TypedNumber.applicable("35", current: 35, isUsable: usable), "unchanged is nothing to apply")
-        XCTAssertNil(TypedNumber.applicable("601", current: 35, isUsable: usable))
-        XCTAssertNil(TypedNumber.applicable("-1", current: 35, isUsable: usable))
-        XCTAssertNil(TypedNumber.applicable("", current: 35, isUsable: usable))
-        XCTAssertNil(TypedNumber.applicable("abc", current: 35, isUsable: usable))
-        XCTAssertEqual(TypedNumber.applicable("9000", current: 8787, isUsable: AppSettings.isAUsablePort), 9000,
+        let settle = { TypedNumber.getRangeDecision($0, current: 35, range: AppSettings.settleRange) }
+        XCTAssertEqual(settle("7"), .apply(7))
+        XCTAssertEqual(settle("  7 "), .apply(7), "a field people type into carries whitespace")
+        XCTAssertEqual(settle("35"), .silent, "unchanged is nothing to apply")
+        XCTAssertEqual(settle("601"), .refuse(.aboveUpper))
+        XCTAssertEqual(settle("-1"), .refuse(.belowLower))
+        XCTAssertEqual(settle(""), .silent)
+        XCTAssertEqual(settle("abc"), .refuse(.notAWholeNumber))
+        XCTAssertEqual(TypedNumber.getRangeDecision("9000", current: 8787, range: AppSettings.portRange), .apply(9000),
                        "the port field asks the same question of a different range")
     }
 
@@ -112,10 +111,10 @@ final class GatewaySettleTests: XCTestCase {
         XCTAssertEqual(TypedNumber.typed("35"), 35)
         XCTAssertNil(TypedNumber.typed(""))
         XCTAssertNil(TypedNumber.typed("abc"))
-        XCTAssertEqual(TypedNumber.applicable("  7 ", current: 35, isUsable: AppSettings.isAUsableSettle),
-                       TypedNumber.typed("  7 "),
+        XCTAssertEqual(TypedNumber.getRangeDecision("  7 ", current: 35, range: AppSettings.settleRange),
+                       TypedNumber.typed("  7 ").map(PercentDecision.apply),
                        "both answer the same on whitespace. That they answer from ONE parse is held by "
-                           + "the source, not by this test: a second parse inside applicable would pass "
+                           + "the source, not by this test: a second parse inside the decision would pass "
                            + "here as long as it happened to agree")
     }
 

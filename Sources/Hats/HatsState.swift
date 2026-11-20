@@ -13,6 +13,7 @@ struct HatRowState: Identifiable, Equatable {
     let usageTrouble: UsageTrouble?
     let roseWhileParked: Int?
     let week: String?
+    let weekSpoken: String?
     let browser: String?
     let loginValidity: String?
     let loginAction: String
@@ -42,6 +43,15 @@ struct HatRowState: Identifiable, Equatable {
         self.roseWhileParked = roseWhileParked
         self.week = week.map {
             HatsCopy.weekLine(
+                percent: $0.window.percent,
+                resetsAt: $0.window.resetsAt,
+                isConfirmed: $0.isConfirmed,
+                timeZone: timeZone,
+                now: now
+            )
+        }
+        weekSpoken = week.map {
+            HatsCopy.getWeekSpoken(
                 percent: $0.window.percent,
                 resetsAt: $0.window.resetsAt,
                 isConfirmed: $0.isConfirmed,
@@ -83,6 +93,7 @@ struct HatsSnapshot: Equatable {
     var version: String = "dev"
     var canCheckForUpdates: Bool?
     var checksForUpdatesAutomatically: Bool?
+    var hasAnUpdateWaiting = false
     var changing: String?
     var startAtLogin = LoginItem.face(for: .notRegistered)
     var retiredPort: Int?
@@ -90,8 +101,20 @@ struct HatsSnapshot: Equatable {
     var everySession: [Session]?
     var reducesMotion = false
     var autoSwitchWarning: AutoSwitchWarning?
+    var sessionHandoff = SessionHandoffRow()
+    var contextRows: [ContextRow] = []
 
     var wearing: HatRowState? { rows.first(where: \.isWearing) }
+
+    var checkForUpdatesTitle: String {
+        hasAnUpdateWaiting ? "Install the waiting update\u{2026}" : "Check for Updates\u{2026}"
+    }
+
+    mutating func setUpdates(from updater: AppUpdater?) {
+        canCheckForUpdates = updater?.canCheckNow
+        checksForUpdatesAutomatically = updater?.checksAutomatically
+        hasAnUpdateWaiting = updater?.hasAnUpdateWaiting ?? false
+    }
 
     var menuBarTitle: String {
         guard settings.showsHatNameInTheMenuBar, let worn = wearing else { return "" }
@@ -161,6 +184,8 @@ protocol HatsActions: AnyObject {
     func copyVariables()
     func openLog()
     func updateAutoSwitch(_ policy: AutoSwitchPolicy)
+    func updateContextThresholds(_ thresholds: ContextThresholds)
+    func updateLimitThresholds(_ thresholds: LimitThresholds)
     func switchBack()
     func openSessions()
     func showSettings()
@@ -170,6 +195,9 @@ protocol HatsActions: AnyObject {
     func toggleStartAtLogin()
     func toggleHatNameInTheMenuBar()
     func toggleTheBlinkingCursor()
+    func installSessionHandoff()
+    func updateSessionHandoff()
+    func removeSessionHandoff()
     func quit()
 }
 

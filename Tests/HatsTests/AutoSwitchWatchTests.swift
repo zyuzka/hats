@@ -28,7 +28,7 @@ final class AutoSwitchWatchTests: XCTestCase {
     }
 
     private func watching(_ hats: AutoSwitchWatch.Hats) -> AutoSwitchWatch {
-        let watch = AutoSwitchWatch()
+        let watch = AutoSwitchWatch(wakes: NotificationCenter())
         watch.start(hats: { hats })
         return watch
     }
@@ -59,6 +59,46 @@ final class AutoSwitchWatchTests: XCTestCase {
         watch.landed(landing(["work": reading]), polled: hats, from: .timer)
         XCTAssertEqual(watch.missed.count, 0, "reading it again ends the episode")
         XCTAssertNotEqual(watch.readAt["work"], read)
+    }
+
+    func testAHatWhoseWeekWasEverReadIsRememberedUntilItLeaves() {
+        let week = UsageReading(session: nil, weekly: UsageWindow(used: 10, limit: 100, resetsAt: then))
+        let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let watch = watching(hats)
+        defer { watch.stop() }
+
+        watch.landed(landing(["work": reading, "personal": week]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.weeklyEverRead, ["personal"])
+
+        watch.landed(landing(["work": week, "personal": reading]), polled: hats, from: .timer)
+        XCTAssertEqual(watch.weeklyEverRead, ["work", "personal"],
+                       "an answer without the week does not make the hat one whose week was never read")
+
+        XCTAssertEqual(AutoSwitchWatch.getWeeklyEverRead(["work", "gone"], keeping: ["work"], batch: landing([:])),
+                       ["work"], "a hat no longer in the list is dropped")
+    }
+
+    func testTheWorldTheDecisionSeesCarriesWhatTheWatchRead() {
+        let week = UsageReading(session: nil, weekly: UsageWindow(used: 10, limit: 100, resetsAt: then))
+        let hats: AutoSwitchWatch.Hats = [("work", true), ("personal", false)]
+        let watch = watching(hats)
+        defer { watch.stop() }
+        watch.landed(landing(["work": reading, "personal": week]), polled: hats, from: .timer)
+        var snapshot = HatsSnapshot()
+        snapshot.rows = hats.map { hat in
+            HatRowState(hat: Account(id: hat.id, email: "\(hat.id)@x.co", browser: nil),
+                        isWearing: hat.isWearing, usage: nil, usageTrouble: nil)
+        }
+
+        let world = AutoSwitchWorld.of(snapshot: snapshot, watch: watch, from: .aPollLanded)
+
+        XCTAssertEqual(world.blindness.weeklyEverRead, ["personal"],
+                       "an empty set here keeps every other test green and switches blind onto a hat "
+                           + "whose week went missing")
+        XCTAssertEqual(world.blindness.fresh, ["work", "personal"])
+        XCTAssertEqual(world.readings, watch.readings)
+        XCTAssertEqual(world.blindness.missedPolls, watch.missed.count)
+        XCTAssertTrue(world.blindness.landedAPoll)
     }
 
     func testOnlyTimerPollsOfTheHatBeingWornAreCountedAsMissed() {

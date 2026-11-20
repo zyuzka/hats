@@ -94,7 +94,7 @@ enum AutoSwitchEngine {
             after: wearing,
             among: world.eligible,
             readings: world.readings,
-            fresh: world.blindness.fresh,
+            blindness: world.blindness,
             at: now
         ) == nil else { return nil }
 

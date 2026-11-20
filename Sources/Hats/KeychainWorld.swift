@@ -20,13 +20,23 @@ struct KeychainWorld {
         try? delete(Slot.legacyParked(id))
     }
 
-    func adoptLegacyParked(ids: [String]) {
-        for id in ids { adoptLegacyParked(id: id) }
+    func adoptLegacyParked(ids: [String], log: (String, [String: String]) -> Void) {
+        for id in ids { adoptLegacyParked(id: id, log: log) }
     }
 
-    func adoptLegacyParked(id: String) {
+    func adoptLegacyParked(id: String, log: (String, [String: String]) -> Void) {
         guard let payload = try? read(Slot.legacyParked(id)) else { return }
-        if (try? read(Slot.parked(id))) != nil {
+        let current: Data?
+        do {
+            current = try read(Slot.parked(id))
+        } catch {
+            log("hat.legacyAdoptionSkipped", [
+                "id": id,
+                "reason": error.localizedDescription,
+            ])
+            return
+        }
+        if current != nil {
             try? delete(Slot.legacyParked(id))
             return
         }

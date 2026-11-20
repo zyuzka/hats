@@ -7,16 +7,25 @@ final class UpdateInstallGateTests: XCTestCase {
     private var asked: [String] = []
     private var notices: [String] = []
     private var installs = 0
+    private var changes = 0
+    private var gate: UpdateInstallGate?
+    private var abortWhileAsking = false
+    private var abortBeforeAsking = false
 
     private func createGate() -> UpdateInstallGate {
         UpdateInstallGate(
             decideTheRestart: { [unowned self] in decision },
             confirm: { [unowned self] cost in
                 asked.append(cost)
+                if abortWhileAsking { gate?.forgetTheWaitingInstall() }
                 return answers.isEmpty ? false : answers.removeFirst()
             },
             notify: { [unowned self] title, _ in notices.append(title) },
-            beforeAsking: { ask in ask() }
+            beforeAsking: { [unowned self] ask in
+                if abortBeforeAsking { gate?.forgetTheWaitingInstall() }
+                ask()
+            },
+            waitingChanged: { [unowned self] in changes += 1 }
         )
     }
 
@@ -103,6 +112,64 @@ final class UpdateInstallGateTests: XCTestCase {
             1,
             "a handler from an ended session installs nothing, so it is not offered"
         )
+    }
+
+    func testASessionThatEndedWhileTheQuestionWasOpenIsNotKeptByLater() {
+        decision = .ask("1 live session")
+        abortWhileAsking = true
+        let gate = createGate()
+        self.gate = gate
+
+        _ = gate.shouldPostponeTheRestart(version: "0.4.1", install: install)
+
+        XCTAssertFalse(gate.hasAnInstallWaiting,
+                       "Sparkle ended the session while Hats asked; keeping its handler would offer a dead "
+                           + "install on every Check for Updates until Hats restarts")
+        XCTAssertEqual(asked.count, 1)
+    }
+
+    func testAnInstallAnsweredAfterTheSessionEndedRunsNothing() {
+        decision = .ask("1 live session")
+        abortWhileAsking = true
+        answers = [
+            true,
+        ]
+        let gate = createGate()
+        self.gate = gate
+
+        _ = gate.shouldPostponeTheRestart(version: "0.4.1", install: install)
+
+        XCTAssertEqual(installs, 0, "the handler belongs to a session that is gone")
+    }
+
+    func testLaterAndForgettingBothSayTheWaitingStateChanged() {
+        decision = .ask("1 live session")
+        let gate = createGate()
+        _ = gate.shouldPostponeTheRestart(version: "0.4.1", install: install)
+        XCTAssertEqual(changes, 1, "Later leaves an update waiting, so the button has to change its title")
+
+        gate.forgetTheWaitingInstall()
+        XCTAssertEqual(changes, 2)
+
+        gate.forgetTheWaitingInstall()
+
+        XCTAssertEqual(changes, 2, "forgetting when nothing waits changes nothing, so nothing is redrawn")
+    }
+
+    func testASessionThatEndedBeforeTheQuestionOpenedAsksNothing() {
+        decision = .ask("1 live session")
+        abortBeforeAsking = true
+        let gate = createGate()
+        self.gate = gate
+
+        let postponed = gate.shouldPostponeTheRestart(version: "0.4.1", install: install)
+
+        XCTAssertTrue(postponed)
+        XCTAssertTrue(asked.isEmpty,
+                      "Sparkle ended the session in the hop before the question; asking about a restart "
+                          + "for it would offer an install that cannot happen")
+        XCTAssertFalse(gate.hasAnInstallWaiting)
+        XCTAssertEqual(installs, 0)
     }
 
     func testTheSameVersionIsAnnouncedOnce() {

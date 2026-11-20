@@ -14,6 +14,7 @@ extension AppDelegate {
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
             self.settingsWindow.show(model: self.popover.model)
+            self.handoff.refresh(then: nil)
         }
     }
 
@@ -65,10 +66,7 @@ extension AppDelegate {
 
     func toggleAutomaticUpdateChecks() {
         guard let updater else { return }
-        updater.checksAutomatically.toggle()
-        Journal.log("update.automaticChecks", [
-            "enabled": String(updater.checksAutomatically),
-        ])
+        AppUpdates.toggleAutomaticChecks(of: updater) { Journal.log($0, $1) }
         redraw()
     }
 

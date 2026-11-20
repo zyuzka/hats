@@ -14,6 +14,9 @@ struct AppSettings: Codable, Equatable {
     var gatewaySettleSeconds = Int(GatewayRefusal.defaultSettle)
     var showsHatNameInTheMenuBar = true
     var blinksTheCursorInTheMenuBar = true
+    var pluginVersionToldAbout: String?
+    var contextThresholds = ContextThresholds()
+    var limitThresholds = LimitThresholds()
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -34,6 +37,11 @@ struct AppSettings: Codable, Equatable {
         showsHatNameInTheMenuBar = try c.decodeIfPresent(Bool.self, forKey: .showsHatNameInTheMenuBar) ?? true
         blinksTheCursorInTheMenuBar =
             try c.decodeIfPresent(Bool.self, forKey: .blinksTheCursorInTheMenuBar) ?? true
+        pluginVersionToldAbout = try c.decodeIfPresent(String.self, forKey: .pluginVersionToldAbout)
+        contextThresholds = (try? c.decodeIfPresent(ContextThresholds.self, forKey: .contextThresholds))
+            ?? ContextThresholds()
+        limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
+            ?? LimitThresholds()
     }
 
     static var defaultURL: URL {
@@ -60,12 +68,15 @@ struct AppSettings: Codable, Equatable {
         try encoder.encode(self).write(to: url, options: .atomic)
     }
 
+    static let portRange = 1024...65535
+    static let settleRange = 0...600
+
     static func isAUsablePort(_ port: Int) -> Bool {
-        (1024...65535).contains(port)
+        portRange.contains(port)
     }
 
     static func isAUsableSettle(_ seconds: Int) -> Bool {
-        (0...600).contains(seconds)
+        settleRange.contains(seconds)
     }
 
     static func isBelowTheDefaultSettle(_ seconds: Int) -> Bool {

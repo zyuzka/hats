@@ -39,7 +39,7 @@ final class TokenRenewalTests: XCTestCase {
         let body = Data(#"""
         {"access_token":"a-2","refresh_token":"r-2","expires_in":28800,
          "refresh_token_expires_in":2592000,"scope":"user:profile user:inference",
-         "account":{"uuid":"u-1","email_address":"filip@example.com"}}
+         "account":{"uuid":"u-1","email_address":"work@example.com"}}
         """#.utf8)
         guard case .renewed(let login) = TokenRenewal.outcome(
             status: 200, body: body, keeping: "r-1", at: now
@@ -49,7 +49,7 @@ final class TokenRenewalTests: XCTestCase {
         XCTAssertEqual(login.expiresAt, now.addingTimeInterval(28800))
         XCTAssertEqual(login.refreshExpiresAt, now.addingTimeInterval(2_592_000))
         XCTAssertEqual(login.scopes, ["user:profile", "user:inference"])
-        XCTAssertEqual(login.account, "filip@example.com",
+        XCTAssertEqual(login.account, "work@example.com",
                        "the answer names the account, so the journal can say whose login was renewed "
                            + "without a second request")
     }

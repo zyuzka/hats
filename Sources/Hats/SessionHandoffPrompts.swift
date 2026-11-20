@@ -1,0 +1,86 @@
+import Foundation
+
+enum SessionHandoffPrompts {
+    static func createInstall(_ plan: SessionHandoffPlan) -> HatPrompt {
+        let from = plan.folder.map { "the folder \($0)" } ?? "github.com/\(SessionHandoffProvenance.repository)"
+        let pythonNote = plan.python.isFromTheLoginShell
+            ? " — found the way a new login shell finds it, so a session started another way may find another one"
+            : ""
+        let command: String = plan.arguments.joined(separator: " ")
+        let parts: [String] = [
+            "Hats will run, with the Claude Code at \(plan.target.cli):\nclaude ",
+            command,
+            "\n\n",
+            "It installs the Claude Code plugin \(SessionHandoffProvenance.pluginID) from \(from) for your ",
+            "user, recorded in the settings folder \(plan.target.configFolder). The plugin adds the anchor ",
+            "command (/hats:anchor), which saves a resume note, and hooks that hand that note to the next ",
+            "session in the same folder. With Claude Code's memory on, the notes go into the project's memory ",
+            "folder, beside a resume-index.md and a line at the top of MEMORY.md.\n\n",
+            "It runs python3 from \(plan.python.path)\(pythonNote). New sessions load it; running ones after ",
+            "/reload-plugins. You can remove it here at any time.",
+        ]
+        let text = parts.joined()
+
+        return HatPrompt(
+            title: "Install the session handoff plugin?",
+            text: text,
+            buttons: [
+                "Install",
+                "Cancel",
+            ]
+        )
+    }
+
+    static func createUpdate(_ plan: SessionHandoffUpdatePlan) -> HatPrompt {
+        let commands = [
+            SessionHandoffUpdateSteps.refreshArguments,
+            SessionHandoffUpdateSteps.updateArguments,
+        ]
+        let lines: String = commands.map { "claude " + $0.joined(separator: " ") }.joined(separator: "\n")
+        let parts: [String] = [
+            "Hats will run, with the Claude Code at \(plan.target.cli):\n",
+            lines,
+            "\n\n",
+            "The first refreshes Claude Code's copy of the hats marketplace from ",
+            "github.com/\(SessionHandoffProvenance.repository). The second updates your user installation of ",
+            "\(SessionHandoffProvenance.pluginID), recorded in the settings folder \(plan.target.configFolder), ",
+            "from version \(plan.installed) to the version GitHub offers now; this Hats comes with \(plan.own).\n\n",
+            "Your resume notes, your own steps, your hooks and your settings stay. Installations for a project are ",
+            "not touched, and a plugin switched off in Claude Code stays switched off. ",
+            SessionHandoffUpdateCopy.reloadNote,
+        ]
+        let text = parts.joined()
+
+        return HatPrompt(
+            title: "Update the session handoff plugin?",
+            text: text,
+            buttons: [
+                "Update",
+                "Cancel",
+            ]
+        )
+    }
+
+    static func createRemove(folder: String) -> HatPrompt {
+        let command: String = SessionHandoffSteps.removeArguments.joined(separator: " ")
+        let parts: [String] = [
+            "Hats will run:\nclaude ",
+            command,
+            "\n\n",
+            "It removes only your user installation of \(SessionHandoffProvenance.pluginID), recorded in the ",
+            "settings folder \(folder). The hats ",
+            "marketplace stays, and so do your resume notes, your own steps, your hooks and your settings. ",
+            "Installations for a project are not touched.",
+        ]
+        let text = parts.joined()
+
+        return HatPrompt(
+            title: "Remove the session handoff plugin?",
+            text: text,
+            buttons: [
+                "Remove",
+                "Cancel",
+            ]
+        )
+    }
+}

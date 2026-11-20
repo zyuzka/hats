@@ -24,11 +24,47 @@ final class RenewalBackoffTests: XCTestCase {
         var backoff = RenewalBackoff()
         backoff.failed("work", at: now, pollingEvery: interval)
 
-        XCTAssertFalse(backoff.allows("work", at: now.addingTimeInterval(interval - 1)))
-        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval)),
-                      "the deadline itself is allowed, so a poll landing exactly on it is not "
-                          + "pushed to the one after")
+        XCTAssertFalse(backoff.allows("work", at: now.addingTimeInterval(interval / 2)))
+        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval - 1)),
+                      "the failure is stamped when the poll lands and the next poll starts one interval "
+                          + "after the last one started, so it comes a second early - measured 2026-11-15, "
+                          + "09:34:13 against a hold until 09:34:14, and the retry waited a second poll")
+        XCTAssertTrue(backoff.allows("work", at: now.addingTimeInterval(interval)))
         XCTAssertTrue(backoff.allows("other", at: now), "and it holds one hat, not every hat")
+    }
+
+    func testASlowPollStampsItsFailureAtTheMomentItStarted() {
+        let hats: AutoSwitchWatch.Hats = [("personal", false)]
+        let slots = FakeSlots([Slot.parked("personal"): credential(expiresAt: 4_000_000_000_000)])
+        let answered = DispatchSemaphore(value: 0)
+        let watch = AutoSwitchWatch(wakes: NotificationCenter())
+        watch.interval = 10
+        watch.makeWorld = { _ in
+            var world = slots.world(now: Date(), liveSlot: nil)
+            world.usage = { _ in
+                answered.wait()
+                return .refused(401)
+            }
+            return world
+        }
+        let landed = expectation(description: "the slow poll landed")
+        watch.onReadings = { _ in landed.fulfill() }
+        watch.start(hats: { hats })
+        defer { watch.stop() }
+        let started = Date()
+
+        watch.poll(hats)
+        let slow = expectation(description: "the answer takes half a second")
+        slow.isInverted = true
+        wait(for: [slow], timeout: 0.5)
+        answered.signal()
+        wait(for: [landed], timeout: 1.0)
+
+        XCTAssertTrue(watch.backoff.allows("personal", at: started.addingTimeInterval(9.2)),
+                      "the next poll starts one interval after this one started, not after it landed; "
+                          + "a hold stamped at the landing outlasts the early tenth on any poll slower "
+                          + "than a tenth of the interval")
+        XCTAssertFalse(watch.backoff.allows("personal", at: started.addingTimeInterval(5)))
     }
 
     func testConsecutiveFailuresStretchTheWait() {

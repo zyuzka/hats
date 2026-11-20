@@ -122,6 +122,43 @@ final class AutoSwitchEngineTests: XCTestCase {
         XCTAssertEqual(silent.wearsHat, "personal")
     }
 
+    func testABlindSwitchSkipsATargetWhoseWeekWasReadBeforeAndIsMissingNow() {
+        let sessionOnly = ["work": reading(89), "personal": reading(0), "team": reading(0)]
+        var weekRead = blind(2, fresh: ["personal", "team"])
+        weekRead.weeklyEverRead = ["personal"]
+
+        XCTAssertEqual(outcome(armed, readings: sessionOnly, blindness: weekRead).wearsHat, "team",
+                       "personal's week was read before and is missing from this answer, so its room "
+                           + "is unknown; team's week was never read, so it is chosen by its 5h alone")
+        XCTAssertEqual(outcome(armed, readings: sessionOnly, blindness: blind(2, fresh: ["personal"])).wearsHat,
+                       "personal",
+                       "a week never read for the hat does not shut the blind switch: a server that "
+                           + "stops sending seven_day must not switch it off for every hat")
+
+        var noWeeklyThreshold = armed
+        noWeeklyThreshold.weeklyThresholdPercent = nil
+        XCTAssertEqual(outcome(noWeeklyThreshold, readings: sessionOnly, blindness: weekRead).wearsHat, "personal",
+                       "with no weekly threshold set the week is not asked for")
+
+        var withWeek = sessionOnly
+        withWeek["personal"] = UsageReading(
+            session: UsageWindow(used: 0, limit: 100, resetsAt: resetsAt),
+            weekly: UsageWindow(used: 10, limit: 100, resetsAt: resetsAt)
+        )
+        XCTAssertEqual(outcome(armed, readings: withWeek, blindness: weekRead).wearsHat, "personal",
+                       "a fresh week with room lets the hat be chosen again")
+        XCTAssertEqual(
+            AutoSwitchEngine.reasonForHolding(
+                policy: armed,
+                world: AutoSwitchWorld(readings: ["work": reading(89), "personal": reading(0)], wearing: "work",
+                                       eligible: ["work", "personal"], onVacation: [], blindness: weekRead),
+                at: now
+            ),
+            .blindTargetSpent,
+            "and the reason given for holding agrees with the decision"
+        )
+    }
+
     func testHoldingNeverProducesANotice() {
         let held = outcome(armed, readings: ["work": reading(10)])
         XCTAssertNil(AutoSwitchEngine.notice(for: held) { $0 })
@@ -274,7 +311,8 @@ final class AutoSwitchEngineTests: XCTestCase {
 
         let readings = ["work": reading(89), "personal": reading(0)]
         let polled = AutoSwitchWorld.of(snapshot: snapshot, readings: readings,
-                                        missed: missed, fresh: ["personal"], from: .aPollLanded)
+                                        missed: missed, fresh: ["personal"], weeklyEverRead: ["team"],
+                                        from: .aPollLanded)
         XCTAssertEqual(polled.readings, readings,
                        "every reading reaches the decision, not only the worn hat's - the target "
                            + "is chosen from them")
@@ -302,7 +340,7 @@ final class AutoSwitchEngineTests: XCTestCase {
                                  loginAction: "Log in…")],
             onVacation: [HatOnVacation(id: "spare", title: "Spare")],
             blindness: UsageBlindness(missedPolls: 2, hasReadTheWornHatSinceItWentOn: true,
-                                      fresh: ["personal"], landedAPoll: true)
+                                      fresh: ["personal"], landedAPoll: true, weeklyEverRead: ["team"])
         ),
                        "the WHOLE world is compared, field by field, because this adapter is the "
                            + "only door everything takes into the decision and it has now dropped "
@@ -317,7 +355,8 @@ final class AutoSwitchEngineTests: XCTestCase {
 
         for quiet in [AutoSwitchCall.thePopoverOpened, .theToggleChanged] {
             let world = AutoSwitchWorld.of(snapshot: snapshot, readings: ["work": reading(89)],
-                                           missed: missed, fresh: ["personal"], from: quiet)
+                                           missed: missed, fresh: ["personal"], weeklyEverRead: [],
+                                           from: quiet)
             XCTAssertFalse(world.blindness.landedAPoll, "\(quiet) is not a poll landing")
             XCTAssertFalse(world.blindness.isBlindEnoughToSwitch,
                            "the count was collected by the polling, which runs whether the switch "

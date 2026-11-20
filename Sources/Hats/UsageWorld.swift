@@ -10,11 +10,11 @@ struct UsageWorld {
     var log: (String, [String: String]) -> Void
     var mayRenew: (String) -> Bool = { _ in true }
 
-    static func real(osAccount: String) -> UsageWorld {
+    static func real(keychain: KeychainWorld) -> UsageWorld {
         UsageWorld(
-            liveSlot: { (try? CLIState.configurationRemembered())?.credentialService },
-            read: { try Keychain.read(service: $0, account: osAccount) },
-            write: { try Keychain.write(service: $0, account: osAccount, data: $1) },
+            liveSlot: { (try? CLIState.configurationRemembered(world: .real))?.credentialService },
+            read: keychain.read,
+            write: keychain.write,
             renew: { TokenRenewal.renew(refreshToken: $0, scopes: $1) },
             usage: { UsageFetcher.fetch(token: $0) },
             now: Date.init,

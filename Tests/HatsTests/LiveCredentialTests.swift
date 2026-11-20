@@ -52,7 +52,7 @@ final class LiveCredentialTests: XCTestCase {
     }
 
     func testEveryLandedPollReplacesTheKeyItRemembered() {
-        let watch = AutoSwitchWatch()
+        let watch = AutoSwitchWatch(wakes: NotificationCenter())
         watch.start(hats: { [hats] in hats })
         defer { watch.stop() }
         var read = UsagePollBatch()
@@ -75,7 +75,7 @@ final class LiveCredentialTests: XCTestCase {
     }
 
     func testAPollThatLandsAfterTheWatchStoppedRemembersNothing() {
-        let watch = AutoSwitchWatch()
+        let watch = AutoSwitchWatch(wakes: NotificationCenter())
         watch.start(hats: { [hats] in hats })
         watch.stop()
         var read = UsagePollBatch()

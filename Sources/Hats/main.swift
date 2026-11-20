@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let sessions = LiveSessionsWindow()
     let releases = ReleasesWindow()
     let settingsWindow = SettingsWindow()
-    let usage = AutoSwitchWatch()
+    let usage = AutoSwitchWatch(wakes: NSWorkspace.shared.notificationCenter)
     lazy var login = LoginFlow(store: store)
 
     var statusItem: NSStatusItem!
@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var settings = AppSettings.loaded()
     var weekly = WeeklyRecord()
     var lastWeeklyFailure = NoteOnChange()
+    var hatUsage = HatUsageFile()
+    var lastHatUsageFailure = NoteOnChange()
+    let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
+    let contextChannel = ContextThresholdsChannel(launchedAt: Date())
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
@@ -26,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var changing: String?
     var lookAtTheProcessTable: [Session]??
     var updater: AppUpdater?
+    let handoffWork = SessionHandoffWork(world: .real)
+    lazy var handoff = SessionHandoffFlow(
+        own: SessionHandoffProvenance.bundledVersion,
+        perform: { [handoffWork] work in handoffWork.perform(work) },
+        onMain: { DispatchQueue.main.async(execute: $0) },
+        ask: { PromptWindow.ask($0) == 0 },
+        inform: { HatDialogs.inform($0, $1) },
+        show: { [weak self] in self?.redraw() }
+    )
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
@@ -49,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.blink = blink
 
         Notifier.askOnce()
+        Notifier.listen { [weak self] in self?.showSettings() }
 
         GatewayProcess.port = settings.gatewayPort
         listenToUsageHeaders()
@@ -82,11 +96,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.redrawAndDecide()
         }
         usage.start(hats: { [weak self] in self?.hatsForUsage() ?? [] })
+        sessionWindows.onChange = { [weak self] in self?.showTheContextRows() }
+        sessionWindows.start()
+        startTheContextChannel()
         startTheUpdater()
         DockPresence.watch()
 
         redraw()
         DispatchQueue.main.async { [weak self] in self?.syncWithWorld() }
+        offerThePluginUpdateOnce()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

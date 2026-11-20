@@ -35,14 +35,17 @@ extension AppDelegate {
         snapshot.banner = settings.autoSwitchRecord.flatMap { $0.seenInPopover ? nil : $0 }
         snapshot.bannerFromTitle = settings.autoSwitchRecord.map { snapshot.title(of: $0.from) } ?? ""
         snapshot.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-        snapshot.canCheckForUpdates = updater?.canCheckNow
-        snapshot.checksForUpdatesAutomatically = updater?.checksAutomatically
+        snapshot.setUpdates(from: updater)
         snapshot.changing = changing
         snapshot.startAtLogin = LoginItem.currentFace
         snapshot.retiredPort = GatewayProcess.retiredPort
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        snapshot.sessionHandoff = handoff.row
+        snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
         popover.model.snapshot = snapshot
+        writeTheHatUsage()
+        contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())
 
         if let blink {
             blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)
@@ -55,6 +58,10 @@ extension AppDelegate {
                                          popoverClosing: popover.isClosing,
                                          hasBanner: snapshot.banner != nil)
         if sighting == .seen { markBannerSeen() }
+    }
+
+    func showTheContextRows() {
+        popover.model.snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
     }
 
     private func markState(_ snapshot: HatsSnapshot) -> MarkState {

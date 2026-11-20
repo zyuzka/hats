@@ -269,10 +269,38 @@ enum HatsCopy {
 
     static func humanise(_ seconds: TimeInterval) -> String {
         guard seconds > 0 else { return "expired" }
-        let days = Int(seconds) / 86400
-        let hours = (Int(seconds) % 86400) / 3600
+        let whole = Int(exactly: seconds.rounded(.towardZero)) ?? Int.max
+        let days = whole / 86400
+        let hours = (whole % 86400) / 3600
         if days > 0 { return "\(days)d \(hours)h" }
-        let minutes = (Int(seconds) % 3600) / 60
+        let minutes = (whole % 3600) / 60
         return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    static let contextHeader = "Context"
+
+    static func getContextLabel(
+        title: String?,
+        cwd: String?,
+        session: String
+    ) -> String {
+        let named = Journal.onOneLine(title ?? "").trimmingCharacters(in: .whitespaces)
+        if !named.isEmpty { return named }
+        let folder = (Journal.onOneLine(cwd ?? "") as NSString).lastPathComponent
+        if !folder.isEmpty, folder != "/" { return folder }
+
+        return String(session.prefix(8))
+    }
+
+    static func getContextLabel(_ label: String, telling session: String) -> String {
+        "\(label) · \(session.prefix(4))"
+    }
+
+    static func getContextValue(_ window: SessionWindow) -> String {
+        if window.state == .compacted { return "compacted" }
+        if let percent = window.percent { return "\(percent)%" }
+        guard let tokens = window.tokens else { return "" }
+
+        return "\(tokens / 1000 + (tokens % 1000 >= 500 ? 1 : 0))k"
     }
 }

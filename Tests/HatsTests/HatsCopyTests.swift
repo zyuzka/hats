@@ -6,7 +6,7 @@ final class HatsCopyTests: XCTestCase {
     private let utc = TimeZone(identifier: "UTC")!
 
     private func hat(credentials: Bool = true, identity: Bool = true, refreshIn: TimeInterval? = 6 * 86400) -> Account {
-        var hat = Account(id: "a", email: "filip@company.com", browser: nil)
+        var hat = Account(id: "a", email: "work@company.com", browser: nil)
         hat.hasStoredCredentials = credentials
         if identity { hat.identity = CLIIdentity(oauthAccount: [:], userID: nil) }
         hat.refreshExpiresAt = refreshIn.map { now.addingTimeInterval($0) }
@@ -392,5 +392,20 @@ final class HatsCopyTests: XCTestCase {
                        "the week is shown on every hat, worn or parked, with a number, with a "
                            + "trouble line, or with nothing but a remembered week after a restart; "
                            + "the row is an else-if chain, so each branch has to render it itself")
+        let opening = try XCTUnwrap(detail.range(of: "{\n"))
+        let body = String(detail[opening.upperBound...])
+        let chain = body.components(separatedBy: "} else")
+        for (index, branch) in chain.enumerated() {
+            let before = try XCTUnwrap(branch.components(separatedBy: "\n").split {
+                $0.trimmingCharacters(in: .whitespaces) == "weekBelow"
+            }.first.map { $0.joined(separator: "\n") })
+            let depth = before.filter { $0 == "{" }.count - before.filter { $0 == "}" }.count
+            XCTAssertEqual(depth, 1, "branch \(index): weekBelow sits in the branch itself, not inside a nested if")
+            XCTAssertFalse(before.contains("stale"), "branch \(index): the week comes before the stale line")
+            if index < chain.count - 1 {
+                XCTAssertTrue(before.contains("Text("),
+                              "branch \(index): the week is below the branch's own percent or trouble line")
+            }
+        }
     }
 }

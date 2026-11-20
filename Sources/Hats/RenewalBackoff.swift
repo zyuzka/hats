@@ -2,6 +2,7 @@ import Foundation
 
 struct RenewalBackoff: Equatable {
     static let longestWaitInPolls = 12
+    static let earlyByAPartOfAPoll = 0.1
 
     private var consecutiveFailures: [String: Int] = [:]
     private var notBefore: [String: Date] = [:]
@@ -26,7 +27,8 @@ struct RenewalBackoff: Equatable {
     mutating func failed(_ id: String, at now: Date, pollingEvery interval: TimeInterval) {
         let failures = (consecutiveFailures[id] ?? 0) + 1
         consecutiveFailures[id] = failures
-        notBefore[id] = now.addingTimeInterval(interval * TimeInterval(Self.pollsToWait(after: failures)))
+        let polls = TimeInterval(Self.pollsToWait(after: failures)) - Self.earlyByAPartOfAPoll
+        notBefore[id] = now.addingTimeInterval(interval * polls)
     }
 
     mutating func succeeded(_ id: String) {

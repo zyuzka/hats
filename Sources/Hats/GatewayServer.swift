@@ -85,7 +85,7 @@ final class GatewayServer {
     var isServing: Bool { channel?.isActive ?? false }
 
     static func liveAccountAddress() -> String? {
-        guard let configuration = try? CLIState.configurationRemembered(),
+        guard let configuration = try? CLIState.configurationRemembered(world: .real),
               let url = configuration.stateFile().url else { return nil }
         return CLIState.readIdentity(at: url)?.email
     }
