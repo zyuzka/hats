@@ -67,6 +67,8 @@ LOCK_NAME = ".lock"
 SESSION = re.compile(r"[A-Za-z0-9-]{1,80}")
 OWN_FILE = re.compile(r"[A-Za-z0-9-]{1,80}\.json")
 LEFT_TEMPORARY = re.compile(r"\.tmp-[A-Za-z0-9_-]{1,64}\.json")
+ENDED_PREFIX = ".ended-"
+ENDED_FILE = re.compile(r"\.ended-[A-Za-z0-9-]{1,80}")
 LOCK_WAIT_S = 2.0
 LOCK_STEP_S = 0.02
 SETTLE_LIMIT_S = 1.5
@@ -80,6 +82,10 @@ EVENT_LIMIT = 40
 SWEEPING_EVENTS = {
     "Stop",
     "SessionEnd",
+}
+REVIVING_EVENTS = {
+    "SessionStart",
+    "UserPromptSubmit",
 }
 NOT_COMPARED = (
     "event",
@@ -230,7 +236,8 @@ def is_swept(name, info, now):
         return False
     if OWN_FILE.fullmatch(name):
         return now - info.st_mtime > MAX_AGE_S
-    return bool(LEFT_TEMPORARY.fullmatch(name)) and now - info.st_mtime > TEMPORARY_AGE_S
+    is_short_lived = LEFT_TEMPORARY.fullmatch(name) or ENDED_FILE.fullmatch(name)
+    return bool(is_short_lived) and now - info.st_mtime > TEMPORARY_AGE_S
 
 
 def sweep(folder):
@@ -247,6 +254,18 @@ def sweep(folder):
 def remove_own(folder, name):
     try:
         os.unlink(os.path.join(folder, name))
+    except OSError:
+        pass
+
+
+def mark_ended(folder, session):
+    try:
+        fd = os.open(
+            os.path.join(folder, ENDED_PREFIX + session),
+            os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+        )
+        os.close(fd)
     except OSError:
         pass
 
@@ -292,6 +311,18 @@ def measure(
         )
 
 
+def measure_live(data, folder, session):
+    if data.get("hook_event_name") in REVIVING_EVENTS:
+        remove_own(folder, ENDED_PREFIX + session)
+    elif os.path.lexists(os.path.join(folder, ENDED_PREFIX + session)):
+        return
+    measure(
+        data,
+        folder,
+        session + ".json",
+    )
+
+
 def record_window(data):
     session = data.get("session_id")
     transcript = data.get("transcript_path")
@@ -312,13 +343,10 @@ def record_window(data):
         return
     try:
         if event == "SessionEnd":
+            mark_ended(folder, session)
             remove_own(folder, session + ".json")
         else:
-            measure(
-                data,
-                folder,
-                session + ".json",
-            )
+            measure_live(data, folder, session)
         if event in SWEEPING_EVENTS:
             sweep(folder)
     finally:

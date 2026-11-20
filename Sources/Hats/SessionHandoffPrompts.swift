@@ -51,9 +51,10 @@ enum SessionHandoffPrompts {
         )
     }
 
-    static func createRemove() -> HatPrompt {
+    static func createRemove(folder: String) -> HatPrompt {
         let text = "Hats will run:\nclaude " + SessionHandoffSteps.removeArguments.joined(separator: " ") + "\n\n"
-            + "It removes only your user installation of \(SessionHandoffProvenance.pluginID). The hats "
+            + "It removes only your user installation of \(SessionHandoffProvenance.pluginID), recorded in the "
+            + "settings folder \(folder). The hats "
             + "marketplace stays, and so do your resume notes, your own steps, your hooks and your settings. "
             + "Installations for a project are not touched."
 

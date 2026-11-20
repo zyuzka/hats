@@ -453,6 +453,12 @@ describe('the note and the plugin', () => {
     await keptWith(scene, { steps: getClearSteps(scene), reason: 'the plugin files are not in place' })
   })
 
+  test('the session runs with HANDOFF_OFF=1, so the note would not come back: kept, no /clear', async ($, on) => {
+    const scene = createScene($, { on, env: { HANDOFF_OFF: '1' } })
+
+    await keptWith(scene, { steps: getClearSteps(scene), reason: 'HANDOFF_OFF=1 keeps the note from coming back after /clear' })
+  })
+
   test('the plugin files are gone: kept', async ($, on) => {
     const scene = createScene($, { on })
     scene.world.isPluginGone = true

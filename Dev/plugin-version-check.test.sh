@@ -227,6 +227,29 @@ broken="$(g -C "$r" rev-parse 'v1.0.0^{tree}')"
 rm -f "$r/.git/objects/${broken:0:2}/${broken:2}"
 expect "git diff failing on a broken root tree at the tag" "$r" 1 "git diff against v1.0.0 failed"
 
+fakeBin="$work/fake-bin"
+mkdir -p "$fakeBin"
+cat > "$fakeBin/git" <<'FAKE'
+#!/bin/bash
+for arg in "$@"; do
+    if [[ "$arg" == "$FAIL_GIT_ARG" ]]; then
+        echo "fatal: made-up failure of git $*" >&2
+        exit 128
+    fi
+done
+exec "$REAL_GIT" "$@"
+FAKE
+chmod +x "$fakeBin/git"
+realGit="$(command -v git)"
+r="$(newRepo failing-tag)"
+manifest "$r" 1.0.0; pluginFile "$r" a; commitAll "$r" plugin
+g -C "$r" tag v1.0.0
+moveOn "$r"
+for failing in --points-at --list; do
+    PATH="$fakeBin:$PATH" REAL_GIT="$realGit" FAIL_GIT_ARG="$failing" \
+        expect "git tag $failing failing" "$r" 1 "git tag $failing"
+done
+
 source="$(newRepo shallow-source)"
 manifest "$source" 1.0.0; pluginFile "$source" a; commitAll "$source" plugin
 g -C "$source" tag v1.0.0

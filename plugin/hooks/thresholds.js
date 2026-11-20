@@ -34,6 +34,7 @@ export const KEPT = {
   noteUnread: 'the note could not be read',
   noteChanged: 'the note changed after this session wrote it',
   noPlugin: 'the plugin files are not in place',
+  handoffOff: 'HANDOFF_OFF=1 keeps the note from coming back after /clear',
   sessionChanged: 'the session changed',
   notCleared: 'the session did not change after /clear',
 }

@@ -119,7 +119,10 @@ final class SessionHandoffStateTests: XCTestCase {
         fake.answer(list, PluginCLISamples.listProjectScope)
         fake.answer(marketplaces, PluginCLISamples.marketplacesFolder)
 
-        let change = SessionHandoffSteps.getRemoveChange(in: fake.world())
+        let change = SessionHandoffSteps.getRemoveChange(
+            folder: FakePluginWorld.configFolder,
+            in: fake.world()
+        )
 
         XCTAssertEqual(fake.changingRuns, [])
         XCTAssertNotNil(change.failure)
@@ -134,7 +137,10 @@ final class SessionHandoffStateTests: XCTestCase {
         fake.answer(marketplaces, PluginCLISamples.marketplacesFolder)
         fake.answer(uninstall, PluginCLISamples.uninstallDone)
 
-        let change = SessionHandoffSteps.getRemoveChange(in: fake.world())
+        let change = SessionHandoffSteps.getRemoveChange(
+            folder: FakePluginWorld.configFolder,
+            in: fake.world()
+        )
 
         XCTAssertEqual(fake.changingRuns.map(\.arguments), [[
             "plugin",
@@ -157,7 +163,10 @@ final class SessionHandoffStateTests: XCTestCase {
         fake.answer(marketplaces, PluginCLISamples.marketplacesFolder)
         fake.answer(uninstall, PluginCLISamples.uninstallEnabledAtProjectScope)
 
-        let change = SessionHandoffSteps.getRemoveChange(in: fake.world())
+        let change = SessionHandoffSteps.getRemoveChange(
+            folder: FakePluginWorld.configFolder,
+            in: fake.world()
+        )
 
         XCTAssertEqual(change.failure, "Plugin \"hats@hats\" is enabled at project scope (.claude/settings.json, "
             + "shared with your team). To disable just for you: claude plugin disable hats@hats --scope local")
@@ -173,7 +182,10 @@ final class SessionHandoffStateTests: XCTestCase {
         fake.answer(marketplaces, PluginCLISamples.marketplacesFolder)
         fake.answers[uninstall] = PluginCommandOutcome(end: .timedOut)
 
-        let change = SessionHandoffSteps.getRemoveChange(in: fake.world())
+        let change = SessionHandoffSteps.getRemoveChange(
+            folder: FakePluginWorld.configFolder,
+            in: fake.world()
+        )
 
         XCTAssertNil(change.failure)
         let notice = try XCTUnwrap(change.notice)
@@ -209,7 +221,10 @@ final class SessionHandoffStateTests: XCTestCase {
         fake.answer(uninstall, PluginCLISamples.uninstallDone)
 
         let face = SessionHandoffSteps.findFace(in: fake.world())
-        let change = SessionHandoffSteps.getRemoveChange(in: fake.world())
+        let change = SessionHandoffSteps.getRemoveChange(
+            folder: FakePluginWorld.configFolder,
+            in: fake.world()
+        )
 
         XCTAssertEqual(face, .installed(version: "0.1.0", folder: nil, isEnabled: true, elsewhere: []))
         XCTAssertTrue(face.canRemove)
@@ -227,10 +242,11 @@ final class SessionHandoffStateTests: XCTestCase {
     }
 
     func testTheRemoveWindowNamesTheCommandAndWhatStays() {
-        let prompt = SessionHandoffPrompts.createRemove()
+        let prompt = SessionHandoffPrompts.createRemove(folder: FakePluginWorld.configFolder)
 
         XCTAssertEqual(prompt.buttons, ["Remove", "Cancel"])
         XCTAssertTrue(prompt.text.contains("claude plugin uninstall hats@hats --scope user --keep-data --json"))
         XCTAssertTrue(prompt.text.contains("marketplace stays"))
+        XCTAssertTrue(prompt.text.contains("settings folder \(FakePluginWorld.configFolder)"))
     }
 }

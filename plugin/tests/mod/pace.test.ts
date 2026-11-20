@@ -569,8 +569,8 @@ describe('the pace rules', () => {
     expect(lead({ drain: true, drain_minutes: 61 })).toBe(LEAD_OFF)
   })
 
-  test('drain on with the window anchor threshold off does not drain, so the lead is 682', () => {
-    expect(findLeadSeconds(JSON.stringify({ ...WINDOW_FILE, save_percent: null, drain: true, drain_minutes: 30 }))).toBe(LEAD_OFF)
+  test('drain on with the window anchor threshold off still waits by the limit, so the lead is the drain minutes plus 82', () => {
+    expect(findLeadSeconds(JSON.stringify({ ...WINDOW_FILE, save_percent: null, drain: true, drain_minutes: 30 }))).toBe(1882)
   })
 
   test('a reading below the top in the same episode is another account: the points start again from it', () => {

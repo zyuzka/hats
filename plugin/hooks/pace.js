@@ -1,18 +1,19 @@
 import { EPISODE_MS, LIMIT_KINDS, findLimitReadings } from './limit-rules.js'
-import { DEFAULTS, findThresholds, isDrainOn } from './thresholds.js'
+import { DEFAULTS } from './thresholds.js'
+import { findDrainSetting } from './limit-drain.js'
 
 export const SAVE_COST_SECONDS = 82
 export const BASE_RISE = 5
 export const BASE_AGE_MS = 60 * 1000
 export const POINT_LIFE_MS = 60 * 60 * 1000
 
-export const getLeadSeconds = thresholds => {
-  const minutes = thresholds !== null && isDrainOn(thresholds) ? thresholds.drainMinutes : DEFAULTS.drainMinutes
+export const getLeadSeconds = drain => {
+  const minutes = drain.isOn ? drain.minutes : DEFAULTS.drainMinutes
 
   return minutes * 60 + SAVE_COST_SECONDS
 }
 
-export const findLeadSeconds = text => getLeadSeconds(findThresholds(text))
+export const findLeadSeconds = text => getLeadSeconds(findDrainSetting(text))
 
 export const createPace = () => ({ five_hour: null, seven_day: null })
 

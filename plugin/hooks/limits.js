@@ -56,7 +56,7 @@ async function findCell($) {
 
 async function findThresholdsNow($, root) {
   const path = `${root}/${THRESHOLDS_FILE}`
-  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS, lead: getLeadSeconds(null), drain: DRAIN_OFF }
+  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS, lead: getLeadSeconds(DRAIN_OFF), drain: DRAIN_OFF }
   const text = await findSmallText($, path)
   const thresholds = text === null ? null : findLimitThresholds(text)
 

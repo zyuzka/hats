@@ -25,14 +25,24 @@ print(value.strip())'
 # develop commit is an older release. Sorted as text, v0.9.0 comes after v0.10.0. A pre-release
 # or any other v* name is not a release. A tag on HEAD itself is the release being made, and
 # comparing it with itself would always pass, so the baseline is the one before it.
-onHead="$(git tag --points-at HEAD 2>/dev/null || true)"
+# A failing git tag is not read as "no tag": an empty answer would skip the comparison.
+if ! onHead="$(git tag --points-at HEAD 2>&1)"; then
+    echo "plugin-version-check: git tag --points-at HEAD failed:" >&2
+    echo "$onHead" >&2
+    exit 1
+fi
+if ! tags="$(git tag --list 'v*' --sort=-v:refname 2>&1)"; then
+    echo "plugin-version-check: git tag --list failed:" >&2
+    echo "$tags" >&2
+    exit 1
+fi
 lastTag=""
 while read -r tag; do
     [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
     grep -Fqx -- "$tag" <<< "$onHead" && continue
     lastTag="$tag"
     break
-done <<< "$(git tag --list 'v*' --sort=-v:refname)"
+done <<< "$tags"
 
 if [[ -z "$lastTag" ]]; then
     if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then

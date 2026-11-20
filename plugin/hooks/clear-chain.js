@@ -28,6 +28,7 @@ import {
   findPromptReason,
   findSessionReason,
   getSnapshotReason,
+  isHandoffOff,
   isPluginInPlace,
   waitForHanded,
   waitForSnapshot,
@@ -112,6 +113,7 @@ async function findKeptReason($, current) {
   const early = findEarlyReason(current)
   if (early !== null) return early
   if (!(await isPluginInPlace($))) return KEPT.noPlugin
+  if (await isHandoffOff($)) return KEPT.handoffOff
   const snapshot = await waitForSnapshot($, { id: request.sessionId, getAfter: () => lastToolEndAt })
   current.facts = await findAnchorFacts($, turn)
   const note = await findNoteState($, current.facts)
