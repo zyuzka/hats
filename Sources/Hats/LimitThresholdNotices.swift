@@ -1,13 +1,6 @@
 import Foundation
 import UserNotifications
 
-private struct LimitNoticeCandidate {
-    let limit: StageLimit
-    let resetsAt: Date
-    let savePercent: Int?
-    let event: LimitEvent
-}
-
 final class LimitThresholdNotices {
     typealias Log = (String, [String: String]) -> Void
 
@@ -42,7 +35,7 @@ final class LimitThresholdNotices {
         let oldest = now().addingTimeInterval(-Self.keptFor)
         var kept = known.filter { $0.toldAt >= oldest }
         var isChanged = kept.count != known.count
-        let candidates = Self.findCandidates(in: read.stages).filter { $0.event.at >= oldest }
+        let candidates = LimitNoticeCandidate.findCandidates(in: read.stages).filter { $0.event.at >= oldest }
         for candidate in candidates {
             if Self.hasRefreshedTheRecord(of: candidate, in: &kept) {
                 isChanged = true
@@ -50,7 +43,7 @@ final class LimitThresholdNotices {
             }
             let isKnown = kept.contains { Self.isTheSameEpisode($0, candidate) }
             guard isAfterTheLaunch(candidate), !isKnown else { continue }
-            tell(candidate)
+            tell(candidate, episode: Self.findEpisodeTime(of: candidate, in: kept))
             kept.append(LimitNoticeEntry(
                 hat: candidate.event.worn,
                 limit: candidate.limit,
@@ -94,50 +87,22 @@ final class LimitThresholdNotices {
             && abs(entry.resetsAt.timeIntervalSince(candidate.resetsAt)) < episodeSpell
     }
 
-    private func tell(_ candidate: LimitNoticeCandidate) {
+    private static func findEpisodeTime(of candidate: LimitNoticeCandidate, in kept: [LimitNoticeEntry]) -> Date {
+        let known = kept.first {
+            $0.hat == candidate.event.worn
+                && $0.limit == candidate.limit
+                && abs($0.resetsAt.timeIntervalSince(candidate.resetsAt)) < episodeSpell
+        }
+
+        return known?.resetsAt ?? candidate.resetsAt
+    }
+
+    private func tell(_ candidate: LimitNoticeCandidate, episode: Date) {
         let event = candidate.event
         let percent = Int(event.percent.rounded(.down))
         let title = HatsCopy.getLimitNoticeTitle(hat: hatTitle(event.worn), limit: candidate.limit, percent: percent)
-        let body = HatsCopy.getLimitNoticeBody(stage: event.stage, reason: event.reason, save: candidate.savePercent)
-        notify(Notifier.createContent(title: title, body: body))
-        log("limit.alert", [
-            "hat": event.worn,
-            "limit": candidate.limit.rawValue,
-            "stage": event.stage.rawValue,
-            "percent": String(percent),
-        ])
-    }
-
-    private static func findCandidates(in stages: [SessionStage]) -> [LimitNoticeCandidate] {
-        let all = stages.flatMap { stage in
-            stage.limitEpisodes.flatMap { episode in
-                episode.events.map {
-                    LimitNoticeCandidate(
-                        limit: episode.limit,
-                        resetsAt: episode.resetsAt,
-                        savePercent: episode.savePercent,
-                        event: $0
-                    )
-                }
-            }
-        }
-
-        return all.enumerated()
-            .sorted {
-                let left = getOrder($0.element, offset: $0.offset)
-                return left.lexicographicallyPrecedes(getOrder($1.element, offset: $1.offset))
-            }
-            .map(\.element)
-    }
-
-    private static func getOrder(_ candidate: LimitNoticeCandidate, offset: Int) -> [Double] {
-        let stage = LimitStage.allCases.firstIndex(of: candidate.event.stage) ?? 0
-
-        return [
-            getMilliseconds(of: candidate.event.at),
-            Double(stage),
-            Double(offset),
-        ]
+        notify(Notifier.createContent(title: title, body: LimitNoticeCandidate.getBody(of: candidate)))
+        log("limit.alert", LimitNoticeCandidate.getAlertDetails(of: candidate, episode: episode))
     }
 
     static func getMilliseconds(of date: Date) -> Double {

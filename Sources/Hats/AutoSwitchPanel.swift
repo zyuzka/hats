@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AutoSwitchPanel: View {
     @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
 
     var body: some View {
         ScrollView {
@@ -10,6 +11,9 @@ struct AutoSwitchPanel: View {
                     tool: .claudeCode,
                     policy: model.snapshot.settings.autoSwitch,
                     rows: model.snapshot.rows,
+                    fields: (session: .sessionSwitch, weekly: .weeklySwitch),
+                    model: model,
+                    drafts: drafts,
                     update: { model.actions?.updateAutoSwitch($0) }
                 )
                 Text(HatsCopy.whenSessionsChangeHats(
@@ -21,6 +25,9 @@ struct AutoSwitchPanel: View {
                     tool: .codex,
                     policy: model.snapshot.settings.codexAutoSwitch,
                     rows: model.snapshot.codexRows,
+                    fields: (session: .codexSessionSwitch, weekly: .codexWeeklySwitch),
+                    model: model,
+                    drafts: drafts,
                     update: { model.actions?.updateCodexAutoSwitch($0) }
                 )
             }

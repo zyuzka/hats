@@ -41,6 +41,10 @@ Not affiliated with Anthropic.
   and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
+- **It does not carry claude.ai connectors across hats.** A connector such as Slack or Atlassian is
+  granted to one Claude account on Anthropic's side, so switching the hat changes which connectors
+  work. A connector you connected while wearing one hat asks you to sign in again when you wear
+  another.
 
 ## Install
 
@@ -439,6 +443,17 @@ sessions get the new version after `/reload-plugins`, new ones when they start.
 
 Without Hats, the same commands work in a terminal.
 
+To silence the handoff for one session without removing the plugin, start Claude Code with
+`HANDOFF_OFF=1` in its environment: the hook at session start and the hook after Read then print
+nothing. Each run of the session-start hook, silenced or not, adds one line to
+`<config>/state/handoff/runs.log`, where `<config>` is `~/.claude` unless `CLAUDE_CONFIG_DIR` gives a
+full path: the time, how long the hook took, why it ran (`startup`, `clear` and so on), the session
+id, the session's folder, the Claude process id and what the hook decided, with the error when it
+failed. The hook after Read adds a line, marked `took`, when the file read was a note — what it
+recorded, or why it recorded nothing — and when its input was unusable (`bad-input`), its time ran
+out before it went through the markers (`incomplete`), the Claude process was not found
+(`no-process`) or the hook failed (`error`); a read of any other file leaves no line. Over 256 KB the log moves to `runs.log.1`, so it never holds more than two files.
+
 The plugin also tells Hats how full each session's context window is. After every prompt, every tool
 call, the end of every turn and a compaction it reads the end of the session's transcript and writes
 the number Claude Code's status line shows into
@@ -483,26 +498,54 @@ note.») — also while Settings is open in front. It says nothing about stages 
 started, nothing when mods are off in Claude Code, and removes stage files older than 30 days.
 
 **Drain background work**, under **Warn at**, is off until you turn it on and works only with
-**Anchor at** on. From the warning on, the plugin refuses every new subagent, workflow, monitor and
+**Anchor at** on — of the window or of the hat limit. From a context or hat-limit warning on, the plugin refuses every new subagent, workflow, monitor and
 command started with `run_in_background` — in the session and in its subagents — and tells the model
 to do the step in the foreground or leave it for the next session; work already running is never
 stopped. Not refused: a command Claude Code moves to the background itself after its time limit, and a
 skill that runs in the background — both are waited for; a command detached with `&` or `nohup` is
 neither waited for nor listed. When a turn ends past the anchor threshold while background commands,
-subagents or workflows still run, the plugin says `Hats drain: anchoring waits for 2 background jobs,
-up to 10 min.` and does not ask to anchor yet; it asks at the end of a later turn, once they have ended
+subagents or workflows still run, the plugin says `anchoring waits for 2 background jobs, up to 10 min
+(drain).` and does not ask to anchor yet; it asks at the end of a later turn, once they have ended
 or **Wait up to** (1 to 60 minutes, 10 until you change it) has passed. It never wakes an idle session:
 the next turn comes with your message or with Claude Code's notice that a job ended. When it asks, it
 gives the model the id, kind and description of everything still running, so the note names each —
 they outlive `/clear`, and the next session is told when one ends but not what it was for. A monitor
-on a socket and a teammate are listed but not waited for. If the list cannot be read it asks at once
-and says `Hats drain: background work could not be checked.` The refusals end once it asks, after an
+that runs a command is a background command to Claude Code (2.1.327) and is waited for like one; a
+monitor on a socket and a teammate are listed but not waited for. If the list cannot be read it asks at
+once and says `background work could not be checked (drain).` The refusals end once it asks, after an
 «анкор» you said past the threshold, or when the window falls below the lowest threshold; they also end
-when the plugin reloads, when the session changes and during the pause after the plugin's own clear. With
+when the plugin reloads, when the session changes and during the pause after the plugin's own clear.
+When they end while no anchor is asked — the window fell below its lowest threshold, **Drain background
+work** was turned off, or, for a hat limit, Hats moves the session again, the limit resets, its
+**Anchor at** is turned off, the hat changes or the session is no longer under Hats — and the model has
+had a drain text, the plugin tells the model once that background work is allowed again and why — and, when the switch
+was turned off, that the session still anchors at its thresholds. It
+waits while anything else still refuses, and while a limit warning with the drain words goes out. With
 **Warn at** off they start only when anchoring is put off for running work. Hats writes
 the switch and the minutes to `window-thresholds.json` as `drain` and `drain_minutes`; a session that
 waits has the stage `waiting`, and its notification reads «Past 70%: the session anchors at the end of
-its turn, after its background work (up to 10 min).»
+its turn, after its background work (up to 10 min).» Scheduled wake-ups (`/loop`, `CronCreate`) are
+not refused; the list carries only their number — `Scheduled wake-ups: 1 — they are not listed here, and
+they stop the automatic clear.`
+
+**Drain by a hat limit.** The same switch acts on every session on the worn hat when Hats will not move
+it off a limit (the rules of **Hat limit** below): from the limit warning on — or, with **Warn at** off,
+from the first turn end whose anchor is put off — new background work is refused with `Hats drain: this
+session's account is close to its 5-hour limit and …` (two limits with the same reason name it once:
+`close to its 5-hour and weekly limits and …`), until that limit's anchor is asked, a save counts
+for it, its episode ends or its reset passes, or Hats can move the session again. The anchor of the
+limit waits for running work up to **Wait up to**, counted from the first warning of that limit on that
+hat in that episode — one deadline for all its sessions. Hats finds that time in the stage files and
+writes it to `hat-usage.json` as `first_warned`; until it does, a session counts from its own warning,
+and with no warning from the turn end that put the anchor off. The deadline only ever comes nearer: a
+session warned late may find it already passed and anchor at once, without waiting for its own work. At
+the end of each turn the window and the limits are decided together: any cause that is ready — drain
+off, nothing holding, its own deadline passed, the work could not be checked — asks once for all of
+them, and the work still running is listed; otherwise the session waits, and the line names the
+nearest deadline whenever it changes. A wait for a limit is written to the stage file as a `waiting`
+event; a reload keeps it with its deadline. Hats tells it once per hat, limit and reset, on the first of
+`waiting` and `asked`: «… Sessions anchor at the end of their turn, after their background work (up to
+10 min from the first warning on this hat).»
 
 **Hat limit**, the second section of **Settings › Context**, acts on the 5-hour and weekly limits when
 Hats will not move you off a limit itself: no other hat is free, auto-switch is off, the switch
@@ -527,6 +570,26 @@ worn hat (`credential_service` in `hat-usage.json`); Hats writes the thresholds 
 session carries the limit events, and a running Hats shows one notification for each hat, limit, reset
 and stage, titled with the hat and the percent — `work — 5-hour 81%` with «No other hat to switch to. Sessions anchor at the end of their
 turn.» — whatever **Notify me when it changes** says, and never for events from before it started.
+**Early signal.** A limit can run from 70% to 80% in three minutes. So each session also keeps, in memory
+only, the time it first saw each new top whole percent of each limit (a point keeps that first time and
+is not moved by later readings of the same percent; a lower reading in the same episode means another
+account and starts the points again from it), and works out the pace: the rise since the
+newest point at least 5 points lower and at least a minute old, divided by the time from that point to
+now. If at that pace the limit reaches **Anchor at** within the lead — the drain minutes plus 82 seconds
+(the average cost of a save) with drain on, 10 minutes and 82 seconds with it off — the session gets
+its warning early, below **Warn at**: «… at 58% of its 5-hour limit and spending fast: at the pace of
+the last minutes it reaches 80% in about 11 minutes …». It is checked again when it is delivered; once
+told, it is the warning of that episode, and the anchor at **Anchor at** stays as it was. The lead is
+an aim, not a promise: a session that saw too few points, or reloaded the plugin, or has just started,
+warns later or not early at all, and a pace that is fast for a minute and then stops can warn for
+nothing. Hats tells it as `work — 5-hour 58%` with «Spending fast: 80% in about 11 min. No other hat
+to switch to.» in place of the usual warning. Each `limit.alert` line in the journal carries `episode`
+(the reset time of the episode), `early` (`1` or `0`), `target` (the anchor threshold) and
+`lead_seconds`, and an early one `minutes_to_save`: with the lines of one episode you can count signals
+that came true (the anchor line within twice the minutes), false ones (no anchor line, or later) and
+misses (an anchor line with no early signal, less than the lead after its warning). Leave out an episode
+whose lines carry different `target` values: the thresholds were changed inside it. The journal keeps
+its last 500 lines, and episodes while Hats was not running are not in it.
 Hats remembers what it told in `limit-notices.json` beside the stage files — the hat, limit, reset and
 stage of each notification — for 8 days; deleting it does not bring old notifications back, since Hats
 never tells events from before its start and keeps what it told in memory while it runs.
@@ -642,7 +705,10 @@ ignores it.
   With Claude Code's memory switched off
   the notes live in
   `~/Library/Application Support/Hats/notes/`, one folder per project; deleting that folder deletes
-  them. Your own steps run with it, from two optional files:
+  them. With `HATS_STATE_HOME` set to an absolute path (`~` is not expanded), the notes folder is
+  `$HATS_STATE_HOME/notes/` and the general steps file below sits in `$HATS_STATE_HOME`. A plugin
+  hook lets the session read a note of that folder, and write one of its own project, without asking. Your own steps
+  run with it, from two optional files:
   `~/Library/Application Support/Hats/anchor-steps.json` for every project, and
   `<project>/.claude/anchor-steps.json`, which counts only when the session runs in a folder listed in
   `projects` of the first one — that folder itself, not a subfolder. Each holds the lists `before` and

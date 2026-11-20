@@ -1,44 +1,5 @@
 import Foundation
 
-struct HatUsageWindow: Equatable {
-    let percent: Int
-    let resetsAt: Date?
-
-    init(_ window: UsageWindow) {
-        percent = window.percent
-        resetsAt = window.resetsAt
-    }
-
-    func getFields() -> [String: Any] {
-        [
-            "percent": percent,
-            "resets_at": resetsAt.map(HatUsageRecord.getStamp) ?? NSNull(),
-        ]
-    }
-}
-
-struct SwitchCovers: Equatable {
-    let fiveHour: Bool
-    let sevenDay: Bool
-
-    static func create(from snapshot: HatsSnapshot) -> SwitchCovers {
-        let policy = snapshot.settings.autoSwitch
-        let canSwitch = policy.isOn && snapshot.nextInLine != nil
-
-        return SwitchCovers(
-            fiveHour: canSwitch && policy.sessionThresholdPercent != nil,
-            sevenDay: canSwitch && policy.weeklyThresholdPercent != nil
-        )
-    }
-
-    func getFields() -> [String: Any] {
-        [
-            "five_hour": fiveHour,
-            "seven_day": sevenDay,
-        ]
-    }
-}
-
 struct HatUsageRecord: Equatable {
     let worn: String?
     let fiveHour: HatUsageWindow?
@@ -49,12 +10,14 @@ struct HatUsageRecord: Equatable {
     let credentialService: String?
     let switchCovers: SwitchCovers
     let aliveAt: Date?
+    let firstWarned: FirstWarned
 
     static func create(
         from snapshot: HatsSnapshot,
         readAt: [String: Date],
         liveSlot: String?,
-        aliveAt: Date?
+        aliveAt: Date?,
+        stages: [SessionStage]
     ) -> HatUsageRecord {
         let worn = snapshot.wearing
         let reading = worn?.usage
@@ -68,16 +31,23 @@ struct HatUsageRecord: Equatable {
             autoSwitchOn: snapshot.settings.autoSwitch.isOn,
             credentialService: worn == nil ? nil : liveSlot,
             switchCovers: SwitchCovers.create(from: snapshot),
-            aliveAt: aliveAt
+            aliveAt: aliveAt,
+            firstWarned: FirstWarned.find(
+                in: stages,
+                worn: worn?.id,
+                fiveHour: reading?.session?.resetsAt,
+                sevenDay: reading?.weekly?.resetsAt
+            )
         )
     }
 
-    static func create(from snapshot: HatsSnapshot, watch: AutoSwitchWatch) -> HatUsageRecord {
+    static func create(from snapshot: HatsSnapshot, watch: AutoSwitchWatch, stages: [SessionStage]) -> HatUsageRecord {
         create(
             from: snapshot,
             readAt: watch.readAt,
             liveSlot: watch.lastPoll?.liveSlot,
-            aliveAt: watch.aliveAt
+            aliveAt: watch.aliveAt,
+            stages: stages
         )
     }
 
@@ -96,6 +66,7 @@ struct HatUsageRecord: Equatable {
             "credential_service": credentialService ?? NSNull(),
             "switch_covers": switchCovers.getFields(),
             "alive_at": aliveAt.map(Self.getStamp) ?? NSNull(),
+            "first_warned": firstWarned.getFields(),
             "written_at": Self.getStamp(writtenAt),
         ]
 
@@ -123,6 +94,21 @@ struct HatUsageFile {
 
     init(url: URL = StateDirectory.url.appendingPathComponent(HatUsageFile.name)) {
         self.url = url
+    }
+
+    mutating func setRecord(
+        from snapshot: HatsSnapshot,
+        watch: AutoSwitchWatch,
+        channel: ContextThresholdsChannel,
+        at now: Date
+    ) -> HatUsageSave {
+        let record = HatUsageRecord.create(
+            from: snapshot,
+            watch: watch,
+            stages: channel.lastStages
+        )
+
+        return setRecord(record, at: now)
     }
 
     mutating func setRecord(_ record: HatUsageRecord, at now: Date) -> HatUsageSave {

@@ -14,6 +14,7 @@ struct HatRowState: Identifiable, Equatable {
     let roseWhileParked: Int?
     let week: String?
     let weekSighting: WeekSighting?
+    let weekSpoken: String?
     let browser: String?
     let loginValidity: String?
     let loginAction: String
@@ -52,6 +53,15 @@ struct HatRowState: Identifiable, Equatable {
                 now: now
             )
         }
+        weekSpoken = week.map {
+            HatsCopy.getWeekSpoken(
+                percent: $0.window.percent,
+                resetsAt: $0.window.resetsAt,
+                isConfirmed: $0.isConfirmed,
+                timeZone: timeZone,
+                now: now
+            )
+        }
         browser = hat.browser?.label(chromeNames: chromeNames)
         loginValidity = HatsCopy.loginLine(for: hat, isWorn: isWearing, now: now)
         loginAction = HatsCopy.loginAction(for: hat)
@@ -81,6 +91,7 @@ struct HatsSnapshot: Equatable {
     var version: String = "dev"
     var canCheckForUpdates: Bool?
     var checksForUpdatesAutomatically: Bool?
+    var hasAnUpdateWaiting = false
     var changing: String?
     var startAtLogin = LoginItem.face(for: .notRegistered)
     var retiredPort: Int?
@@ -95,6 +106,16 @@ struct HatsSnapshot: Equatable {
     var codexGateway = CodexGatewayFace()
 
     var wearing: HatRowState? { rows.first(where: \.isWearing) }
+
+    var checkForUpdatesTitle: String {
+        hasAnUpdateWaiting ? "Install the waiting update\u{2026}" : "Check for Updates\u{2026}"
+    }
+
+    mutating func setUpdates(from updater: AppUpdater?) {
+        canCheckForUpdates = updater?.canCheckNow
+        checksForUpdatesAutomatically = updater?.checksAutomatically
+        hasAnUpdateWaiting = updater?.hasAnUpdateWaiting ?? false
+    }
 
     var menuBarTitle: String {
         guard settings.showsHatNameInTheMenuBar, let worn = wearing else { return "" }

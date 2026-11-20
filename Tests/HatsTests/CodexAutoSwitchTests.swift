@@ -162,7 +162,7 @@ final class CodexAutoSwitchTests: XCTestCase {
                                   ["plus": [window(300, 91), window(10080, 10)], "business": [window(10080, 20)]])
 
         let claudeWorld = AutoSwitchWorld.of(snapshot: snapshot, readings: [:], missed: MissedPolls(),
-                                             fresh: [], from: .aPollLanded)
+                                             fresh: [], weeklyEverRead: [], from: .aPollLanded)
         let codexWorld = CodexAutoSwitch.world(of: snapshot.codexRows, at: now)
 
         XCTAssertEqual(claudeWorld.wearing, "claude")

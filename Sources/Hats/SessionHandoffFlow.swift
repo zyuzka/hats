@@ -61,17 +61,28 @@ final class SessionHandoffFlow {
     func remove() {
         guard !row.isBusy, row.face.canRemove else { return }
         settle(nil, isBusy: true)
-        onMain { [weak self] in
-            guard let self else { return }
-            guard self.ask(SessionHandoffPrompts.createRemove()) else {
-                self.settle(nil, isBusy: false)
-                return
-            }
-            Journal.log("sessionHandoff.removing")
-            self.perform { [weak self] world in
-                let change = SessionHandoffSteps.getRemoveChange(in: world)
-                self?.onMain { self?.apply(change, doneTitle: "Removed", failureTitle: Self.notRemovedTitle) }
-            }
+        perform { [weak self] world in
+            let found = SessionHandoffTargets.find(in: world)
+            self?.onMain { self?.confirmRemove(found) }
+        }
+    }
+
+    private func confirmRemove(_ found: Result<SessionHandoffTarget, SessionHandoffRefusal>) {
+        let folder: String
+        switch found {
+        case .failure(let refusal):
+            apply(SessionHandoffChange(refusal: refusal), doneTitle: "Removed", failureTitle: Self.notRemovedTitle)
+            return
+        case .success(let target): folder = target.configFolder
+        }
+        guard ask(SessionHandoffPrompts.createRemove(folder: folder)) else {
+            settle(nil, isBusy: false)
+            return
+        }
+        Journal.log("sessionHandoff.removing")
+        perform { [weak self] world in
+            let change = SessionHandoffSteps.getRemoveChange(folder: folder, in: world)
+            self?.onMain { self?.apply(change, doneTitle: "Removed", failureTitle: Self.notRemovedTitle) }
         }
     }
 

@@ -118,6 +118,11 @@ launch "$work/sys:$work/darwin:/bin" HATS_SYSTEM_PYTHON="$work/sys/python3" HATS
   -- --quiet "$work/script.py"
 logged "CLAUDE_CONFIG_DIR с ~ — раскрывается в HOME" "$work/home/cfg/state/handoff/runs.log"
 if [ ! -e "$work/~" ]; then ok; else bad "CLAUDE_CONFIG_DIR с ~ — папки «~» в текущей нет" "$(ls -R "$work/~" | head -3)"; fi
+rm -rf "$work/home/.claude" "$work/rel"
+launch "$work/sys:$work/darwin:/bin" HATS_SYSTEM_PYTHON="$work/sys/python3" HATS_XCODE_SELECT="$work/xs-fail" CLAUDE_CONFIG_DIR="rel/cfg" \
+  -- --quiet "$work/script.py"
+logged "относительный CLAUDE_CONFIG_DIR — строка в ~/.claude/state/handoff/runs.log" "$runs"
+if [ ! -e "$work/rel" ]; then ok; else bad "относительный CLAUDE_CONFIG_DIR — папки от текущей нет" "$(ls -R "$work/rel" | head -3)"; fi
 rm -rf "$work/cfg"; mkdir -p "$work/cfg"; printf 'x' >"$work/cfg/state"
 launch "$work/sys:$work/darwin:/bin" HATS_SYSTEM_PYTHON="$work/sys/python3" HATS_XCODE_SELECT="$work/xs-fail" CLAUDE_CONFIG_DIR="$work/cfg" \
   -- --quiet "$work/script.py"

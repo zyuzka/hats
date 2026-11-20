@@ -154,22 +154,24 @@ final class ContextThresholdsTests: XCTestCase {
         let panel = try String(contentsOf: root.appendingPathComponent("Sources/Hats/ContextThresholdsPanel.swift"),
                                encoding: .utf8)
 
-        XCTAssertTrue(tabs.contains("            ContextThresholdsPanel(model: model)\n"
-                                        + "                .tabItem { Text(\"Context\") }"))
+        XCTAssertTrue(tabs.contains("                ContextThresholdsPanel(model: model, drafts: drafts)\n"
+                                        + "                    .tabItem { Text(\"Context\") }"))
         let rows = [
             """
                         threshold(
                             HatsCopy.warnAt,
+                            field: .contextWarn,
                             percent: thresholds.warnPercent,
-                            range: thresholds.getWarnRange(),
+                            stepRange: thresholds.getWarnRange(),
                             toggle: { next, isOn in next.setWarn(isOn: isOn) },
                             step: { next, percent in next.setWarn(percent) }
                         )
                         drain
                         threshold(
                             HatsCopy.anchorAt,
+                            field: .contextSave,
                             percent: thresholds.savePercent,
-                            range: thresholds.getSaveRange(),
+                            stepRange: thresholds.getSaveRange(),
                             toggle: { next, isOn in next.setSave(isOn: isOn) },
                             step: { next, percent in next.setSave(percent) }
                         )
@@ -177,23 +179,23 @@ final class ContextThresholdsTests: XCTestCase {
                         Text(HatsCopy.contextThresholdsNote)
             """,
             """
-                    HStack {
-                        Toggle(label, isOn: Binding(
-                            get: { percent != nil },
-                            set: { isOn in change { toggle(&$0, isOn) } }
-                        ))
-                        .font(.system(size: 13))
-                        Spacer()
-                        if let percent {
-                            Stepper(
-                                "\\(percent)%",
-                                value: Binding(
-                                    get: { percent },
-                                    set: { value in change { step(&$0, value) } }
-                                ),
-                                in: range,
-                                step: 1
-                            )
+                    PercentField(
+                        label: label,
+                        field: field,
+                        percent: percent,
+                        stepRange: stepRange,
+                        note: nil,
+                        model: model,
+                        drafts: drafts,
+                        step: { value in change { step(&$0, value) } },
+                        leading: {
+                            Toggle(label, isOn: Binding(
+                                get: { percent != nil },
+                                set: { isOn in change { toggle(&$0, isOn) } }
+                            ))
+                            .font(.system(size: 13))
+                        }
+                    )
             """,
             """
                     Picker(HatsCopy.afterAnchoring, selection: Binding(
@@ -235,11 +237,11 @@ final class ContextThresholdsTests: XCTestCase {
                                 .font(.system(size: 13))
                             }
                         }
-                        .disabled(thresholds.savePercent == nil)
+                        .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
                         Text(HatsCopy.drainNote)
             """,
             """
-                        HatLimitSection(model: model)
+                        HatLimitSection(model: model, drafts: drafts)
                         codexContinue
                         Spacer()
             """,
@@ -255,6 +257,41 @@ final class ContextThresholdsTests: XCTestCase {
         for row in rows {
             XCTAssertTrue(panel.contains(row), "the panel no longer reads, as one block:\n\(row)")
         }
+    }
+
+    func testTheBoundsOfAThresholdNameTheOtherOneOnlyWhereItSetsThem() {
+        let anchor = { PercentNeighbour(label: "Anchor at", percent: $0) }
+        let warn = { PercentNeighbour(label: "Warn at", percent: $0) }
+
+        XCTAssertEqual(thresholds(60, 70).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 69, neighbour: anchor(70))
+        ))
+        XCTAssertEqual(thresholds(60, 70).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 61, neighbour: warn(60)),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(thresholds(60, nil).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 94, neighbour: nil)
+        ))
+        XCTAssertEqual(thresholds(nil, 70).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 11, neighbour: nil),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(thresholds(10, 11).getWarnBounds(), PercentBounds(
+            lower: PercentBound(percent: 10, neighbour: nil),
+            upper: PercentBound(percent: 10, neighbour: anchor(11))
+        ))
+        XCTAssertEqual(thresholds(94, 95).getSaveBounds(), PercentBounds(
+            lower: PercentBound(percent: 95, neighbour: warn(94)),
+            upper: PercentBound(percent: 95, neighbour: nil)
+        ))
+        XCTAssertEqual(
+            thresholds(50, 60).getSaveRange(),
+            thresholds(50, 60).getSaveBounds().getStepRange(),
+            "the bounds come from the same sums as the stepper range"
+        )
     }
 
     func testWithoutTheDrainFieldsTheDrainIsOffAndWaitsTenMinutes() throws {
@@ -368,5 +405,19 @@ final class ContextThresholdsTests: XCTestCase {
         var roomy = thresholds(20, nil)
         roomy.setSave(isOn: true)
         XCTAssertEqual(roomy.savePercent, 70, "with room, the default comes back")
+    }
+
+    func testTheDrainCanBeSwitchedWhenEitherAnchorThresholdIsOn() {
+        var limits = LimitThresholds()
+        limits.setSave(isOn: false)
+        XCTAssertNil(limits.savePercent)
+        var limitOn = LimitThresholds()
+        limitOn.setSave(isOn: true)
+        XCTAssertNotNil(limitOn.savePercent)
+
+        XCTAssertTrue(thresholds(60, 70).canDrain(limits: limits), "the window anchor alone")
+        XCTAssertTrue(thresholds(60, nil).canDrain(limits: limitOn), "the hat-limit anchor alone")
+        XCTAssertTrue(thresholds(60, 70).canDrain(limits: limitOn))
+        XCTAssertFalse(thresholds(60, nil).canDrain(limits: limits), "only both off leave nothing to drain for")
     }
 }

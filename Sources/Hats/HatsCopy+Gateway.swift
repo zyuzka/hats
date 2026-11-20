@@ -35,6 +35,15 @@ extension HatsCopy {
             + "; every other session at its next token renewal."
     }
 
+    static func getRangeRefusal(_ field: PlainSettingsField) -> String {
+        switch field {
+        case .port:
+            return "from \(AppSettings.portRange.lowerBound) to \(AppSettings.portRange.upperBound)"
+        case .settle:
+            return "from \(AppSettings.settleRange.lowerBound) to \(AppSettings.settleRange.upperBound) s"
+        }
+    }
+
     static func settleWarning(settleSeconds: Int) -> String? {
         guard AppSettings.isAUsableSettle(settleSeconds) else { return nil }
         guard AppSettings.isBelowTheDefaultSettle(settleSeconds) else { return nil }

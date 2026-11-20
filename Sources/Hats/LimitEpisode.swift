@@ -17,12 +17,30 @@ enum LimitReason: String, CaseIterable, Equatable {
     case hatsNotRunning = "hats_not_running"
 }
 
+enum LimitWaitOrigin: String, CaseIterable, Equatable {
+    case hat
+    case warned
+    case deferred
+}
+
+struct LimitWait: Equatable {
+    let until: Date
+    let origin: LimitWaitOrigin
+    let drainMinutes: Int
+    let cancelledAt: Date?
+}
+
 struct LimitEvent: Equatable {
     let stage: LimitStage
     let at: Date
     let percent: Double
     let worn: String
     let reason: LimitReason
+    var early = false
+    var minutesToSave: Int?
+    var target: Int?
+    var leadSeconds: Int?
+    var wait: LimitWait?
 }
 
 struct LimitEpisode: Equatable {

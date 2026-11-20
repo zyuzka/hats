@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CodexGatewayPanel: View {
     @ObservedObject var model: HatsModel
-    @State private var portText = ""
+    @ObservedObject var drafts: SettingsDrafts
 
     private var snapshot: HatsSnapshot { model.snapshot }
     private var face: CodexGatewayFace { snapshot.codexGateway }
@@ -23,13 +23,24 @@ struct CodexGatewayPanel: View {
                     .font(.system(size: 11))
                     .foregroundStyle(isAProblem ? Color.orange : .secondary)
             }
-            HStack(spacing: 8) {
-                Text("Port").font(.system(size: 13))
-                TextField(String(CodexGatewayPaths.defaultPort), text: $portText)
-                    .frame(width: 70).textFieldStyle(.roundedBorder)
-                Button("Apply") { applyTypedPort() }.disabled(applicablePort == nil)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text("Port").font(.system(size: 13))
+                    DigitField(
+                        text: portState.text,
+                        placeholder: String(CodexGatewayPaths.defaultPort),
+                        label: "Codex gateway port",
+                        change: { drafts.setText($0, of: .codexPort, in: snapshot.settings) },
+                        submit: { drafts.apply(model) },
+                        cancel: { drafts.reset(.codexPort) }
+                    )
+                    .frame(width: 70)
+                }
+                .controlSize(.small)
+                if let reason = portState.reason {
+                    Text(reason).font(.system(size: 11)).foregroundStyle(Color.orange)
+                }
             }
-            .controlSize(.small)
             if let note = face.configNote {
                 Text(note).font(.system(size: 11)).foregroundStyle(Color.orange)
             }
@@ -42,8 +53,6 @@ struct CodexGatewayPanel: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 14)
-        .onAppear { portText = String(snapshot.settings.codexGatewayPort) }
-        .onChange(of: snapshot.settings.codexGatewayPort) { port in portText = String(port) }
     }
 
     private var isAProblem: Bool {
@@ -51,16 +60,5 @@ struct CodexGatewayPanel: View {
         return face.configNote != nil
     }
 
-    private var applicablePort: Int? {
-        TypedNumber.applicable(
-            portText,
-            current: snapshot.settings.codexGatewayPort,
-            isUsable: AppSettings.isAUsablePort
-        )
-    }
-
-    private func applyTypedPort() {
-        guard let port = applicablePort else { return }
-        model.actions?.applyCodexGatewayPort(port)
-    }
+    private var portState: SettingsFieldState { drafts.getState(.codexPort, in: snapshot.settings) }
 }

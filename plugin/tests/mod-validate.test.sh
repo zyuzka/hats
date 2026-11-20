@@ -85,12 +85,12 @@ EOF
   if forbidden "$result" | grep -qxF -- "$1"; then ok; else bad "проверка ловит: $1" "$(grep 'register.js\|✘' "$result" | head -3)"; fi
 }
 
-broken '$.store.get' "on('session.measure', async (\$, e, next) => { await \$.store.get('k'); return next(e) })"
-broken '$.process.spawn' "on('session.measure', async (\$, e, next) => { await \$.process.spawn({ argv: ['true'] }); return next(e) })"
-broken '$.http.fetch' "on('session.measure', async (\$, e, next) => { await \$.http.fetch({ url: 'https://a.b' }); return next(e) })"
-broken '$.model.complete' "on('session.measure', async (\$, e, next) => { await \$.model.complete({ messages: [] }); return next(e) })"
-broken '$.env.set' "on('session.measure', async (\$, e, next) => { await \$.env.set('X', '1'); return next(e) })"
-broken '$.clock.every' "on('session.measure', async (\$, e, next) => { \$.clock.every(1000, () => {}); return next(e) })"
+broken '$.store.get' "on('session.detach', async (\$, e, next) => { await \$.store.get('k'); return next(e) })"
+broken '$.process.spawn' "on('session.detach', async (\$, e, next) => { await \$.process.spawn({ argv: ['true'] }); return next(e) })"
+broken '$.http.fetch' "on('session.detach', async (\$, e, next) => { await \$.http.fetch({ url: 'https://a.b' }); return next(e) })"
+broken '$.model.complete' "on('session.detach', async (\$, e, next) => { await \$.model.complete({ messages: [] }); return next(e) })"
+broken '$.env.set' "on('session.detach', async (\$, e, next) => { await \$.env.set('X', '1'); return next(e) })"
+broken '$.clock.every' "on('session.detach', async (\$, e, next) => { \$.clock.every(1000, () => {}); return next(e) })"
 broken 'classic.Stop' "on('classic.Stop', (\$, e, next) => next(e))"
 broken 'session.compact' "on('session.compact', (\$, e, next) => next(e))"
 total=$((pass+fail))

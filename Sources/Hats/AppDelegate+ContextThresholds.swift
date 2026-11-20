@@ -2,7 +2,10 @@ import Foundation
 
 extension AppDelegate {
     func startTheContextChannel() {
-        contextChannel.hatTitle = { [weak self] id in self?.popover.model.snapshot.title(of: id) ?? id }
+        contextChannel.setWiring(
+            snapshot: { [weak self] in self?.popover.model.snapshot },
+            stagesRead: { [weak self] in self?.writeTheHatUsage() }
+        )
         contextChannel.start { [weak self] in self?.sessionWindows.windows ?? [] }
     }
 

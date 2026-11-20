@@ -66,8 +66,9 @@ struct HatRowView: View {
         let lines = RowDetail.lines(of: row, display: display, handover: handover)
         return ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
             switch line {
-            case .text(let text):
+            case .text(let text, let spoken):
                 Text(text).font(.system(size: 11)).foregroundStyle(secondary)
+                    .accessibilityLabel(spoken ?? text)
             case .bar(let bar):
                 UsageBarView(bar: bar, secondary: secondary, lit: lit)
             }

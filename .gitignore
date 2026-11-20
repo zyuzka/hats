@@ -31,3 +31,7 @@ token-probe/
 # Written by Claude Code beside a plugin folder it loads a hooks module from: the editor settings of
 # the mod, extending a types folder that ignores itself.
 plugin/tsconfig.json
+
+# Local Codex configuration and BMAD skills
+/.agents/
+/.codex/

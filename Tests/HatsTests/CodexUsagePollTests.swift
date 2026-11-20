@@ -53,7 +53,7 @@ final class CodexUsagePollTests: XCTestCase {
 
     private func lines(_ row: HatRowState, handover: String? = nil) -> [String] {
         RowDetail.lines(of: row, display: .percent, handover: handover, timeZone: utc, now: now).compactMap {
-            guard case .text(let text) = $0 else { return nil }
+            guard case .text(let text, _) = $0 else { return nil }
             return text
         }
     }
@@ -332,12 +332,12 @@ final class CodexUsagePollTests: XCTestCase {
         let poll = poll()
 
         poll.record(read("hat", .failed(.busy), at: now))
-        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(59)))
-        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(60)))
+        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(53)))
+        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(54)))
 
         poll.record(read("hat", .failed(.busy), at: now.addingTimeInterval(60)))
-        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 119)))
-        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 120)))
+        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 113)))
+        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 114)))
 
         XCTAssertEqual(logged.map(\.0), ["codexUsage.busy"])
         poll.record(read("hat", .reading(reading((300, 1))), at: now.addingTimeInterval(200)))
@@ -350,8 +350,8 @@ final class CodexUsagePollTests: XCTestCase {
 
         poll.record(read("hat", .failed(.busy), at: now))
         poll.record(read("hat", .failed(.unreachable), at: now.addingTimeInterval(60)))
-        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 119)))
-        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 120)))
+        XCTAssertFalse(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 113)))
+        XCTAssertTrue(poll.book.allowsReading("hat", at: now.addingTimeInterval(60 + 114)))
 
         poll.record(read("hat", .failed(.busy), at: now.addingTimeInterval(180)))
         XCTAssertEqual(logged.map(\.0), ["codexUsage.busy"], "the 429 series went on through the lost connection")
@@ -363,7 +363,8 @@ final class CodexUsagePollTests: XCTestCase {
         book.record(CodexUsageFetch.outcome(status: 502, body: nil), for: "hat", sentAt: now, every: 60)
 
         XCTAssertEqual(book.troubles["hat"], .serverError(502))
-        XCTAssertFalse(book.allowsReading("hat", at: now.addingTimeInterval(59)))
+        XCTAssertFalse(book.allowsReading("hat", at: now.addingTimeInterval(53)))
+        XCTAssertTrue(book.allowsReading("hat", at: now.addingTimeInterval(54)))
         XCTAssertTrue(CodexUsageTrouble.serverError(502).short.hasPrefix("Codex server error (502)"))
         XCTAssertFalse(CodexUsageTrouble.serverError(502).short.contains("refused"))
     }

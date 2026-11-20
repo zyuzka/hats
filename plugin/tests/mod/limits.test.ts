@@ -442,11 +442,11 @@ describe('the limit request', () => {
     ])
   })
 
-  test('Esc in the anchor turn: the interrupted line, and it counts as the one failure of the episode', async ($, on) => {
+  test('Esc in the anchor turn without a save: the unchecked line, and it counts as the one failure of the episode', async ($, on) => {
     const scene = await askAt81($, on)
 
     await scene.runAnchorTurn({ steps: [], reason: 'aborted' })
-    expect(scene.world.logs.at(-1)).toBe('anchoring was stopped; nothing else happens until you say "anchor".')
+    expect(scene.world.logs.at(-1)).toBe('anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.')
     await endTurnAt(scene, { five: 82 })
     await scene.runAnchorTurn({ steps: [], reason: 'aborted' })
     await endTurnAt(scene, { five: 83 })
@@ -456,6 +456,21 @@ describe('the limit request', () => {
       'hats:anchor',
     ])
     expect(scene.world.getStage().stage).toBe(null)
+  })
+
+  test('Esc in the anchor turn after a checked save: the saved line, the save counts and nothing is asked again', async ($, on) => {
+    const scene = await askAt81($, on)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene), reason: 'aborted' })
+    expect(scene.world.logs.slice(-2)).toEqual([
+      getSavedLine(81, scene.world.clock.now()),
+      'anchoring was stopped; the note was saved.',
+    ])
+    await endTurnAt(scene, { five: 82 })
+    await endTurnAt(scene, { five: 83 })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(getLimitStage(scene).five_hour.asked).toMatchObject({ percent: 81 })
   })
 
   test('the same episode with the reset 2 minutes later: nothing again', async ($, on) => {
@@ -661,6 +676,24 @@ describe('the limit with the window', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'saved', save_round: 1 })
   })
 
+  test('Esc after a checked save while the window passed its threshold: counted for the window, interrupted, no request after', async ($, on) => {
+    const scene = await startScene($, on)
+    const first = await scene.startTurn(10)
+    await scene.endTurn(first, { percent: 69 })
+    await endTurnAt(scene, { five: 81 }, 69)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene), endPercent: 71, reason: 'aborted' })
+    await endTurnAt(scene, { five: 81 }, 72)
+
+    expect(scene.world.logs).toEqual([
+      REQUEST_81,
+      getSavedLine(81, scene.world.clock.now()),
+      'anchoring was stopped; the note was saved.',
+    ])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted', save_round: 1 })
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
+
   test('the limit passed 80 in the window anchor turn: counted, no limit request after', async ($, on) => {
     const scene = await startScene($, on)
     const first = await scene.startTurn(10)
@@ -693,7 +726,7 @@ describe('the limit with the window', () => {
     expect(scene.world.getStage().stage).toBe(null)
   })
 
-  test('the window waits for background work and the limit is due: one request now, with the list', async ($, on) => {
+  test('the window waits and the limit comes due with drain on: the limit waits too; one request once the window deadline passes', async ($, on) => {
     const holders = [
       { id: 'b1shell', type: 'shell', status: 'running', description: 'sleep 180' },
     ]
@@ -704,11 +737,17 @@ describe('the limit with the window', () => {
     scene.setSnapshot({ tasks: holders })
     await scene.endTurn(waiting, { percent: 71 })
     expect(scene.world.getStage()).toMatchObject({ stage: 'waiting', save_round: 1 })
-
     const next = await scene.startTurn(71)
     setLimits(scene, { five: 81 })
     scene.setSnapshot({ tasks: holders })
     await scene.endTurn(next, { percent: 71 })
+    expect(scene.world.runs).toEqual([])
+    expect(getLimitStage(scene).five_hour.waiting).toMatchObject({ origin: 'deferred', drain_minutes: 5, cancelled_at: null })
+    await scene.world.clock.advance(5 * MINUTE)
+
+    const late = await scene.startTurn(71)
+    scene.setSnapshot({ tasks: holders })
+    await scene.endTurn(late, { percent: 71 })
     await scene.ownAnchor()
     scene.world.releaseRuns()
     await scene.world.clock.settle()
@@ -1011,6 +1050,7 @@ describe('the stage file and a reload', () => {
         save_percent: 80,
         warned: null,
         asked: null,
+        waiting: null,
         failed_asks: 0,
         previous: {
           resets_at: '2026-11-14T15:00:00Z',
@@ -1019,6 +1059,7 @@ describe('the stage file and a reload', () => {
           save_percent: 80,
           warned: { at: '2026-11-14T12:40:02.800Z', percent: 72.5, worn: 'work', reason: 'no_hat' },
           asked: null,
+          waiting: null,
           failed_asks: 0,
         },
       },
@@ -1147,7 +1188,7 @@ describe('the rules of the limits', () => {
     setAsked(items, START)
     expect(episode.asked).toMatchObject({ percent: 81, worn: 'work', reason: 'no_hat', at: '2026-11-14T12:00:00.000Z' })
 
-    setAskedBack(items)
+    setAskedBack(items, limits)
 
     expect(episode.asked).toBe(null)
     expect(findRefusalOutcome(`Error: ${STOPPED}`, null)).toMatchObject({ kind: 'stopped', fields: {} })

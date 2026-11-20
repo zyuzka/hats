@@ -41,12 +41,22 @@ import {
   setCurrentGetter,
 } from './requests.js'
 import {
-  findLimitWarning,
+  findLimitDenial,
+  findLimitNews,
   forgetCell,
   markWarned,
+  notePace,
   setAskFailed,
+  setPacePoints,
 } from './limits.js'
 import { createLimits } from './limit-rules.js'
+import { createPace } from './pace.js'
+import {
+  createTold,
+  findReleaseText,
+  forgetReleased,
+  noteWindowTold,
+} from './drain-release.js'
 import {
   endClearBeforeRun,
   endClearOnSessionEnd,
@@ -93,7 +103,11 @@ const createSession = id => ({
   turn: null,
   drain: null,
   drainMinutes: null,
+  nearestWait: null,
   limits: createLimits(),
+  pace: createPace(),
+  drainTold: createTold(),
+  released: [],
 })
 
 const findState = async $ => {
@@ -124,6 +138,8 @@ const isOwnAnchor = e => e.origin?.kind === 'plugin' && e.origin?.name === 'hats
 
 const isDone = out => out.deny === undefined && out.isError !== true
 
+const isDrainWarning = warning => warning !== null && warning.told.length > 0
+
 const updateArm = async ($, state) => {
   const reading = await findReading($)
   if (reading !== null) setArm(state.arm, reading)
@@ -136,14 +152,21 @@ const findDelivered = async ($, job) => {
   const { state, out } = job
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
-  const warning = out.deny === undefined ? await findLimitWarning($, state) : null
+  if (out.deny !== undefined) await notePace($, state)
+  const news = out.deny === undefined ? await findLimitNews($, state) : null
+  const warning = news?.warning ?? null
+  const found = news === null ? null : findReleaseText(state, { view: news.view, reading })
+  const release = isDrainWarning(warning) ? null : found
   const list = getDrainList(state)
   const texts = [
+    release,
     warning?.text ?? null,
     state.pending,
     list,
   ].filter(text => text !== null)
   if (out.deny !== undefined || texts.length === 0) return out
+  noteWindowTold(state, state.pending)
+  if (release !== null) forgetReleased(state)
   state.pending = null
   if (list !== null) state.request.list = null
   if (warning !== null) await markWarned($, { state, warning })
@@ -267,9 +290,12 @@ const onPromptSubmit = async (
   const state = await findState($)
   if (isOwnAnchor(e)) return submitOwnAnchor($, { state, e, next })
   if (e.origin?.kind === 'plugin' || e.command !== undefined) return next(e)
-  const warning = await findLimitWarning($, state)
+  const { view, warning } = await findLimitNews($, state)
+  const found = findReleaseText(state, { view, reading: await findReading($) })
+  const release = isDrainWarning(warning) ? null : found
   const text = state.pending
   const texts = [
+    release,
     warning?.text ?? null,
     text,
   ].filter(part => part !== null)
@@ -283,6 +309,8 @@ const onPromptSubmit = async (
     ],
   })
   if (out.drop !== undefined && state.pending === null) state.pending = text
+  if (out.drop === undefined && release !== null) forgetReleased(state)
+  if (out.drop === undefined) noteWindowTold(state, text)
   if (out.drop === undefined && warning !== null) await markWarned($, { state, warning })
 
   return out
@@ -300,6 +328,7 @@ const onTurnStart = async (
   if (request !== null && request.isSubmitted && request.turnId === null) request.turnId = e.turnId
   state.turn = createTurn(e.turnId, startedAt)
   await updateArm($, state)
+  await notePace($, state)
 
   return next(e)
 }
@@ -308,8 +337,9 @@ const findCallDenial = async ($, e) => {
   if (!isDrainCall(e)) return null
   const state = await findState($)
   await updateArm($, state)
+  const limit = await findLimitDenial($, state)
 
-  return findDenial($, state)
+  return limit ?? findDenial($, state)
 }
 
 const onToolCall = async (
@@ -366,6 +396,18 @@ const onTurnComplete = async (
   return next(e)
 }
 
+const onMeasure = async (
+  $,
+  e,
+  next,
+) => {
+  if (!isActive) return next(e)
+  const state = await findState($)
+  setPacePoints(state, { rateLimits: e.rateLimits, now: await $.clock.now() })
+
+  return next(e)
+}
+
 export const register = on => {
   on('session.start', onSessionStart).catch(passOn)
   on('session.end', onSessionEnd).catch(passOn)
@@ -374,4 +416,5 @@ export const register = on => {
   on('tool.call', onToolCall).catch(passOnFailed)
   on('turn.complete', onTurnComplete).catch(passOnFailedTurn)
   on('command.run', onCommandRun).catch(passOnFailedRun)
+  on('session.measure', onMeasure).catch(passOn)
 }

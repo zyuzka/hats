@@ -139,6 +139,32 @@ final class SessionHandoffFlowTests: XCTestCase {
         XCTAssertEqual(informed, [])
     }
 
+    func testRemoveIsCancelledWhenTheSettingsFolderChangesWhileTheWindowIsOpen() {
+        let fake = installedFake()
+        let other = "/Users/someone/other-claude"
+        fake.directories.insert(other)
+        let flow = SessionHandoffFlow(
+            own: SessionHandoffProvenance.bundledVersion,
+            perform: { work in work(fake.world()) },
+            onMain: { $0() },
+            ask: { [unowned self] prompt in
+                asked.append(prompt)
+                fake.environment[CLIState.configDirVariable] = other
+                return true
+            },
+            inform: { [unowned self] title, _ in informed.append(title) },
+            show: { [unowned self] in shown += 1 }
+        )
+        flow.refresh(then: nil)
+
+        flow.remove()
+
+        XCTAssertTrue(asked.first?.text.contains("settings folder \(FakePluginWorld.configFolder)") == true)
+        XCTAssertEqual(fake.changingRuns, [])
+        XCTAssertEqual(informed, [SessionHandoffFlow.notRemovedTitle])
+        XCTAssertFalse(flow.row.isBusy)
+    }
+
     func testRemoveIsNotAskedWhenNothingOfOursIsInstalled() {
         let fake = FakePluginWorld()
         let flow = createFlow(fake)

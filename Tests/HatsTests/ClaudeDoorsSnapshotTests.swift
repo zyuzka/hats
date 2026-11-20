@@ -33,7 +33,7 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
             XCTAssertEqual(shown.wearing?.id, pair.claude.id, order)
             XCTAssertFalse(shown.rows.contains { $0.id == pair.codex.id }, order)
             XCTAssertTrue(shown.codexRows.contains { $0.id == pair.codex.id && $0.isWearing }, order)
-            XCTAssertEqual(HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil).worn,
+            XCTAssertEqual(HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil, stages: []).worn,
                            pair.claude.id, order)
         }
     }
@@ -45,7 +45,7 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
 
             XCTAssertFalse(AutoSwitchEngine.eligible(in: shown.rows).contains(pair.codex.id), order)
             XCTAssertNil(shown.nextInLine, "the Codex hat is ready, yet not a Claude hat to switch to — \(order)")
-            XCTAssertFalse(HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil)
+            XCTAssertFalse(HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil, stages: [])
                 .hasAHatToSwitchTo, order)
         }
     }
@@ -96,7 +96,7 @@ final class ClaudeDoorsSnapshotTests: ClaudeCodexPairCase {
             shown.settings.codexAutoSwitch.isOn = true
             XCTAssertNil(shown.getHandover(for: codexRow),
                          "the Codex switch is on, yet the only Codex hat has no other to go to — \(order)")
-            let file = HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil)
+            let file = HatUsageRecord.create(from: shown, readAt: [:], liveSlot: nil, aliveAt: nil, stages: [])
             XCTAssertEqual(file.worn, pair.claude.id, order)
             XCTAssertNil(file.fiveHour, "the Codex 95% is not the worn Claude hat's — \(order)")
         }

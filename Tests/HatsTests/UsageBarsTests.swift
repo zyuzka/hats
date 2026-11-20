@@ -40,6 +40,13 @@ final class UsageBarsTests: XCTestCase {
     }
 
     private func lines(_ row: HatRowState, _ display: UsageDisplay, handover: String? = nil) -> [RowDetailLine] {
+        spokenLines(row, display, handover: handover).map {
+            guard case .text(let text, _) = $0 else { return $0 }
+            return .text(text)
+        }
+    }
+
+    private func spokenLines(_ row: HatRowState, _ display: UsageDisplay, handover: String? = nil) -> [RowDetailLine] {
         RowDetail.lines(of: row, display: display, handover: handover, timeZone: utc, now: now)
     }
 
@@ -62,6 +69,23 @@ final class UsageBarsTests: XCTestCase {
         ])
     }
 
+    func testPercentLinesCarryWhatVoiceOverReadsForTheSessionTheParkedRiseAndTheWeek() {
+        let worn = row(session: sessionEleven, week: weekNinety)
+        let wornUsage = UsageReading(session: sessionEleven, weekly: nil)
+        XCTAssertEqual(spokenLines(worn, .percent, handover: "next: personal"), [
+            .text("5h: 11% / 14:05", spoken: HatsCopy.getUsageSpoken(wornUsage, timeZone: utc, now: now)),
+            .text("week: 90% / Mon 23 Nov 10:00", spoken: worn.weekSpoken),
+            .text("next: personal"),
+        ])
+        let parked = row(wearing: false, session: sessionEleven, rose: 5, week: weekNinety)
+        XCTAssertEqual(spokenLines(parked, .percent).first, .text(
+            "5h: 11% / 14:05 · up 5 while not being worn",
+            spoken: HatsCopy.getParkedSpoken(wornUsage, rose: 5, timeZone: utc, now: now)
+        ))
+        XCTAssertNotNil(worn.weekSpoken)
+        XCTAssertTrue(HatsCopy.getParkedSpoken(wornUsage, rose: 5, timeZone: utc, now: now)?.contains("up 5 percent") == true)
+    }
+
     func testBarsOnAWornHatAreTwoLabelledBarsWithTheirResetTimesAndNoPercentText() {
         let worn = row(session: sessionEleven, week: weekNinety)
         XCTAssertEqual(lines(worn, .bars, handover: "next: personal"), [
@@ -70,7 +94,7 @@ final class UsageBarsTests: XCTestCase {
             .text("next: personal"),
         ])
         for line in lines(worn, .bars) {
-            if case .text(let text) = line { XCTAssertFalse(text.contains("%"), text) }
+            if case .text(let text, _) = line { XCTAssertFalse(text.contains("%"), text) }
         }
     }
 

@@ -8,6 +8,7 @@ final class FakeKeychain {
     var writeFailures: Set<String> = []
     var deleteFailures: Set<String> = []
     var swallowsWrites = false
+    var swallowsDeletes = false
     var listFailure: Error?
 
     var reads: [String] = []
@@ -55,6 +56,7 @@ final class FakeKeychain {
         if deleteFailures.contains(service) {
             throw KeychainError(operation: "delete \(service)", detail: "the keychain is locked")
         }
+        guard !swallowsDeletes else { return }
         contents.removeValue(forKey: service)
     }
 

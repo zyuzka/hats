@@ -32,7 +32,7 @@ struct LoginWatchWorld {
         LoginWatchWorld(
             identity: { store.liveIdentity() },
             slot: { store.liveSlotNow(inSlot: $0) },
-            resolvedSlot: { (try? CLIState.configurationRemembered())?.credentialService },
+            resolvedSlot: { (try? CLIState.configurationRemembered(world: .real))?.credentialService },
             isDone: { signIn()?.hasSignedIn ?? false },
             signInRunning: { signIn()?.isRunning },
             loginInFlight: { signIn()?.isInFlight ?? false }

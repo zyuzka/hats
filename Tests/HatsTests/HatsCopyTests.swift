@@ -416,7 +416,8 @@ final class HatsCopyTests: XCTestCase {
         ]
         for (wearing, trouble, usage) in branches {
             let hat = row(wearing: wearing, trouble: trouble, usage: usage)
-            XCTAssertTrue(RowDetail.lines(of: hat, display: .percent, handover: nil).contains(.text("week: 30%?")),
+            XCTAssertTrue(RowDetail.lines(of: hat, display: .percent, handover: nil)
+                .contains(.text("week: 30%?", spoken: hat.weekSpoken)),
                           "the week is shown on every hat: wearing=\(wearing) trouble=\(String(describing: trouble))")
             XCTAssertTrue(RowDetail.lines(of: hat, display: .bars, handover: nil).contains {
                 if case .bar(let bar) = $0 { return bar.label == "week" }
@@ -438,5 +439,7 @@ final class HatsCopyTests: XCTestCase {
         XCTAssertTrue(text.contains("HatMarkView(tool: tool)"))
         XCTAssertFalse(text.contains("✓"), "the worn hat is marked by the hat, not a check mark")
         XCTAssertFalse(text.contains("HatsCopy.usageLine"), "percent text comes only through RowDetail")
+        XCTAssertTrue(text.contains(".accessibilityLabel(spoken ?? text)"),
+                      "VoiceOver reads the spoken form of a percent line, not its short signs")
     }
 }

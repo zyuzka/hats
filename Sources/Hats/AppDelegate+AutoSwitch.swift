@@ -3,13 +3,7 @@ import AppKit
 extension AppDelegate {
     func decideAutoSwitch(from call: AutoSwitchCall) {
         let snapshot = popover.model.snapshot
-        let world = AutoSwitchWorld.of(
-            snapshot: snapshot,
-            readings: usage.readings,
-            missed: usage.missed,
-            fresh: usage.freshInTheLastPoll,
-            from: call
-        )
+        let world = AutoSwitchWorld.of(snapshot: snapshot, watch: usage, from: call)
         let now = Date()
         let outcome = AutoSwitchEngine.outcome(policy: settings.autoSwitch, world: world, now: now)
         let holding = AutoSwitchEngine.reasonForHolding(policy: settings.autoSwitch, world: world, at: now)

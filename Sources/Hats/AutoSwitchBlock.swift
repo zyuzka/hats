@@ -4,6 +4,9 @@ struct AutoSwitchBlock: View {
     let tool: Tool
     let policy: AutoSwitchPolicy
     let rows: [HatRowState]
+    let fields: (session: SettingsField, weekly: SettingsField)
+    @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
     let update: (AutoSwitchPolicy) -> Void
 
     var body: some View {
@@ -40,44 +43,42 @@ struct AutoSwitchBlock: View {
     private var triggers: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Trigger on").font(.system(size: 11)).foregroundStyle(.secondary)
-            threshold("the 5-hour limit", \.sessionThresholdPercent, fallback: 90)
-            threshold("the weekly limit", \.weeklyThresholdPercent, fallback: 95)
+            threshold("the 5-hour limit", fields.session, \.sessionThresholdPercent, fallback: 90)
+            threshold("the weekly limit", fields.weekly, \.weeklyThresholdPercent, fallback: 95)
         }
         .padding(.horizontal, 14)
     }
 
     private func threshold(
         _ label: String,
+        _ field: SettingsField,
         _ key: WritableKeyPath<AutoSwitchPolicy, Int?>,
         fallback: Int
     ) -> some View {
-        HStack {
-            Toggle(label, isOn: Binding(
-                get: { policy[keyPath: key] != nil },
-                set: { on in
-                    var next = policy
-                    next[keyPath: key] = on ? fallback : nil
-                    update(next)
-                }
-            )).font(.system(size: 12))
-            Spacer()
-            if let percent = policy[keyPath: key] {
-                Stepper(
-                    "at \(percent)%",
-                    value: Binding(
-                        get: { percent },
-                        set: { value in
-                            var next = policy
-                            next[keyPath: key] = min(100, max(50, value))
-                            update(next)
-                        }
-                    ),
-                    in: 50...100,
-                    step: 1
-                )
-                .font(.system(size: 12))
+        PercentField(
+            label: label,
+            field: field,
+            percent: policy[keyPath: key],
+            stepRange: AutoSwitchPolicy.thresholdRange,
+            note: nil,
+            model: model,
+            drafts: drafts,
+            step: { value in
+                var next = policy
+                next[keyPath: key] = value
+                update(next)
+            },
+            leading: {
+                Toggle(label, isOn: Binding(
+                    get: { policy[keyPath: key] != nil },
+                    set: { on in
+                        var next = policy
+                        next[keyPath: key] = on ? fallback : nil
+                        update(next)
+                    }
+                )).font(.system(size: 12))
             }
-        }
+        )
     }
 
     private var order: some View {

@@ -479,7 +479,7 @@ notes=$(env -u HATS_STATE_HOME HOME="$work/home" python3 -I -B -c 'import import
 spec = importlib.util.spec_from_file_location("handoff", sys.argv[1])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-print(os.path.dirname(os.path.expanduser(module.NOTES_ROOT)))' "$plugin_root/scripts/handoff.py" 2>&1)
+print(os.path.dirname(module.get_notes_root()))' "$plugin_root/scripts/handoff.py" 2>&1)
 if [ "$where" = "$work/home/Library/Application Support/Hats/session-windows" ] && [ "$where" = "$notes/session-windows" ]; then ok
 else bad "where без HATS_STATE_HOME — корень записок handoff.py" "where=$where handoff=$notes"; fi
 if [ ! -e "$work/x y" ]; then ok; else bad "where ничего не пишет" "$(ls -a "$work/x y")"; fi
@@ -533,11 +533,27 @@ quiet_run "SessionEnd, плохой session_id" \
   "$(printf '{"session_id":"../x","transcript_path":"%s","hook_event_name":"SessionEnd"}' "$tr")"
 if [ -e "$own" ]; then ok; else bad "SessionEnd с плохим session_id ничего не удаляет" "файла нет"; fi
 for reason in clear exit logout other; do
-  quiet_run "SessionEnd $reason, первый прогон" "$(input)"
+  quiet_run "SessionEnd $reason, первый прогон" "$(input UserPromptSubmit)"
   quiet_run "SessionEnd $reason" "$(input SessionEnd ",\"reason\":\"$reason\"")"
   if [ ! -e "$own" ]; then ok; else bad "SessionEnd $reason: свой файл удалён, ничего не записано" "$(cat "$own")"; fi
 done
 if [ -e "$other" ] && [ -f "$folder/.lock" ]; then ok; else bad "SessionEnd: чужой файл и .lock остаются" "$(ls -a "$folder")"; fi
+reset; ans m1 2 1035 448622 >"$tr"; mkdir -p "$folder"
+(hook "$(input Stop)" >/dev/null) &
+late=$!
+python3 -I -c 'import time; time.sleep(0.3)'
+quiet_run "SessionEnd, пока Stop ждёт переписку" "$(input SessionEnd ',"reason":"clear"')"
+wait "$late"
+no_file "Stop, дождавшийся переписки после SessionEnd, не возвращает файл сессии"
+quiet_run "PostToolUse после SessionEnd" "$(input)"
+no_file "PostToolUse после SessionEnd не возвращает файл сессии"
+quiet_run "UserPromptSubmit после SessionEnd — сессию продолжили" "$(input UserPromptSubmit)"
+expect "продолженная сессия снова пишет свой файл" event UserPromptSubmit
+quiet_run "SessionEnd снова" "$(input SessionEnd ',"reason":"exit"')"
+touch -t "$(ago 660)" "$folder/.ended-$sid"; printf '' >"$folder/.ended-fresh"
+quiet_run "уборка отметок конца" "$(input Stop)"
+if [ ! -e "$folder/.ended-$sid" ] && [ -e "$folder/.ended-fresh" ]; then ok
+else bad "уборка: отметка конца старше 10 минут удалена, свежая остаётся" "$(ls -a "$folder")"; fi
 reset; { ans m1 2 1035 448622; boundary b1 "$T1"; summary 1 "$T1"; } >"$tr"
 quiet_run "SessionStart после /compact" "$(input SessionStart ',"source":"compact"')"
 expect_many "SessionStart compact — мерит как обычно" state=compacted tokens=null compactions=1 event=SessionStart

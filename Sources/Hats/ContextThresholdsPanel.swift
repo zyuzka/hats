@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContextThresholdsPanel: View {
     @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
 
     private var thresholds: ContextThresholds { model.snapshot.settings.contextThresholds }
 
@@ -15,16 +16,18 @@ struct ContextThresholdsPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             threshold(
                 HatsCopy.warnAt,
+                field: .contextWarn,
                 percent: thresholds.warnPercent,
-                range: thresholds.getWarnRange(),
+                stepRange: thresholds.getWarnRange(),
                 toggle: { next, isOn in next.setWarn(isOn: isOn) },
                 step: { next, percent in next.setWarn(percent) }
             )
             drain
             threshold(
                 HatsCopy.anchorAt,
+                field: .contextSave,
                 percent: thresholds.savePercent,
-                range: thresholds.getSaveRange(),
+                stepRange: thresholds.getSaveRange(),
                 toggle: { next, isOn in next.setSave(isOn: isOn) },
                 step: { next, percent in next.setSave(percent) }
             )
@@ -33,7 +36,7 @@ struct ContextThresholdsPanel: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HatLimitSection(model: model)
+            HatLimitSection(model: model, drafts: drafts)
             codexContinue
             Spacer()
         }
@@ -49,31 +52,29 @@ struct ContextThresholdsPanel: View {
 
     private func threshold(
         _ label: String,
+        field: SettingsField,
         percent: Int?,
-        range: ClosedRange<Int>,
+        stepRange: ClosedRange<Int>,
         toggle: @escaping (inout ContextThresholds, Bool) -> Void,
         step: @escaping (inout ContextThresholds, Int) -> Void
     ) -> some View {
-        HStack {
-            Toggle(label, isOn: Binding(
-                get: { percent != nil },
-                set: { isOn in change { toggle(&$0, isOn) } }
-            ))
-            .font(.system(size: 13))
-            Spacer()
-            if let percent {
-                Stepper(
-                    "\(percent)%",
-                    value: Binding(
-                        get: { percent },
-                        set: { value in change { step(&$0, value) } }
-                    ),
-                    in: range,
-                    step: 1
-                )
+        PercentField(
+            label: label,
+            field: field,
+            percent: percent,
+            stepRange: stepRange,
+            note: nil,
+            model: model,
+            drafts: drafts,
+            step: { value in change { step(&$0, value) } },
+            leading: {
+                Toggle(label, isOn: Binding(
+                    get: { percent != nil },
+                    set: { isOn in change { toggle(&$0, isOn) } }
+                ))
                 .font(.system(size: 13))
             }
-        }
+        )
     }
 
     private var drain: some View {
@@ -98,7 +99,7 @@ struct ContextThresholdsPanel: View {
                     .font(.system(size: 13))
                 }
             }
-            .disabled(thresholds.savePercent == nil)
+            .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
             Text(HatsCopy.drainNote)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)

@@ -369,7 +369,7 @@ final class AccountStore {
             accounts = contents.accounts
             activeID = contents.activeID
             codexActiveID = contents.codexActiveID
-            keychain.adoptLegacyParked(ids: claudeHats.map(\.id))
+            keychain.adoptLegacyParked(ids: claudeHats.map(\.id)) { Journal.log($0, $1) }
         case .nothingYet:
             break
         case .unusable(let reason):

@@ -28,6 +28,39 @@ OUT="dist"
 # a person.
 ./Dev/changelog-check.sh
 
+# The release order is develop -> main first, then the image and appcast.xml. Hats offers the
+# plugin update from main, so an image of a commit main does not have would announce a plugin
+# update nobody can fetch yet, and Sparkle tells each installed copy only once. Read from the
+# remote-tracking ref as last fetched: a stale one can only refuse.
+if ! CONTAINING="$(git branch -r --contains HEAD 2>&1)"; then
+    echo "cannot tell which remote branches contain HEAD — refusing to package:" >&2
+    echo "$CONTAINING" >&2
+    exit 1
+fi
+if ! grep -Eq '^[[:space:]]*origin/main$' <<< "$CONTAINING"; then
+    echo "refusing to package: HEAD ($(git rev-parse --short HEAD)) is not in origin/main." >&2
+    echo "merge develop into main first, then package main. If it is merged already:" >&2
+    echo "  git fetch origin" >&2
+    exit 1
+fi
+
+# Claude Code keeps an installed plugin by its version number, so a release that changed
+# plugin/ under the old number would reach nobody. The check reads the working tree, and users
+# get the plugin from main, so an uncommitted change or a number raised only here would pass
+# the check while main keeps the old one.
+if ! PLUGIN_STATUS="$(git status --porcelain --untracked-files=all -- plugin .claude-plugin/marketplace.json 2>&1)"; then
+    echo "cannot read the state of plugin/ — refusing to package:" >&2
+    echo "$PLUGIN_STATUS" >&2
+    exit 1
+fi
+if [[ -n "$PLUGIN_STATUS" ]]; then
+    echo "refusing to package: plugin/ or .claude-plugin/marketplace.json has uncommitted changes," >&2
+    echo "which main and the users who fetch the plugin from it do not have:" >&2
+    echo "$PLUGIN_STATUS" >&2
+    exit 1
+fi
+./Dev/plugin-version-check.sh
+
 # No fallback version. A failing PlistBuddy used to yield 0.1.0, so the image went out
 # named after a version the bundle does not contain — and the install note asks
 # people to quote that version in bug reports.
@@ -49,6 +82,20 @@ if ! VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
     exit 1
 fi
 DMG="$OUT/Hats-$VERSION.dmg"
+
+# The notes and the update window's "what's new" come from the changelog inside the bundle,
+# the one the installed app shows, not from the working copy: a working copy edited or
+# switched after the build would describe a bundle it did not produce.
+CHANGELOG="$APP/Contents/Resources/CHANGELOG.md"
+if [[ ! -f "$CHANGELOG" ]]; then
+    echo "refusing to package: $APP carries no Contents/Resources/CHANGELOG.md. fix: ./Build/build-app.sh" >&2
+    exit 1
+fi
+if ! grep -qE "^## ${VERSION//./\\.}([[:space:]]|$)" "$CHANGELOG"; then
+    echo "refusing to package: the changelog inside $APP has no entry for $VERSION, the version" >&2
+    echo "the bundle reports. fix: rebuild with ./Build/build-app.sh after the entry is written" >&2
+    exit 1
+fi
 
 # Nothing user-specific lives in the bundle — credentials are in the keychain and
 # the account list in ~/Library/Application Support/Hats — but check rather than assert, because a
@@ -247,7 +294,7 @@ fi
 
 # What the update window shows under "what's new" is this version's entry from the
 # changelog, embedded in the feed; it is checked here so a bad entry costs no notarization.
-RELEASE_ENTRY="$(getChangelogEntry "$VERSION" CHANGELOG.md)"
+RELEASE_ENTRY="$(getChangelogEntry "$VERSION" "$CHANGELOG")"
 if ! checkReleaseEntry "$VERSION" "$RELEASE_ENTRY"; then
     echo "refusing to package." >&2
     exit 1
@@ -407,7 +454,7 @@ NOTES_FILE="$OUT/RELEASE-NOTES-$VERSION.md"
     echo
     echo "## What changed"
     echo
-    getChangelogEntry "$VERSION" CHANGELOG.md
+    getChangelogEntry "$VERSION" "$CHANGELOG"
 } > "$NOTES_FILE"
 PACKAGED=1
 

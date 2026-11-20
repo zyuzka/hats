@@ -1,7 +1,9 @@
 import {
+  DRAIN_WARNING,
   getSha256,
   getStamp,
   getStampSeconds,
+  isDrainMinutes,
 } from './thresholds.js'
 
 export const LIMIT_DEFAULTS = { warn: 70, save: 80 }
@@ -20,7 +22,7 @@ export const WHY = {
 }
 
 const LIMIT_RANGE = { low: 10, high: 95 }
-const LIMIT_WORDS = { five_hour: '5-hour', seven_day: 'weekly' }
+export const LIMIT_WORDS = { five_hour: '5-hour', seven_day: 'weekly' }
 const DAYS = [
   'Sun',
   'Mon',
@@ -95,8 +97,10 @@ const createEpisode = (job, previous) => ({
   percent: job.reading.percent,
   warn: job.thresholds.warn,
   save: job.thresholds.save,
+  lead: job.thresholds.lead,
   warned: null,
   asked: null,
+  waiting: null,
   failedAsks: 0,
   previous,
 })
@@ -111,6 +115,7 @@ export const setEpisode = (limits, job) => {
     current.lastResetsMs = reading.resetsMs
     current.warn = thresholds.warn
     current.save = thresholds.save
+    current.lead = thresholds.lead
     return current
   }
   limits[kind] = createEpisode(job, current === null ? null : { ...current, previous: null })
@@ -121,6 +126,19 @@ export const setEpisode = (limits, job) => {
 export const isLimitWarnDue = episode => episode.warn !== null && episode.percent >= episode.warn && episode.warned === null
 
 export const isLimitAskDue = episode => episode.save !== null && episode.percent >= episode.save && episode.asked === null
+
+const findFirstWarning = value => {
+  if (!isObject(value) || typeof value.episode !== 'string' || typeof value.at !== 'string') return null
+  const episodeMs = Date.parse(value.episode)
+  const atMs = Date.parse(value.at)
+
+  return Number.isNaN(episodeMs) || Number.isNaN(atMs) ? null : { episodeMs, atMs }
+}
+
+const findFirstWarned = value => ({
+  five_hour: isObject(value) ? findFirstWarning(value.five_hour) : null,
+  seven_day: isObject(value) ? findFirstWarning(value.seven_day) : null,
+})
 
 const isHatUsageShape = data =>
   isObject(data) &&
@@ -149,6 +167,7 @@ export const findHatUsage = text => {
     aliveMs: Date.parse(data.alive_at),
     isAutoSwitchOn: data.auto_switch_on,
     hasAHat: data.has_a_hat_to_switch_to,
+    firstWarned: findFirstWarned(data.first_warned),
   }
 }
 
@@ -180,12 +199,20 @@ export const getCredentialService = async env => {
   return `Claude Code${custom === '' ? '' : '-custom-oauth'}-credentials${await getHashSuffix(env)}`
 }
 
-export const createEvent = job => ({
-  at: new Date(job.now).toISOString(),
-  percent: job.percent,
-  worn: job.worn,
-  reason: job.reason,
-})
+export const createEvent = job => {
+  const early = job.early ?? null
+
+  return {
+    at: new Date(job.now).toISOString(),
+    percent: job.percent,
+    worn: job.worn,
+    reason: job.reason,
+    early: early !== null,
+    target: early === null ? (job.target ?? null) : early.target,
+    lead_seconds: early === null ? (job.lead ?? null) : early.lead,
+    ...(early === null ? {} : { minutes_to_save: early.minutes }),
+  }
+}
 
 const getWhole = percent => Math.floor(percent)
 
@@ -200,21 +227,53 @@ export const getWhen = (resetsMs, now) => {
   return isToday ? time : `${DAYS[at.getDay()]} ${time}`
 }
 
-const getAnchorPart = items => {
-  const asking = items.filter(item => item.episode.save !== null && item.episode.asked === null)
-  if (asking.length === 0) return ''
-  if (asking.some(item => item.episode.percent >= item.episode.save)) return 'This session anchors at the end of this turn. '
+const getAsking = items => items.filter(item => item.episode.save !== null && item.episode.asked === null)
 
-  return `This session anchors at the end of a turn once it reaches ${Math.min(...asking.map(item => item.episode.save))}%. `
+const getAnchorPart = (asking, drain) => {
+  if (asking.length === 0) return ''
+  const later = drain === null ? '' : `, or, while its background work runs, at the end of a later turn within ${drain.minutes} min`
+  if (asking.some(item => item.episode.percent >= item.episode.save)) return `This session anchors at the end of this turn${later}. `
+
+  return `This session anchors at the end of a turn once it reaches ${Math.min(...asking.map(item => item.episode.save))}%${later}. `
 }
 
-const getWarningPart = item =>
-  `at ${getWhole(item.episode.percent)}% of its ${LIMIT_WORDS[item.kind]} limit ` +
-  `(warning threshold ${item.episode.warn}%) and ${WHY[item.why]}`
+const getWarningPart = item => {
+  const at = `at ${getWhole(item.episode.percent)}% of its ${LIMIT_WORDS[item.kind]} limit `
+  if ((item.early ?? null) === null) return `${at}(warning threshold ${item.episode.warn}%) and ${WHY[item.why]}`
 
-export const getLimitWarningText = items =>
-  `Hats limit threshold: this session's account is ${items.map(getWarningPart).join('; it is also ')}. ` +
-  `${getAnchorPart(items)}Tell the user so in one short line in your reply, in their language, and go on with the task.`
+  return (
+    `${at}and spending fast: at the pace of the last minutes it reaches ${item.early.target}% ` +
+    `in about ${item.early.minutes} minutes, and ${WHY[item.why]}`
+  )
+}
+
+export const getLimitWarningText = (items, drain = null) => {
+  const asking = getAsking(items)
+  const isDraining = drain !== null && asking.length > 0
+
+  return (
+    `Hats limit threshold: this session's account is ${items.map(getWarningPart).join('; it is also ')}. ` +
+    `${getAnchorPart(asking, isDraining ? drain : null)}` +
+    'Tell the user so in one short line in your reply, in their language, and go on with the task.' +
+    (isDraining ? DRAIN_WARNING : '')
+  )
+}
+
+const getDenyPart = item => `${LIMIT_WORDS[item.kind]} limit and ${WHY[item.why]}`
+
+const isOneWhy = items => items.length > 1 && items.every(item => item.why === items[0].why)
+
+const getDenyCause = items => {
+  if (!isOneWhy(items)) return items.map(getDenyPart).join(', and to its ')
+
+  return `${items.map(item => LIMIT_WORDS[item.kind]).join(' and ')} limits and ${WHY[items[0].why]}`
+}
+
+export const getLimitDenyText = items =>
+  `Hats drain: this session's account is close to its ${getDenyCause(items)}, ` +
+  'so new background work — subagents, workflows, monitors and background commands — is refused until the session is asked to anchor. ' +
+  'Do this step in the foreground (a Bash call without run_in_background and with a timeout long enough for it, ' +
+  'or the work yourself) or leave it for the next session, and tell the user in one line.'
 
 export const getLimitRequestLine = items => {
   const named = items.map(item => `${LIMIT_WORDS[item.kind]} ${getWhole(item.percent)}%`).join(', ')
@@ -240,6 +299,7 @@ const getEpisodeRecord = (episode, isOuter) => {
     save_percent: episode.save,
     warned: getEventRecord(episode.warned),
     asked: getEventRecord(episode.asked),
+    waiting: getEventRecord(episode.waiting ?? null),
     failed_asks: episode.failedAsks,
   }
 
@@ -259,7 +319,50 @@ const isEventShape = value =>
   typeof value.worn === 'string' &&
   Object.hasOwn(WHY, value.reason)
 
-const findEvent = value => (isEventShape(value) ? { at: value.at, percent: value.percent, worn: value.worn, reason: value.reason } : null)
+const isCount = value => Number.isInteger(value) && value >= 0
+
+const PACE_FIELDS = {
+  early: value => typeof value === 'boolean',
+  target: isLimitThreshold,
+  lead_seconds: value => value === null || isCount(value),
+  minutes_to_save: isCount,
+}
+
+const getPaceFields = value => {
+  const kept = Object.entries(PACE_FIELDS).filter(([name, isKept]) => Object.hasOwn(value, name) && isKept(value[name]))
+
+  return Object.fromEntries(kept.map(([name]) => [name, value[name]]))
+}
+
+const findEvent = value =>
+  isEventShape(value) ? { at: value.at, percent: value.percent, worn: value.worn, reason: value.reason, ...getPaceFields(value) } : null
+
+const WAIT_ORIGINS = [
+  'hat',
+  'warned',
+  'deferred',
+]
+
+const isEventTime = value => typeof value === 'string' && EVENT_TIME.test(value)
+
+const isWaitingShape = value =>
+  isEventTime(value.until) &&
+  WAIT_ORIGINS.includes(value.origin) &&
+  isDrainMinutes(value.drain_minutes) &&
+  (value.cancelled_at === null || isEventTime(value.cancelled_at))
+
+const findWaiting = value => {
+  const event = findEvent(value)
+  if (event === null || !isWaitingShape(value)) return null
+
+  return {
+    ...event,
+    until: value.until,
+    origin: value.origin,
+    drain_minutes: value.drain_minutes,
+    cancelled_at: value.cancelled_at,
+  }
+}
 
 const isEpisodeShape = value =>
   isObject(value) &&
@@ -278,8 +381,10 @@ const findEpisode = (value, isOuter) => {
     percent: value.percent,
     warn: value.warn_percent,
     save: value.save_percent,
+    lead: null,
     warned: findEvent(value.warned),
     asked: findEvent(value.asked),
+    waiting: findWaiting(value.waiting),
     failedAsks: Number.isInteger(value.failed_asks) && value.failed_asks > 0 ? value.failed_asks : 0,
     previous: isOuter ? findEpisode(value.previous, false) : null,
   }

@@ -2,15 +2,16 @@ import SwiftUI
 
 struct GatewaysPanel: View {
     @ObservedObject var model: HatsModel
+    @ObservedObject var drafts: SettingsDrafts
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 title(Tool.claudeCode)
-                GatewayPanel(model: model)
+                GatewayPanel(model: model, drafts: drafts)
                 Divider().padding(.horizontal, 14).padding(.vertical, 6)
                 title(Tool.codex)
-                CodexGatewayPanel(model: model)
+                CodexGatewayPanel(model: model, drafts: drafts)
             }
             .padding(.vertical, 8)
         }

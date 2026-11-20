@@ -58,7 +58,9 @@ silent "команда /hats:anchor после пробелов" "  /hats:anchor
 silent "команда /hats:anchor с аргументами" "/hats:anchor сейчас"
 silent "команда /hats:anchor, дальше новая строка с текстом" $'/hats:anchor\nи ещё'
 reminded "/hats:anchored — не эта команда" "/hats:anchored"
-reminded "/anchor без приставки — не эта команда" "/anchor"
+silent "набранная /anchor без приставки — та же команда" "/anchor"
+silent "набранная /anchor без приставки с аргументами" "/anchor сейчас"
+reminded "/anchored — не эта команда" "/anchored"
 reminded "команда внутри текста — напоминание" "запусти /hats:anchor"
 reminded "команда в другом регистре — напоминание" "/HATS:ANCHOR"
 rm -rf "$work/.claude"; run "/hats:anchor" >/dev/null
@@ -122,6 +124,10 @@ if [ ! -e "$work/.claude" ]; then ok; else bad "CLAUDE_CONFIG_DIR: в ~/.claude 
 rm -rf "$work/.claude"
 input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR= python3 -I "$HOOK" >/dev/null 2>&1
 if [ -f "$work/.claude/state/anchor-nudge.tsv" ]; then ok; else bad "пустой CLAUDE_CONFIG_DIR — журнал в ~/.claude/state" "$(ls -R "$work" | head -5)"; fi
+rm -rf "$work/.claude" "$work/rel"
+(cd "$work" && input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR=rel/cfg python3 -I "$HOOK" >/dev/null 2>&1)
+if [ -f "$work/.claude/state/anchor-nudge.tsv" ] && [ ! -e "$work/rel" ]; then ok
+else bad "относительный CLAUDE_CONFIG_DIR — журнал в ~/.claude/state, не от текущей папки" "$(ls -R "$work" | head -8)"; fi
 rm -rf "$work/cfg"; mkdir -p "$work/cfg"; printf 'x' >"$work/cfg/state"
 out=$(input "anchor" "$tr" | env HOME="$work" CLAUDE_CONFIG_DIR="$work/cfg" python3 -I "$HOOK" 2>&1); rc=$?
 if [ $rc -eq 0 ] && names_anchor "$out"; then ok; else bad "CLAUDE_CONFIG_DIR: журнал не записать — напоминание всё равно есть" "rc=$rc out=${out:0:200}"; fi

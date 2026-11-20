@@ -60,11 +60,15 @@ final class GroupRunTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let marker = folder.appendingPathComponent("term").path
-        let child = "trap 'echo got-term > \"\(marker)\"; exit 0' TERM; sleep 60 & wait"
+        let ready = folder.appendingPathComponent("ready").path
+        let child = "trap 'echo got-term > \"\(marker)\"; exit 0' TERM; : > \"\(ready)\"; sleep 60 & wait"
+        let parent = "trap 'wait' TERM; /bin/sh -c \"$0\" & wait"
 
-        let outcome = run("/bin/sh", ["-c", "/bin/sh -c \"$0\" & wait", child], seconds: 1)
+        let outcome = run("/bin/sh", ["-c", parent, child], seconds: 3)
 
         XCTAssertEqual(outcome.end, .timedOut)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: ready),
+                      "the child set its trap before the signal; without this a slow start reads as a lost SIGTERM")
         XCTAssertEqual(try? String(contentsOfFile: marker, encoding: .utf8), "got-term\n",
                        "SIGTERM goes to the whole group, so what claude started can clean up before SIGKILL")
     }

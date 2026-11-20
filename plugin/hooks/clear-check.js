@@ -84,6 +84,10 @@ export async function isPluginInPlace($) {
   return $.fs.exists(`${$.plugin.root}/scripts/handoff.py`).catch(() => false)
 }
 
+export async function isHandoffOff($) {
+  return (await $.env.get('HANDOFF_OFF')) === '1'
+}
+
 export async function findPromptReason($) {
   const box = await $.prompt.read().catch(() => null)
   if (!isBoxShape(box)) return KEPT.unexpected

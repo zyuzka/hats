@@ -10,7 +10,7 @@ enum SessionHorizon {
     }
 
     static func minutes(_ interval: TimeInterval) -> String {
-        let total = Int(interval)
+        let total = Int(exactly: interval.rounded(.towardZero)) ?? Int.max
         if total < 60 { return "under a minute" }
         let mins = total / 60
         if mins < 60 { return "in \(mins) min" }

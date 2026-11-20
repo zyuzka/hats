@@ -113,7 +113,7 @@ struct GeneralPanel: View {
                 .help("Everything this app did, in the order it did it — the file to send when "
                     + "something needs explaining")
             if let canCheck = snapshot.canCheckForUpdates {
-                Button("Check for Updates\u{2026}") { model.actions?.checkForUpdates() }
+                Button(snapshot.checkForUpdatesTitle) { model.actions?.checkForUpdates() }
                     .controlSize(.small)
                     .disabled(!canCheck)
             }

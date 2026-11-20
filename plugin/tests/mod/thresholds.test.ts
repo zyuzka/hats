@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
 import {
+  CANCELLED_LINE,
   DEFAULTS,
-  INTERRUPTED_LINE,
   REASONS,
   RELOADED_LINE,
+  STOPPED_SAVED_LINE,
+  STOPPED_UNCHECKED_LINE,
   createArm,
   createStageRecord,
   findHandoffCommand,
@@ -25,6 +27,7 @@ import {
   getPercent,
   getRequestLine,
   getSavedLine,
+  getStoppedFailedLine,
   getSha256,
   getStamp,
   getStampSeconds,
@@ -230,7 +233,14 @@ describe('the texts', () => {
         'Type /exit and start claude again in this folder: the new session lists this note.',
     )
     expect(getFailedLine(REASONS.stale)).toBe('the session was not anchored: stale marker. Say "anchor" to try again.')
-    expect(INTERRUPTED_LINE).toBe('anchoring was stopped; nothing else happens until you say "anchor".')
+    expect(CANCELLED_LINE).toBe('anchoring was cancelled before it started; the context was not saved.')
+    expect(STOPPED_SAVED_LINE).toBe('anchoring was stopped; the note was saved.')
+    expect(STOPPED_UNCHECKED_LINE).toBe(
+      'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.',
+    )
+    expect(getStoppedFailedLine(REASONS.notRewritten)).toBe(
+      'anchoring was stopped; the note was not saved: the note was not rewritten in this anchor. Say "anchor" to save.',
+    )
     expect(RELOADED_LINE).toBe('anchoring was not checked: the plugin reloaded. Say "anchor" to save again.')
   })
 })

@@ -56,7 +56,7 @@ struct UsageBar: Equatable {
 }
 
 enum RowDetailLine: Equatable {
-    case text(String)
+    case text(String, spoken: String? = nil)
     case bar(UsageBar)
 }
 
@@ -101,7 +101,10 @@ enum RowDetail {
             let line = rose == nil
                 ? HatsCopy.usageLine(usage, timeZone: timeZone, now: now)
                 : HatsCopy.parkedUsage(usage, rose: rose, timeZone: timeZone, now: now)
-            return line.map { [.text($0)] } ?? []
+            let spoken = rose == nil
+                ? HatsCopy.getUsageSpoken(usage, timeZone: timeZone, now: now)
+                : HatsCopy.getParkedSpoken(usage, rose: rose, timeZone: timeZone, now: now)
+            return line.map { [.text($0, spoken: spoken)] } ?? []
         case .bars:
             return usage.session.map { [.bar(.session($0, timeZone: timeZone, now: now))] } ?? []
         }
@@ -115,7 +118,7 @@ enum RowDetail {
     ) -> [RowDetailLine] {
         switch display {
         case .percent:
-            return row.week.map { [.text($0)] } ?? []
+            return row.week.map { [.text($0, spoken: row.weekSpoken)] } ?? []
         case .bars:
             return row.weekSighting.map { [.bar(.week($0, timeZone: timeZone, now: now))] } ?? []
         }

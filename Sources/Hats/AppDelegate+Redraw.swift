@@ -37,8 +37,7 @@ extension AppDelegate {
         snapshot.showTheBanners(of: settings)
         snapshot.codexAutoSwitchWarning = codexSwitch.lastWarning
         snapshot.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-        snapshot.canCheckForUpdates = updater?.canCheckNow
-        snapshot.checksForUpdatesAutomatically = updater?.checksAutomatically
+        snapshot.setUpdates(from: updater)
         snapshot.changing = changing
         snapshot.startAtLogin = LoginItem.currentFace
         snapshot.retiredPort = GatewayProcess.retiredPort

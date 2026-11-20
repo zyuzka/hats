@@ -41,7 +41,7 @@ final class HatUsageLimitFieldsTests: XCTestCase {
     }
 
     private func record(_ snapshot: HatsSnapshot, liveSlot: String?, aliveAt: Date?) -> HatUsageRecord {
-        HatUsageRecord.create(from: snapshot, readAt: [:], liveSlot: liveSlot, aliveAt: aliveAt)
+        HatUsageRecord.create(from: snapshot, readAt: [:], liveSlot: liveSlot, aliveAt: aliveAt, stages: [])
     }
 
     private func fields(of record: HatUsageRecord) throws -> [String: Any] {
@@ -107,6 +107,18 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertEqual(read["sevenDay"] as? String, "switch_threshold_off")
     }
 
+    func testWithOneHatTheModHearsThatThereIsNoOtherHatOnBothLimits() throws {
+        let alone = record(snapshot(wearing: "work", hats: ["work"]), liveSlot: slot, aliveAt: polledAt)
+        var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
+        XCTAssertEqual(file.setRecord(alone, at: now), .written)
+
+        let read = try readByTheMod(file.url)
+
+        XCTAssertEqual(read["isUnderHats"] as? Bool, true, "one hat is still a hat: the limit thresholds act")
+        XCTAssertEqual(read["fiveHour"] as? String, "no_hat")
+        XCTAssertEqual(read["sevenDay"] as? String, "no_hat")
+    }
+
     func testAWornHatWithAKnownCellCarriesItsCellWhatHatsSwitchesOnAndTheTimeOfThePoll() throws {
         let written = try fields(of: record(snapshot(wearing: "work"), liveSlot: slot, aliveAt: polledAt))
 
@@ -153,6 +165,20 @@ final class HatUsageLimitFieldsTests: XCTestCase {
             XCTAssertEqual(record(shown, liveSlot: slot, aliveAt: polledAt).switchCovers, expected, name)
         }
         XCTAssertNil(snapshot(wearing: "work", hats: ["work"]).nextInLine, "the case above has nowhere to go")
+    }
+
+    func testHatsCoversNoLimitWhenTheOnlyOtherHatIsOnVacation() {
+        var shown = snapshot(wearing: "work")
+        var away = hat("personal")
+        away.vacationSince = now
+        let back = SwitchCovers.create(from: shown)
+        shown.rows = [
+            HatRowState(hat: hat("work"), isWearing: true, usage: nil, usageTrouble: nil),
+            HatRowState(hat: away, isWearing: false, usage: nil, usageTrouble: nil),
+        ]
+
+        XCTAssertEqual(back, SwitchCovers(fiveHour: true, sevenDay: true), "with the other hat back the switch covers both")
+        XCTAssertEqual(SwitchCovers.create(from: shown), SwitchCovers(fiveHour: false, sevenDay: false))
     }
 
     func testEveryPollRewritesTheFileWithItsOwnTimeEvenWhenNothingElseChanged() throws {
@@ -207,7 +233,7 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         var stamps: [String] = []
         watch.onReadings = { _ in
-            _ = file.setRecord(HatUsageRecord.create(from: shown, watch: watch), at: self.now)
+            _ = file.setRecord(HatUsageRecord.create(from: shown, watch: watch, stages: []), at: self.now)
             let written = try? JSONSerialization.jsonObject(with: Data(contentsOf: file.url)) as? [String: Any]
             stamps.append((written?["alive_at"] as? String) ?? "null")
         }
@@ -237,20 +263,69 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertEqual(stamps[4], watch.aliveAt.map(HatUsageRecord.getStamp))
     }
 
-    func testAWakeOfTheMacPollsAtOnce() {
+    func testAWakeOfTheMacPollsOnceTheNetworkHadTimeToComeUp() {
         let hats: AutoSwitchWatch.Hats = [("work", true)]
         let wakes = NotificationCenter()
         let watch = AutoSwitchWatch(wakes: wakes)
         let slots = FakeSlots([:])
         watch.makeWorld = { _ in slots.world(now: self.now, liveSlot: nil) }
+        watch.wakeDelay = 0.6
+        var landedAt: Date?
         let landed = expectation(description: "a poll landed")
         landed.assertForOverFulfill = false
-        watch.onReadings = { _ in landed.fulfill() }
+        watch.onReadings = { _ in
+            landedAt = landedAt ?? Date()
+            landed.fulfill()
+        }
         watch.start(hats: { hats })
         defer { watch.stop() }
+        let woke = Date()
 
         wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
 
-        wait(for: [landed], timeout: 1.0)
+        wait(for: [landed], timeout: 1.5)
+        XCTAssertGreaterThanOrEqual(landedAt?.timeIntervalSince(woke) ?? 0, 0.6,
+                                    "measured 2026-11-15: a poll 4 s after the wake found no network and "
+                                        + "every hat showed \"latest check failed\" until the next poll")
+        XCTAssertEqual(AutoSwitchWatch(wakes: NotificationCenter()).wakeDelay, 25,
+                       "the network was answering within two minutes of that wake; 25 s is chosen, not measured")
+    }
+
+    private func countLandingsAfterWakes(_ act: (AutoSwitchWatch, NotificationCenter) -> Void) -> Int {
+        let hats: AutoSwitchWatch.Hats = [("work", true)]
+        let wakes = NotificationCenter()
+        let watch = AutoSwitchWatch(wakes: wakes)
+        let slots = FakeSlots([:])
+        watch.makeWorld = { _ in slots.world(now: self.now, liveSlot: nil) }
+        watch.wakeDelay = 0.3
+        var landings = 0
+        watch.onReadings = { _ in landings += 1 }
+        watch.start(hats: { hats })
+        defer { watch.stop() }
+        act(watch, wakes)
+        let quiet = expectation(description: "the first timer poll is two seconds away")
+        quiet.isInverted = true
+        wait(for: [quiet], timeout: 1.2)
+
+        return landings
+    }
+
+    func testTwoWakesInsideTheDelayGiveOnePoll() {
+        let landings = countLandingsAfterWakes { _, wakes in
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+        }
+
+        XCTAssertEqual(landings, 1, "the second wake replaces the poll the first one scheduled")
+    }
+
+    func testARestartInsideTheDelayDropsThePollTheOldWakeScheduled() {
+        let landings = countLandingsAfterWakes { watch, wakes in
+            wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+            watch.stop()
+            watch.start(hats: { [("personal", true)] })
+        }
+
+        XCTAssertEqual(landings, 0, "stop cancels the waiting wake poll, so no poll runs with the old hats")
     }
 }

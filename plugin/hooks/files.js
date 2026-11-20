@@ -2,6 +2,7 @@ import {
   DEFAULTS,
   FILE_LIMIT,
   HATS_FOLDER,
+  NOTES_NAME,
   STAGE_FOLDER,
   THRESHOLDS_FILE,
   createStageRecord,
@@ -52,12 +53,26 @@ export async function getStateRoot($) {
   return home === null ? null : `${home}/${HATS_FOLDER}`
 }
 
+const isAbsolutePath = value =>
+  typeof value === 'string' &&
+  value.startsWith('/') &&
+  !value.includes('\0')
+
+export async function getNotesRoot($) {
+  const override = await $.env.get('HATS_STATE_HOME')
+  if (isAbsolutePath(override)) return `${override}/${NOTES_NAME}`
+  const home = await getHome($)
+
+  return home === null ? null : `${home}/${HATS_FOLDER}/${NOTES_NAME}`
+}
+
 export async function getConfigRoot($) {
   const custom = await $.env.get('CLAUDE_CONFIG_DIR')
   const home = await getHome($)
   if (!custom || custom.includes('\0')) return home === null ? null : `${home}/.claude`
   const isHomeRelative = (custom === '~' || custom.startsWith('~/')) && home !== null
   const path = isHomeRelative ? `${home}${custom.slice(1)}` : custom
+  if (!path.startsWith('/')) return home === null ? null : `${home}/.claude`
 
   return path.replace(/\/+$/, '') || '/'
 }

@@ -7,8 +7,8 @@
 # same file, so /usr//bin/python3 or a link to it counts too. Linux, and a python3 found anywhere
 # else (Homebrew and the like), run as they always did.
 # --quiet is for hooks: when Python cannot run, say nothing, append one JSON line with outcome
-# "no-python" to <config>/state/handoff/runs.log (<config> is $CLAUDE_CONFIG_DIR or else ~/.claude;
-# a failed write is ignored) and exit 0. Without it one English line says python3 is required, and
+# "no-python" to <config>/state/handoff/runs.log (<config> is $CLAUDE_CONFIG_DIR when it is an
+# absolute path after ~ is expanded, or else ~/.claude; a failed write is ignored) and exit 0. Without it one English line says python3 is required, and
 # the exit code is 1.
 # HATS_SYSTEM_PYTHON and HATS_XCODE_SELECT stand in for /usr/bin/python3 and /usr/bin/xcode-select
 # in tests, so /usr/bin is never edited.
@@ -28,6 +28,10 @@ refuse() {
     config=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
     case $config in
       "~" | "~/"*) config=$HOME${config#\~} ;;
+    esac
+    case $config in
+      /*) ;;
+      *) config=$HOME/.claude ;;
     esac
     {
       mkdir -p "$config/state/handoff" &&

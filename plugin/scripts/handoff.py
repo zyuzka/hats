@@ -9,6 +9,8 @@ of closed sessions when a new session starts in the same folder.
   handoff.py check P                    the check alone
   handoff.py new --slug S [--memory D]  creates an empty note resume-S.md under a free name, prints its path
   handoff.py where                      creates and prints the notes folder of the working folder
+  handoff.py allow                      PreToolUse hook (matcher Write|Edit|Read): allows a call on a note
+                                        of the notes folder, silent on anything else
 
 The marker is keyed to the Claude process (pid + start time read in UTC), not to the folder:
 two sessions run in one folder at once (measured 2026-11-09), and /clear keeps the process (a
@@ -16,13 +18,17 @@ session after /clear ran in the process started the day before, measured 2026-11
 the process alone finds the note, whatever folder the session moved to; a new session lists the
 notes of closed processes launched in its folder. The hook never deletes a marker: SessionStart
 can fire twice or for a session that never opens; `save` retires markers of closed processes
-that point at the same note. After /clear a save is handed to one session: the hook records the
+that point at the same note, and those saved more than 30 days ago or at an unreadable time, with
+their `.handed`. After /clear a save is handed to one session: the hook records the
 receiving session id beside the marker (`<marker>.handed`, keyed to the save's time and note,
 so the marker itself is never rewritten under a concurrent `save`), gives the note again to that
 same session and stays silent for a later session of the process until the next `save`. An input
 without a usable session id gets the note and records nothing. A process whose state `ps`
 cannot tell in time is treated as alive: its note is neither listed nor retired. Every external
-call in the hook shares one time budget, under the hook's 5-second timeout.
+call in the hook shares one time budget, under the hook's 5-second timeout. A call past its time
+has its process group killed and its pipe closed unread: a grandchild that left the group would
+hold the pipe open (31.3 s against a 3.5-second budget, measured 2026-11-20). Such a grandchild is
+left running after the hook returns.
 
 The note must sit in one of two folders: the notes folder, or Claude Code's memory. The hook prints
 the note's head into the model's context, and any other path would let a marker print an arbitrary
@@ -90,23 +96,28 @@ folders that share one memory take different locks; two sessions that continue o
 it — races are closed only for new files and the index; a failure between `new` and `save` leaves an
 empty note, and the next `new` takes -2.
 
-The notes folder is the plugin's own (user, 2026-11-11 and 2026-11-12): ~/Library/Application
-Support/Hats/notes/<project>/<name>.md, where <project> is the first 16 hex digits of the sha256 of
-the real path of the working folder, so /a/b-c and /a-b/c get different folders. It works with
-Claude Code's memory switched off, survives the plugin's removal, and needs no running Hats. `where`
-creates it with mode 700 (a folder that exists is left as it is) and prints it; `where` and `save`
-take the working folder from one function. The root is computed here, the same for `save` and
-`start`, and never taken from the command line or a variable of the plugin's own: the agent writes
-the command. Like any `~`, it follows HOME (the tests rely on that), and a `save` run under another
-HOME is checked again by the start hook under its own. A note there is accepted only when its real
-path is exactly
+The notes folder is the plugin's own (user, 2026-11-11 and 2026-11-12): <root>/<project>/<name>.md,
+where <root> is $HATS_STATE_HOME/notes when HATS_STATE_HOME is an absolute path as written (no ~ is
+expanded, as Hats itself does not), and ~/Library/Application Support/Hats/notes otherwise (user, 2026-11-19: the
+notes follow the Hats state folder, so a probe with a temporary state folder writes no note into the
+live one); <project> is the first 16 hex digits of the sha256 of the real path of the working folder,
+so /a/b-c and /a-b/c get different folders. It works with Claude Code's memory switched off, survives
+the plugin's removal, and needs no running Hats. `where` creates it with mode 700 (a folder that
+exists is left as it is) and prints it; `where` and `save` take the working folder from one function.
+The root is computed here by one function, the same for `new`, `where`, `save`, `start`, `took`,
+`allow` and anchor-steps.py, and never taken from the command line or a variable of the plugin's own:
+the agent writes the command. Without HATS_STATE_HOME, like any `~`, it follows HOME (the tests rely
+on that), and a `save` run under another HOME or HATS_STATE_HOME is checked again by the start hook
+under its own. Notes in the old folder are neither moved nor removed: with HATS_STATE_HOME set they
+are no longer recognised as notes, but a quote of them still does not count as a source (below). A
+note there is accepted only when its real path is exactly
 <real root>/<project of the working folder>/<name>.md and a regular file, and that real path is
 what is read: a subfolder, `..`, a link out, or the folder of another project is refused. Letter
 case is compared as written: a path typed in another case than `where` printed is refused by
 `save`, loudly.
 
 The memory note is <config>/projects/<folder>/memory/<name>.md, where <config> is
-$CLAUDE_CONFIG_DIR or else ~/.claude; old markers and notes written there are still accepted. The
+$CLAUDE_CONFIG_DIR when it is an absolute path or else ~/.claude; old markers and notes written there are still accepted. The
 memory folder (or the project folder above it) may be a link to somewhere else; then the note must
 sit directly in the folder the link points at, `..` is resolved before the check, a note that is
 itself a link out of that folder is refused, and the path read is the one the check returned. Known
@@ -118,10 +129,29 @@ check and the read, a hard link to a file elsewhere (verification 2026-11-11, bo
 before the linked-folder change), or a root swapped for a link gets past it. Such a process can read
 any file of the user itself, so the hook adds nothing it lacks. Nor does it stop the anchor skill:
 its Write and Edit rules let the agent, while an anchor runs, write into the notes of any project,
-and the start hook then prints such a note into that project's session. A quote counts as a quote
-of the notes folder when one of the folders above the cited file is the notes root itself (the same
-file system object), so another letter case or another path to the same disk does not make it a
-source.
+and the start hook then prints such a note into that project's session; the `allow` hook (below)
+lets it do the same at any time. A quote counts as a quote of the notes folder when one of the
+folders above the cited file is a notes root itself (the same file system object), so another letter
+case or another path to the same disk does not make it a source.
+
+`allow`, a PreToolUse hook on Write, Edit and Read (user decision 2026-11-20, "А"): the skill's own
+rules name only ~/Library/Application Support/Hats/notes and hold only while the skill runs, so a
+note in a HATS_STATE_HOME folder, and the Read of a note by the session that continues it, asked the
+user. The hook prints {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision":
+"allow", ...}} only when tool_input.file_path is an absolute path ending in .md whose real path ends
+in .md, is not a folder, and sits directly in an existing folder named by 16 hex digits directly in
+the notes root (the same file system object as the root's real path): a link out of the root, a
+subfolder, `..` out, a project folder not yet created and any other file get nothing. Read is allowed
+in any project folder of the root: after /clear the session continues a note of the folder where it
+was saved, wherever it moved since. Write and Edit are allowed only in the project folder of the
+Claude process's working folder (found as `where` finds it), and not on an existing file with more
+than one hard link, which would change a file elsewhere. Any other input, a bad one, HANDOFF_OFF=1
+and an error print nothing; the hook never denies, writes nothing and always exits 0. scripts/allow.sh
+runs first and exits without starting Python when the input does not contain "/notes/" (a Python
+start cost 111–172 ms per call), so every Read, Write and Edit of every session pays only for sh.
+A deny rule of the user's settings wins over the hook's allow (measured 2026-11-20, Claude Code
+2.1.328, claude -p in the default permission mode: Write(//<notes root>/**) in deny refused the Write
+the hook allowed).
 
 Environment (measured 2026-11-11): Claude Code gives hooks and Bash commands CLAUDE_PID, the pid of
 its own process, so the Claude process is that ancestor whatever its binary is called; without it,
@@ -129,14 +159,21 @@ the nearest ancestor named `claude`. The process folder is read from /proc/<pid>
 exists (Linux), else from lsof. Without fcntl (Windows) the run log is written without its lock. Repository
 state is compared with local refs only — no fetch: a fetch runs commands from the named
 repository's config and needs the network, and a failed fetch made an old origin ref read as
-current (verification 2026-11-11).
+current (verification 2026-11-11). A fact about a remote-tracking ref (origin/ or any other remote)
+says so, and so does one whose kind could not be checked in time. GIT_* variables of the environment do not reach these git calls, so GIT_DIR cannot point
+the check at another repository.
 
 The check: a number taken from another file goes into the note only inside a quote
 `(cite: <path>:<line> "exact text")`, with «», "" or “” as the quote marks, compared with that
 line of a regular file at number boundaries; a quote of the note itself, of Claude's memory or of
-any file in the notes folder is not a source. `N of M (P%)` is recomputed on every line. A figure read off a command carries
+any file in the notes folder (the current root and ~/Library/Application Support/Hats/notes both) is
+not a source; for a quote the note and the memory folder are matched
+as file system objects, so another letter case does not make them a source (which notes `save`
+accepts is unchanged). `N of M (P%)` is recomputed on every line. A figure read off a command carries
 `(cmd: <command>)` in the same clause. A percent, "N percent", `N of M` or `N/M` outside all
-three — inline code included, fenced code not — is reported as not verified; a `(cite:` that does
+three — inline code included, fenced code (``` or ~~~, three marks or more, closed by the same
+mark at least as long) not — is reported as not verified; a code block left open is reported, since
+the lines after it are not checked, and that problem comes first; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
 caught, and the check cannot tell whether the words next to a quote mean what the quote says.
 
@@ -173,14 +210,23 @@ set of its own, so zero-width joiners of Persian, Devanagari and emoji stay; the
 characters, a session id shows only when it is a whole id (else "another session"), and the line stays
 within 2,000 UTF-16 units. The first line of a list counts every closed note found; notes beyond the
 five listed and notes that do not fit are counted together as "and N more", a note never cut in the
-middle. An error line points to `runs.log`, which holds the error's type and text. The object is
-written as UTF-8 bytes, so Cyrillic is not escaped into six-character sequences and the output does
+middle. A listed note that cannot be read (no permission, over the size limit or not a regular file)
+gets the line "could not read the note: no permission, over the size limit or not a regular file"
+instead of its check. After /clear the model's text stays within 9,500 UTF-16 units: the line about
+other readers keeps 600 units and its request of its own, and only the excerpt of the note is cut, in
+UTF-16 units at a line end when one fits, so "--- end of excerpt ---", the "Not
+verified" block and the state facts come whole unless they alone pass the limit. An error line points
+to `runs.log`, which holds the error's type and text. The object is written as UTF-8 bytes, so
+Cyrillic is not escaped into six-character sequences and the output does
 not depend on the encoding of stdout. After /clear it is written and flushed before the hand-over is
 recorded, as before.
 
 Every `start` run appends one JSON line to `runs.log` beside the markers: time, how long it took,
 source, session, folder, Claude process and the decision — `off`, `bad-input`, `skipped`,
-`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `gave-note` (receiver `new`, `same`
+`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `note-unreadable` (the own note
+could not be read: no permission, over the size limit or not a regular file; the user gets "could not
+read the note of anchor …, not given", the model nothing, and nothing is recorded, so the note is given
+once it reads again; an empty note is read and given), `gave-note` (receiver `new`, `same`
 or `none`), `not-printed` (the note could not be written to stdout under the mark lock, task 8c),
 `no-closed`, `unchecked`, `listed`, `error` (with `error`, the exception's type, and
 `message`, its text); a start in a new session also records `unchecked`, the number of notes it could
@@ -256,6 +302,20 @@ opened with O_NOFOLLOW|O_NONBLOCK and checked by fstat. Capacity is 100 readers 
 are dropped: a reader already there stays (`again`); a new one at 100 is not recorded (`full`), and the
 warning prints by the facts of the file. The same reason=full also stops a reader whose own .reads would
 then pass 500 keys or 64 KB: it is not recorded either.
+
+The author of a note (user decision 2026-11-19, the variant of Codex and Mary): the process of every
+marker in the note's group (its pid and started), several when several markers point at the note.
+`took` checks them together with the other readers, outside the lock and with the same cache per
+pid, skips this process itself, and keeps only those found alive — "could not check" says nothing
+about an author — and not already named among the live readers (an author that took its own note
+back after /clear is a reader, and is named once, as a reader). When one is alive, the first read of this process (the same rule as the readers'
+warning: not on `again`, and again on the next read when this one was not recorded) gets a line of its
+own before the readers' facts: "Hats handoff: the session that saved this note is still open: pid <pid>
+(since <start>)", "pid … (since …)" joined by ", " for several, <start> the process start time as a
+marker timestamp when it parses, else as ps printed it; the model gets "[handoff] <the same>." with the
+readers' facts on the next line, the confirmation request once at the end. The outcome is then
+`took-shared` and the runs.log line carries "authors": <N>. A marker is read only for its note and its
+process: an author is not a reader and never goes into a mark file.
 
 The matrix of `took`; runs.log gets a line only on the paths that name an outcome, and the others write
 nothing, create no state folder and never wait for runs.lock:
@@ -362,6 +422,19 @@ TRACE_LIMIT = 256_000
 TRACE_FIELD_LIMIT = 500
 TRACE_LOCK_S = 0.5
 NOTES_ROOT = "~/Library/Application Support/Hats/notes"
+NOTES_NAME = "notes"
+STATE_HOME = "HATS_STATE_HOME"
+PROJECT_NAME = re.compile(r"[0-9a-f]{16}")
+ALLOW_TOOLS = {
+    "Write",
+    "Edit",
+    "Read",
+}
+WRITE_TOOLS = {
+    "Write",
+    "Edit",
+}
+ALLOW_REASON = "Hats handoff: a resume note in the Hats notes folder"
 PROJECT_FOLDER_LENGTH = 16
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 SLUG_LIMIT = 60
@@ -420,7 +493,7 @@ NUMBER_CLAIM = re.compile(
     re.IGNORECASE,
 )
 CLAUSE_BREAK = re.compile(r";|\||\s—\s|\.\s|,\s|\sи\s|\sand\s")
-FENCE = re.compile(r"^\s*```[^`]*$")
+FENCE = re.compile(r"^\s*(?P<fence>`{3,}(?=[^`]*$)|~{3,})(?P<info>.*)$")
 GIT_FACT = re.compile(
     r"^\s*-\s+git\s+(?P<repo>\S+)\s+(?P<ref>[A-Za-z0-9_][A-Za-z0-9._/-]*)\s+=\s+(?P<sha>[0-9a-f]{7,40})\b"
 )
@@ -444,6 +517,11 @@ MARK_LIST_LIMIT = 600
 NOTE_KEY = re.compile(r"[0-9a-f]{64}")
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 TOOK_ASK = "Another session may be continuing this task: continue it only if the user confirms."
+OWN_LIMIT = OUTPUT_LIMIT - MARK_LIST_LIMIT - len(f"[handoff] . {TOOK_ASK}\n")
+CUT_LINE = "[… cut, the rest is in the file]"
+UNREADABLE_NOTE = "could not read the note"
+AUTHOR_WORDS = "the session that saved this note is still open: "
+LSTART = "%a %b %d %H:%M:%S %Y"
 LIST_ASK = "If the user picks it, say so and continue only if the user confirms."
 TOOK_WORDS = (
     "{} other live session(s) reading this note: ",
@@ -475,7 +553,7 @@ def out_of_time():
 
 def config_root():
     custom = os.environ.get("CLAUDE_CONFIG_DIR")
-    if usable(custom):
+    if usable(custom) and os.path.isabs(os.path.expanduser(custom)):
         return os.path.expanduser(custom)
     return os.path.join(os.path.expanduser("~"), ".claude")
 
@@ -489,7 +567,14 @@ def memory_root():
 
 
 def get_notes_root():
+    custom = os.environ.get(STATE_HOME)
+    if usable(custom) and os.path.isabs(custom):
+        return os.path.join(custom, NOTES_NAME)
     return os.path.expanduser(NOTES_ROOT)
+
+
+def get_cited_notes_roots():
+    return list(dict.fromkeys([get_notes_root(), os.path.expanduser(NOTES_ROOT)]))
 
 
 def get_project_folder(cwd):
@@ -508,7 +593,8 @@ def usable(path):
 def run(cmd, timeout):
     if timeout <= 0:
         return None, None
-    env = dict(os.environ, LC_ALL="C", TZ="UTC")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(LC_ALL="C", TZ="UTC")
     try:
         proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL, text=True, env=env, start_new_session=True)
@@ -521,7 +607,8 @@ def run(cmd, timeout):
             os.killpg(proc.pid, signal.SIGKILL)
         except OSError:
             pass
-        proc.communicate()
+        proc.stdout.close()
+        proc.wait()
         return None, None
     return proc.returncode, out
 
@@ -612,6 +699,19 @@ def in_memory(real):
         return False
     parts = real[len(root):].split(os.sep)
     return len(parts) == 3 and parts[1] == "memory"
+
+
+def cite_in_memory(real):
+    if in_memory(real):
+        return True
+    folder = os.path.dirname(real)
+    project = os.path.dirname(folder)
+    try:
+        projects = os.stat(memory_root())
+        memory = os.stat(os.path.join(project, "memory"))
+    except (OSError, ValueError):
+        return False
+    return is_same_folder(os.path.dirname(project), projects) and is_same_folder(folder, memory)
 
 
 def note_in_memory(path):
@@ -898,15 +998,17 @@ def is_same_folder(folder, root):
 
 
 def is_in_notes_folder(real):
-    try:
-        root = os.stat(get_notes_root())
-    except OSError:
-        return False
+    roots = []
+    for path in get_cited_notes_roots():
+        try:
+            roots.append(os.stat(path))
+        except OSError:
+            continue
     folders = [os.path.dirname(real)]
     while folders[-1] != os.path.dirname(folders[-1]):
         folders.append(os.path.dirname(folders[-1]))
 
-    return any(is_same_folder(folder, root) for folder in folders)
+    return any(is_same_folder(folder, root) for folder in folders for root in roots)
 
 
 def verify_cite(match, base_dir, note_real, cache):
@@ -917,9 +1019,9 @@ def verify_cite(match, base_dir, note_real, cache):
     if not os.path.isabs(path):
         path = os.path.join(base_dir, path)
     real = os.path.realpath(path)
-    if note_real and real == note_real:
+    if note_real and (real == note_real or is_same_file(real, note_real)):
         return "quote of the note itself is not a source"
-    if in_memory(real):
+    if cite_in_memory(real):
         return f"quote of Claude's memory is not a source: {raw}"
     if is_in_notes_folder(real):
         return f"quote of the notes folder is not a source: {raw}"
@@ -948,17 +1050,23 @@ def check_text(text, base_dir, note_real):
     problems = []
     cache = {}
     lines = text.split("\n")
-    in_fence = False
+    fence = None
+    fence_line = 0
     for i in range(body_start(lines), len(lines)):
         number = i + 1
         if out_of_time():
             problems.append((number, "check ran out of time before the end of the note"))
+            fence = None
             break
         line = lines[i]
-        if FENCE.match(line):
-            in_fence = not in_fence
+        found = FENCE.match(line)
+        if fence is None and found:
+            fence, fence_line = found.group("fence"), number
             continue
-        if in_fence:
+        if fence is not None:
+            if found and found.group("fence")[0] == fence[0] and len(found.group("fence")) >= len(fence) \
+                    and not found.group("info").strip():
+                fence = None
             continue
         if len(line) > LINE_LENGTH_LIMIT:
             problems.append((number, "line longer than 5,000 characters — not checked"))
@@ -982,6 +1090,8 @@ def check_text(text, base_dir, note_real):
             if NUMBER_CLAIM.search(clause) and not SYSTEM_SOURCE.search(clause):
                 problems.append((number, "number with no quote and no source"))
                 break
+    if fence is not None:
+        problems.insert(0, (fence_line, "code block not closed — the lines after it were not checked"))
     return problems
 
 
@@ -1000,6 +1110,17 @@ def problem_lines(problems):
     return out
 
 
+def remote_mark(repo, ref):
+    mark = " (local ref, no fetch)"
+    if ref.startswith("origin/"):
+        return mark
+    code, name = run(["git", "-c", "core.fsmonitor=false", "-C", repo, "rev-parse", "--verify", "--quiet",
+                      "--symbolic-full-name", "--end-of-options", ref], time_left(1.0))
+    if code is None:
+        return mark
+    return mark if code == 0 and (name or "").startswith("refs/remotes/") else ""
+
+
 def state_lines(text):
     out = []
     for line in text.split("\n"):
@@ -1014,7 +1135,6 @@ def state_lines(text):
             out.append(f"- git: bad path, {ref} not checked")
             continue
         repo = os.path.realpath(os.path.expanduser(raw))
-        local = " (local ref, no fetch)" if ref.startswith("origin/") else ""
         if out_of_time():
             out.append(f"- git {repo} {ref}: no time to check")
             continue
@@ -1029,8 +1149,10 @@ def state_lines(text):
         elif code != 0 or not current:
             out.append(f"- git {repo} {ref}: not found")
         elif current.startswith(noted):
+            local = remote_mark(repo, ref)
             out.append(f"- git {repo} {ref} = {noted}: matches{local}")
         else:
+            local = remote_mark(repo, ref)
             out.append(f"- git {repo} {ref}: was {noted}, now {current[:len(noted)]}{local}")
     return out
 
@@ -1048,7 +1170,7 @@ def note_head(text):
             if (now is not None and i > 0) or headings == 2:
                 break
         if size + len(line) + 1 > HEAD_LIMIT:
-            kept.append("[… cut, the rest is in the file]")
+            kept.append(CUT_LINE)
             break
         kept.append(line)
         size += len(line) + 1
@@ -1057,30 +1179,43 @@ def note_head(text):
 
 def fetch_hint(facts):
     if any("no fetch" in fact for fact in facts):
-        return ["origin/* refs were compared with local refs; what the server has now needs `git fetch`."]
+        if all(" origin/" in fact for fact in facts if "no fetch" in fact):
+            return ["origin/* refs were compared with local refs; what the server has now needs `git fetch`."]
+        return ["Remote refs were compared with local refs; what the server has now needs `git fetch`."]
     return []
 
 
-def render_own(marker):
-    text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
-    out = [
+def get_fitted_excerpt(excerpt, limit):
+    if get_units(excerpt) <= limit:
+        return excerpt
+    kept = cap_utf16(excerpt, max(0, limit - get_units(CUT_LINE) - 1))
+    if "\n" in kept:
+        kept = kept[:kept.rfind("\n")]
+    if not kept:
+        return CUT_LINE
+
+    return f"{kept}\n{CUT_LINE}"
+
+
+def render_own(marker, text):
+    head = [
         f"[handoff] This session continues the note \"{marker['topic']}\", saved "
         f"{marker['saved_at']} by this same Claude process: {marker['note']}",
         "Below is the NOW section (or the start of the note); read the rest in the file.",
         "--- note ---",
-        note_head(text),
-        "--- end of excerpt ---",
     ]
+    tail = ["--- end of excerpt ---"]
     problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
     if problems:
-        out.append("Not verified (check against the source before relying on it):")
-        out.extend(problem_lines(problems))
+        tail.append("Not verified (check against the source before relying on it):")
+        tail.extend(problem_lines(problems))
     facts = state_lines(text)
     if facts:
-        out.append("State compared with the system:")
-        out.extend(facts)
-        out.extend(fetch_hint(facts))
-    return "\n".join(out)
+        tail.append("State compared with the system:")
+        tail.extend(facts)
+        tail.extend(fetch_hint(facts))
+    room = OWN_LIMIT - get_units("\n".join(head + tail)) - 2
+    return "\n".join(head + [get_fitted_excerpt(note_head(text), room)] + tail)
 
 
 def get_list_blocks(markers):
@@ -1092,8 +1227,12 @@ def get_list_blocks(markers):
     ]]
     all_facts = []
     for index, marker in enumerate(markers, 1):
-        text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
+        text = read_regular(marker["note"], SOURCE_SIZE_LIMIT)
         out = [f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}"]
+        if text is None:
+            out.append(f"   {UNREADABLE_NOTE}: no permission, over the size limit or not a regular file")
+            blocks.append(out)
+            continue
         problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
         if problems and problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
@@ -1284,7 +1423,7 @@ def cmd_start(seen):
         return 0
     try:
         data = json.loads(sys.stdin.read() or "{}")
-    except ValueError:
+    except (ValueError, RecursionError):
         seen["outcome"] = "bad-input"
         return 0
     if not isinstance(data, dict):
@@ -1330,13 +1469,23 @@ def cmd_start(seen):
             seen.update(outcome="handed-elsewhere", handed_to=clip(given))
             say(f"{USER_LINE_START} anchor \"{get_topic(own[0])}\" was already given to {get_receiver(given)}", None)
             return 0
+        text = read_regular(own[0]["note"], SOURCE_SIZE_LIMIT)
+        if text is None:
+            seen["outcome"] = "note-unreadable"
+            say(
+                f"{USER_LINE_START} {UNREADABLE_NOTE} of anchor \"{get_topic(own[0])}\", not given — "
+                f"{get_shown(own[0]['note'])}",
+                None,
+            )
+            return 0
         if not _tell:
             say(
                 f"{USER_LINE_START} continuing anchor \"{get_topic(own[0])}\" — {get_shown(own[0]['note'])}",
-                cap_utf16(render_own(own[0]), OUTPUT_LIMIT),
+                cap_utf16(render_own(own[0], text), OUTPUT_LIMIT),
             )
         elif not set_given_note(
             own[0],
+            text,
             proc,
             markers,
             session,
@@ -1739,17 +1888,32 @@ def get_short_facts(mark):
     )
 
 
-def get_took_output(mark):
+def get_since(started):
+    try:
+        return datetime.strptime(started, LSTART).strftime(STAMP)
+    except ValueError:
+        return started
+
+
+def get_author_line(authors):
+    return AUTHOR_WORDS + ", ".join(f"pid {pid} (since {get_since(started)})" for pid, started in authors)
+
+
+def get_took_output(mark, authors):
+    user = [f"{USER_LINE_START} {get_author_line(authors)}"] if authors else []
+    model = [f"[handoff] {get_author_line(authors)}."] if authors else []
+    if not has_mark(mark):
+        return cap_utf16(user[0], USER_LINE_LIMIT), cap_utf16(f"{model[0]} {TOOK_ASK}", OUTPUT_LIMIT)
     user = find_fitting(
         mark,
         TOOK_WORDS,
-        (f"{USER_LINE_START} ", ""),
+        ("".join(line + "\n" for line in user) + f"{USER_LINE_START} ", ""),
         USER_LINE_LIMIT,
     )
     model = find_fitting(
         mark,
         TOOK_WORDS,
-        ("[handoff] ", f". {TOOK_ASK}"),
+        ("".join(line + "\n" for line in model) + "[handoff] ", f". {TOOK_ASK}"),
         OUTPUT_LIMIT,
     )
 
@@ -2191,7 +2355,7 @@ def find_marker_real(path, read_id):
     if kept is None or get_file_id(kept) != read_id:
         return None
 
-    return os.path.realpath(kept)
+    return os.path.realpath(kept), (marker["pid"], marker["started"])
 
 
 def find_took_group(read_id):
@@ -2199,18 +2363,47 @@ def find_took_group(read_id):
     try:
         names = sorted(os.listdir(folder))
     except OSError:
-        return []
+        return [], []
     reals = []
+    authors = []
     for name in names:
         if out_of_time():
             return None
         if not name.endswith(".json"):
             continue
-        real = find_marker_real(os.path.join(folder, name), read_id)
-        if real is not None and real not in reals:
-            reals.append(real)
+        found = find_marker_real(os.path.join(folder, name), read_id)
+        if found is None:
+            continue
+        if found[0] not in reals:
+            reals.append(found[0])
+        if found[1] not in authors:
+            authors.append(found[1])
 
-    return reals
+    return reals, authors
+
+
+def find_live_authors(
+    authors,
+    proc,
+    until,
+    cache,
+):
+    live = []
+    for pid, started in authors:
+        if (pid, started) == proc:
+            continue
+        if pid not in cache:
+            cache[pid] = get_pid_state(pid, until)
+        if get_verdict(cache[pid], {"started": started}) == "alive":
+            live.append((pid, started))
+
+    return live
+
+
+def get_unread_authors(authors, mark):
+    live = {get_reader_key(reader) for reader in mark["live"]}
+
+    return [author for author in authors if author not in live]
 
 
 def set_took_locked(given, seen):
@@ -2225,10 +2418,11 @@ def set_took_locked(given, seen):
         seen.update(outcome="not-recorded", reason="unreadable")
         return
     mark = plan["mark"]
-    warn = has_mark(mark) and not plan["again"]
-    seen.update(live=len(mark["live"]), unknown=len(mark["unknown"]), warned=warn)
+    authors = get_unread_authors(given["authors"], mark)
+    warn = (has_mark(mark) or bool(authors)) and not plan["again"]
+    seen.update(live=len(mark["live"]), unknown=len(mark["unknown"]), authors=len(authors), warned=warn)
     pairs, reason = find_plan_temps(plan, given["proc"])
-    if warn and not say_within(*get_took_output(mark), "PostToolUse"):
+    if warn and not say_within(*get_took_output(mark, authors), "PostToolUse"):
         remove_temps(pairs)
         seen.update(outcome="not-printed", warned=False)
         return
@@ -2250,14 +2444,18 @@ def set_took(given, seen):
         seen.update(outcome="not-recorded", reason="unreadable")
         return
     others = get_others(snapshot["union"], given["proc"])
-    given.update(snapshot=snapshot, states=get_reader_states(others, _deadline - CHECK_SPARE_S, {}))
+    cache = {}
+    given.update(snapshot=snapshot, states=get_reader_states(others, _deadline - CHECK_SPARE_S, cache))
+    given["authors"] = find_live_authors(given["authors"], given["proc"], _deadline - CHECK_SPARE_S, cache)
     lock, reason = get_taken_lock(True, _deadline - LOCK_SPARE_S)
     if lock is None:
         mark = get_snapshot_mark(snapshot, given["states"], given["proc"])
-        warn = has_mark(mark) and not is_reader_in(snapshot["union"], given["proc"])
+        authors = get_unread_authors(given["authors"], mark)
+        warn = (has_mark(mark) or bool(authors)) and not is_reader_in(snapshot["union"], given["proc"])
         if warn:
-            say(*get_took_output(mark), "PostToolUse")
-        seen.update(outcome="not-recorded", reason=reason, warned=warn, live=len(mark["live"]), unknown=len(mark["unknown"]))
+            say(*get_took_output(mark, authors), "PostToolUse")
+        seen.update(outcome="not-recorded", reason=reason, warned=warn, live=len(mark["live"]), unknown=len(mark["unknown"]),
+                    authors=len(authors))
         return
     try:
         set_took_locked(given, seen)
@@ -2282,10 +2480,11 @@ def cmd_took(seen):
         seen.update(outcome="bad-input", session=session)
         return
     read_id = get_file_id(path) if is_note_place(path) else None
-    reals = find_took_group(read_id) if read_id is not None else []
-    if reals is None:
+    group = find_took_group(read_id) if read_id is not None else ([], [])
+    if group is None:
         seen.update(outcome="incomplete", session=session)
         return
+    reals, authors = group
     if not reals:
         return
     seen.update(session=session, note=clip(reals[0]))
@@ -2299,6 +2498,7 @@ def cmd_took(seen):
         "reals": reals,
         "proc": proc,
         "session": session,
+        "authors": authors,
     }
     set_took(given, seen)
 
@@ -2345,6 +2545,7 @@ def set_given_locked(given, seen):
 
 def set_given_note(
     marker,
+    text,
     proc,
     markers,
     session,
@@ -2361,7 +2562,7 @@ def set_given_note(
     _deadline = deadline - CHECK_SPARE_S
     try:
         checked_ok = find_checked_snapshot(given, seen)
-        given["body"] = render_own(marker)
+        given["body"] = render_own(marker, text)
     finally:
         _deadline = deadline
     if not checked_ok:
@@ -2809,14 +3010,23 @@ def cmd_save(args):
         print(f"handoff: marker not written: {error}")
         return 1
     retired = 0
+    expired = 0
+    now = datetime.now(timezone.utc)
     for other in load_markers():
-        if other["_path"] == path or not same_path(other["note"], note) or liveness(other) != "closed":
+        if other["_path"] == path:
+            continue
+        when = saved_time(other)
+        old = when is None or now - when > MAX_AGE
+        if not (old or same_path(other["note"], note)) or liveness(other) != "closed":
             continue
         try:
             os.remove(other["_path"])
-            retired += 1
         except OSError:
             continue
+        if old:
+            expired += 1
+        else:
+            retired += 1
         try:
             os.remove(handed_file(other))
         except OSError:
@@ -2824,6 +3034,9 @@ def cmd_save(args):
     print(f"marker: {path}")
     if retired:
         print(f"removed markers of closed sessions with the same note: {retired}")
+    if expired:
+        print(f"removed markers of closed sessions saved more than {MAX_AGE.days} days ago "
+              f"or at an unreadable time: {expired}")
     print("\n".join(set_index(note, marker)))
     problems = checked(text, cwd, os.path.realpath(note))
     if problems:
@@ -2944,6 +3157,71 @@ def cmd_check(args):
     return 1
 
 
+def is_notes_file(path):
+    real = os.path.realpath(path)
+    folder = os.path.dirname(real)
+    try:
+        root = os.stat(os.path.realpath(get_notes_root()))
+    except (OSError, ValueError):
+        return False
+
+    return (
+        path.endswith(".md")
+        and real.endswith(".md")
+        and PROJECT_NAME.fullmatch(os.path.basename(folder)) is not None
+        and os.path.isdir(folder)
+        and is_same_folder(os.path.dirname(folder), root)
+        and not os.path.isdir(real)
+    )
+
+
+def is_single_link(real):
+    try:
+        return os.lstat(real).st_nlink == 1
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def is_own_project_file(real):
+    folder = get_project_folder(find_work_folder(None, claude_process()))
+
+    return folder is not None and os.path.basename(os.path.dirname(real)) == folder and is_single_link(real)
+
+
+def is_allowed_input(data):
+    tool_input = data.get("tool_input")
+    path = tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    if data.get("hook_event_name") != "PreToolUse" or data.get("tool_name") not in ALLOW_TOOLS:
+        return False
+    if not usable(path) or not os.path.isabs(path) or not is_notes_file(path):
+        return False
+
+    return data["tool_name"] not in WRITE_TOOLS or is_own_project_file(os.path.realpath(path))
+
+
+def cmd_allow():
+    if os.environ.get("HANDOFF_OFF") == "1":
+        return 0
+    try:
+        data = get_took_input()
+        if data is None or not is_allowed_input(data):
+            return 0
+        sys.stdout.buffer.write(get_json_bytes({
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": ALLOW_REASON,
+            },
+        }))
+        sys.stdout.buffer.flush()
+    except Exception:
+        return 0
+
+    return 0
+
+
 def run_took():
     began = time.monotonic()
     seen = {}
@@ -2963,6 +3241,7 @@ def main(argv):
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("start")
     commands.add_parser("took")
+    commands.add_parser("allow")
     save = commands.add_parser("save")
     save.add_argument("--note", required=True)
     save.add_argument("--topic", required=True)
@@ -2992,6 +3271,8 @@ def main(argv):
             write_trace(seen, began)
     if args.command == "took":
         return run_took()
+    if args.command == "allow":
+        return cmd_allow()
     if args.command == "save":
         return cmd_save(args)
     if args.command == "where":

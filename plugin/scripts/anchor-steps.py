@@ -4,8 +4,10 @@
   anchor-steps.py [--cwd <folder>]
 
 Two optional files, each a JSON object with the lists "before" and "after":
-  ~/Library/Application Support/Hats/anchor-steps.json    general, beside the notes folder
+  <Hats folder>/anchor-steps.json                        general, beside the notes folder
   <working folder>/.claude/anchor-steps.json              the project's own
+<Hats folder> is $HATS_STATE_HOME when it is an absolute path as written (no ~ is expanded), else
+~/Library/Application Support/Hats: the folder above handoff.py's notes root.
 The general file may also hold "projects", a list of absolute paths (trimmed, a leading ~ expanded).
 The project file counts only when the working folder is the same folder as one of them, compared by
 device and inode, so a link, ~ or another letter case still match and a path that cannot be read

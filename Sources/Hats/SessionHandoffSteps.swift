@@ -120,11 +120,15 @@ enum SessionHandoffSteps {
         )
     }
 
-    static func getRemoveChange(in world: PluginWorld) -> SessionHandoffChange {
+    static func getRemoveChange(folder: String, in world: PluginWorld) -> SessionHandoffChange {
         let target: SessionHandoffTarget
         switch SessionHandoffTargets.find(in: world) {
         case .failure(let refusal): return SessionHandoffChange(refusal: refusal)
         case .success(let found): target = found
+        }
+        guard target.configFolder == folder else {
+            return SessionHandoffChange(failure: "The settings folder changed from \(folder) to "
+                + "\(target.configFolder) after you agreed, so nothing was removed. Open the settings again.")
         }
         let before = findReading(of: target, in: world).face
         guard before.canRemove else {

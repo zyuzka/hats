@@ -69,6 +69,26 @@ final class SessionStageLimitsTests: XCTestCase {
         ])
     }
 
+    func testPaceFieldsOfTheWrongTypeOrRangeAreDroppedAndTheEventIsKept() throws {
+        var warned = Self.event("2026-11-17T12:40:02.800Z", percent: 72)
+        warned["early"] = "yes"
+        warned["minutes_to_save"] = "11"
+        warned["lead_seconds"] = -1
+        warned["target"] = 150
+        let limits: [String: Any] = ["five_hour": Self.episode(warned: warned), "seven_day": NSNull()]
+
+        let read = try parse(["stage": NSNull(), "limits": limits])
+
+        guard case .read(let stage) = read else { return XCTFail("\(read)") }
+        let event = try XCTUnwrap(stage.limitEpisodes.first?.events.first)
+        XCTAssertEqual(event.stage, .warned)
+        XCTAssertEqual(event.percent, 72)
+        XCTAssertFalse(event.early)
+        XCTAssertNil(event.minutesToSave)
+        XCTAssertNil(event.leadSeconds)
+        XCTAssertNil(event.target)
+    }
+
     func testANullStageWithoutLimitsIsStillUnknown() throws {
         XCTAssertEqual(try parse(["stage": NSNull()]), .skipped("its stage is unknown"))
         XCTAssertEqual(try parse(["stage": NSNull(), "limits": NSNull()]), .skipped("its stage is unknown"))

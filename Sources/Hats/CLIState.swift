@@ -206,8 +206,16 @@ enum CLIState {
         )
     }
 
-    private static func sweptRecently() -> [[String: String]]? {
-        swept(SessionDiscovery.everySessionSeenRecently())
+    private static func sweptRecently(world: SystemWorld) -> [[String: String]]? {
+        swept(
+            SessionDiscovery.everySessionSeenRecently {
+                SessionDiscovery.everySessionThatHoldsAPort(
+                    readingTheProcessTable: { world.processTable($0, SessionDiscovery.readerBudget) },
+                    readingTheEnvironment: world.processEnvironment
+                )
+            },
+            world: world
+        )
     }
 
     static func configurationNow(world: SystemWorld = .real) throws -> CLIConfiguration {
@@ -216,11 +224,11 @@ enum CLIState {
                           home: world.home())
     }
 
-    static func configurationRemembered() throws -> CLIConfiguration {
+    static func configurationRemembered(world: SystemWorld) throws -> CLIConfiguration {
         try configuration(
-            liveConfigurations: remembered.value(within: .seconds(configurationTTL)) ?? sweptRecently(),
-            own: ProcessInfo.processInfo.environment,
-            home: NSHomeDirectory()
+            liveConfigurations: remembered.value(within: .seconds(configurationTTL)) ?? sweptRecently(world: world),
+            own: world.ownEnvironment(),
+            home: world.home()
         )
     }
 

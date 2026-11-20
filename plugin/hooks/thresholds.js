@@ -15,7 +15,7 @@ export const FILE_LIMIT = 64 * 1024
 export const THRESHOLDS_FILE = 'window-thresholds.json'
 export const STAGE_FOLDER = 'session-thresholds'
 export const HATS_FOLDER = 'Library/Application Support/Hats'
-export const NOTES_FOLDER = 'Library/Application Support/Hats/notes'
+export const NOTES_NAME = 'notes'
 export const SNAPSHOT_FOLDER = 'stop-snapshots'
 export const STOPPED = 'the session was stopped and nobody has sent input since'
 export const REMOVED = 'the command was removed from the queue before it ran'
@@ -34,6 +34,7 @@ export const KEPT = {
   noteUnread: 'the note could not be read',
   noteChanged: 'the note changed after this session wrote it',
   noPlugin: 'the plugin files are not in place',
+  handoffOff: 'HANDOFF_OFF=1 keeps the note from coming back after /clear',
   sessionChanged: 'the session changed',
   notCleared: 'the session did not change after /clear',
 }
@@ -90,6 +91,13 @@ const isWholeIn = (value, range) => Number.isInteger(value) && value >= range.lo
 
 const isThresholdShape = (value, range) => value === null || isWholeIn(value, range)
 
+export const isDrainMinutes = value => isWholeIn(value, MINUTES_RANGE)
+
+export const getDrainFields = data => ({
+  drain: data.drain === true,
+  drainMinutes: isDrainMinutes(data.drain_minutes) ? data.drain_minutes : DEFAULTS.drainMinutes,
+})
+
 export const getPercent = usage => {
   const percent = usage?.context?.percent
 
@@ -109,10 +117,8 @@ export const findThresholds = text => {
   if (!isThresholdShape(warn, WARN_RANGE) || !isThresholdShape(save, SAVE_RANGE)) return null
   if (warn !== null && save !== null && warn >= save) return null
   const after = ACTIONS.includes(data.after_save) ? data.after_save : 'tell'
-  const drain = data.drain === true
-  const drainMinutes = isWholeIn(data.drain_minutes, MINUTES_RANGE) ? data.drain_minutes : DEFAULTS.drainMinutes
 
-  return { warn, save, after, drain, drainMinutes }
+  return { warn, save, after, ...getDrainFields(data) }
 }
 
 export const isDrainOn = thresholds => thresholds.drain === true && thresholds.save !== null
@@ -159,7 +165,7 @@ const getAnchorPart = ({ thresholds, percent }) => {
   return `It anchors itself at the end of a turn once it reaches ${thresholds.save}%. `
 }
 
-const DRAIN_WARNING =
+export const DRAIN_WARNING =
   ' Drain is on: do not start subagents, workflows, monitors or background commands; ' +
   'they are refused until the session is asked to anchor.'
 
@@ -181,7 +187,14 @@ export const getSavedLine = ({ percent, save, after }) => {
 
 export const getFailedLine = reason => `the session was not anchored: ${reason}. Say "anchor" to try again.`
 
-export const INTERRUPTED_LINE = 'anchoring was stopped; nothing else happens until you say "anchor".'
+export const CANCELLED_LINE = 'anchoring was cancelled before it started; the context was not saved.'
+
+export const STOPPED_SAVED_LINE = 'anchoring was stopped; the note was saved.'
+
+export const STOPPED_UNCHECKED_LINE =
+  'anchoring was stopped; whether the note was saved could not be checked. Say "anchor" to save.'
+
+export const getStoppedFailedLine = reason => `anchoring was stopped; the note was not saved: ${reason}. Say "anchor" to save.`
 
 export const RELOADED_LINE = 'anchoring was not checked: the plugin reloaded. Say "anchor" to save again.'
 

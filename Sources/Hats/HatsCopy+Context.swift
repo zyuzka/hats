@@ -17,11 +17,12 @@ extension HatsCopy {
             + "from its resume note. "
             + "That turn shows in the window as if you typed it. A turn you start at that very moment can be cut off."
     static let drainNote =
-        "From the warning on, new subagents, workflows, monitors and background commands are refused. Not refused: "
-            + "a command Claude Code moves to the background itself, after its time limit, and a skill that runs in "
-            + "the background — both are waited for; a command detached with & or nohup is neither waited for nor "
-            + "listed. At the anchor threshold the session waits for running work up to this long, then anchors and "
-            + "lists what still runs. A monitor on a socket and a teammate are listed, not waited for."
+        "From a context or hat-limit warning on, new subagents, workflows, monitors and background commands "
+            + "are refused. Not refused: a command Claude Code moves to the background itself, after its time "
+            + "limit, and a skill that runs in the background — both are waited for; a command detached with & or "
+            + "nohup is neither waited for nor listed. At the anchor threshold the session waits for running work "
+            + "up to this long, then anchors and lists what still runs. A monitor on a socket and a teammate are "
+            + "listed, not waited for. Scheduled wake-ups are not refused."
 
     static func getAfterSaveTitle(_ action: AfterSave) -> String {
         switch action {
@@ -64,5 +65,34 @@ extension HatsCopy {
         guard let drainMinutes else { return "\(past) and, \(clear)" }
 
         return "\(past), after its background work (up to \(drainMinutes) min), and, \(clear)"
+    }
+
+    static let aWholeNumber = "a whole number"
+
+    static func getPercentRefusal(_ refusal: PercentRefusal, bounds: PercentBounds) -> String {
+        switch refusal {
+        case .notAWholeNumber:
+            return aWholeNumber
+        case .belowLower:
+            guard let neighbour = bounds.lower.neighbour else { return getPercentRange(bounds) }
+
+            return "above \(neighbour.label) \(neighbour.percent)%"
+        case .aboveUpper:
+            guard let neighbour = bounds.upper.neighbour else { return getPercentRange(bounds) }
+
+            return "below \(neighbour.label) \(neighbour.percent)%"
+        }
+    }
+
+    static func getPercentRange(_ bounds: PercentBounds) -> String {
+        "from \(bounds.lower.percent)% to \(bounds.upper.percent)%"
+    }
+
+    static func getNoRoomBelow(_ label: String, percent: Int) -> String {
+        "\(label) \(percent)% leaves no room below it: raise \(label) first"
+    }
+
+    static func getNoRoomAbove(_ label: String, percent: Int) -> String {
+        "\(label) \(percent)% leaves no room above it: lower \(label) first"
     }
 }
