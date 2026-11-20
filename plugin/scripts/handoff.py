@@ -149,7 +149,9 @@ than one hard link, which would change a file elsewhere. Any other input, a bad 
 and an error print nothing; the hook never denies, writes nothing and always exits 0. scripts/allow.sh
 runs first and exits without starting Python when the input does not contain "/notes/" (a Python
 start cost 111–172 ms per call), so every Read, Write and Edit of every session pays only for sh.
-Whether a deny rule of the user's settings still wins over the hook's allow was not measured here.
+A deny rule of the user's settings wins over the hook's allow (measured 2026-11-20, Claude Code
+2.1.328, claude -p in the default permission mode: Write(//<notes root>/**) in deny refused the Write
+the hook allowed).
 
 Environment (measured 2026-11-11): Claude Code gives hooks and Bash commands CLAUDE_PID, the pid of
 its own process, so the Claude process is that ancestor whatever its binary is called; without it,
