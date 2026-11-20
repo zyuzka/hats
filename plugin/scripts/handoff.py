@@ -98,9 +98,12 @@ empty note, and the next `new` takes -2.
 
 The notes folder is the plugin's own (user, 2026-11-11 and 2026-11-12): <root>/<project>/<name>.md,
 where <root> is $HATS_STATE_HOME/notes when HATS_STATE_HOME is an absolute path as written (no ~ is
-expanded, as Hats itself does not), and ~/Library/Application Support/Hats/notes otherwise (user, 2026-11-19: the
-notes follow the Hats state folder, so a probe with a temporary state folder writes no note into the
-live one); <project> is the first 16 hex digits of the sha256 of the real path of the working folder,
+expanded, as Hats itself does not), ~/Library/Application Support/Hats/notes when it is empty or not
+set (user, 2026-11-19: the notes follow the Hats state folder, so a probe with a temporary state folder
+writes no note into the live one), and no root at all for any other value, a relative path included
+(rule "Б", 2026-11-20, get_state_root of hats_common.py, the one rule of every plugin script): then
+`where` and `new` without --memory refuse with one line and exit 1, `save` accepts only a memory note,
+and no note of the notes folder is recognised; <project> is the first 16 hex digits of the sha256 of the real path of the working folder,
 so /a/b-c and /a-b/c get different folders. It works with Claude Code's memory switched off, survives
 the plugin's removal, and needs no running Hats. `where` creates it with mode 700 (a folder that
 exists is left as it is) and prints it; `where` and `save` take the working folder from one function.
@@ -425,8 +428,8 @@ handoff_took.py     the took hook
 handoff_index.py    resume-index.md and its line in MEMORY.md
 handoff_save.py     save, check, where and new
 handoff_allow.py    the allow hook
-hats_common.py      unattended, write_text_whole, write_whole and record_failure, shared with
-                    window-fill.py and stop-snapshot.py
+hats_common.py      get_state_root, unattended, write_text_whole, write_whole, record_failure,
+                    record_hook_failure and sweep, shared with window-fill.py and stop-snapshot.py
 A copy of the hook needs all of them beside handoff.py.
 """
 import argparse

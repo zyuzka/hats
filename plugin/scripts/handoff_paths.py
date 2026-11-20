@@ -4,9 +4,10 @@ Part of handoff.py, which holds the contract of the whole hook."""
 import hashlib
 import os
 
-from handoff_consts import NOTES_NAME, NOTES_ROOT, PROJECT_FOLDER_LENGTH, PROJECT_NAME, SERVICE_NAMES, STATE_HOME
+from handoff_consts import NOTES_NAME, NOTES_ROOT, PROJECT_FOLDER_LENGTH, PROJECT_NAME, SERVICE_NAMES
 from handoff_files import is_same_folder, is_same_place, usable
 from handoff_proc import claude_process, find_work_folder
+from hats_common import get_state_root
 
 
 def config_root():
@@ -25,14 +26,15 @@ def memory_root():
 
 
 def get_notes_root():
-    custom = os.environ.get(STATE_HOME)
-    if usable(custom) and os.path.isabs(custom):
-        return os.path.join(custom, NOTES_NAME)
-    return os.path.expanduser(NOTES_ROOT)
+    root = get_state_root()
+
+    return None if root is None else os.path.join(root, NOTES_NAME)
 
 
 def get_cited_notes_roots():
-    return list(dict.fromkeys([get_notes_root(), os.path.expanduser(NOTES_ROOT)]))
+    roots = [get_notes_root(), os.path.expanduser(NOTES_ROOT)]
+
+    return list(dict.fromkeys(root for root in roots if root is not None))
 
 
 def get_project_folder(cwd):
@@ -81,8 +83,11 @@ def note_in_memory(path):
 
 
 def is_own_note(real, folder):
+    root = get_notes_root()
+
     return (
-        os.path.dirname(real) == os.path.join(os.path.realpath(get_notes_root()), folder)
+        root is not None
+        and os.path.dirname(real) == os.path.join(os.path.realpath(root), folder)
         and real.endswith(".md")
         and os.path.isfile(real)
     )
@@ -153,14 +158,19 @@ def is_note_place(path):
     if in_memory_folder and is_same_place(os.path.dirname(os.path.dirname(folder)), memory_root()):
         return True
 
-    return is_same_place(os.path.dirname(folder), get_notes_root())
+    root = get_notes_root()
+
+    return root is not None and is_same_place(os.path.dirname(folder), root)
 
 
 def is_notes_file(path):
     real = os.path.realpath(path)
     folder = os.path.dirname(real)
+    notes = get_notes_root()
+    if notes is None:
+        return False
     try:
-        root = os.stat(os.path.realpath(get_notes_root()))
+        root = os.stat(os.path.realpath(notes))
     except (OSError, ValueError):
         return False
 

@@ -6,8 +6,11 @@
 Two optional files, each a JSON object with the lists "before" and "after":
   <Hats folder>/anchor-steps.json                        general, beside the notes folder
   <working folder>/.claude/anchor-steps.json              the project's own
-<Hats folder> is $HATS_STATE_HOME when it is an absolute path as written (no ~ is expanded), else
-~/Library/Application Support/Hats: the folder above handoff.py's notes root.
+<Hats folder> is $HATS_STATE_HOME when it is an absolute path as written (no ~ is expanded),
+~/Library/Application Support/Hats when it is empty or not set: the folder above handoff.py's notes
+root. Any other value, a relative path included, leaves no Hats folder: then the script prints one
+line "anchor-steps: HATS_STATE_HOME=<value> is not an absolute path, so there is no Hats folder" and
+exits 1.
 The general file may also hold "projects", a list of absolute paths (trimmed, a leading ~ expanded).
 The project file counts only when the working folder is the same folder as one of them, compared by
 device and inode, so a link, ~ or another letter case still match and a path that cannot be read
@@ -45,7 +48,6 @@ import argparse
 import json
 import os
 import re
-import stat
 import sys
 import unicodedata
 
@@ -53,6 +55,8 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import handoff
+import handoff_files
+from hats_common import STATE_HOME
 
 FILE_NAME = "anchor-steps.json"
 SIZE_LIMIT = 16 * 1024
@@ -143,24 +147,13 @@ def get_bytes(path):
     except OSError as error:
         raise Skipped(f"cannot be read: {error.strerror or error}") from None
     try:
-        return get_regular_bytes(fd)
+        data, reason = handoff_files.get_regular_bytes(fd, SIZE_LIMIT)
     except OSError as error:
         raise Skipped(f"cannot be read: {error.strerror or error}") from None
     finally:
         os.close(fd)
-
-
-def get_regular_bytes(fd):
-    if not stat.S_ISREG(os.fstat(fd).st_mode):
-        raise Skipped("not a regular file")
-    data = b""
-    while len(data) <= SIZE_LIMIT:
-        chunk = os.read(fd, SIZE_LIMIT + 1 - len(data))
-        if not chunk:
-            break
-        data += chunk
-    if len(data) > SIZE_LIMIT:
-        raise Skipped(f"larger than {SIZE_LIMIT} bytes")
+    if data is None:
+        raise Skipped("not a regular file" if reason == handoff_files.NOT_REGULAR else f"larger than {SIZE_LIMIT} bytes")
 
     return data
 
@@ -284,15 +277,6 @@ def is_anchor_itself(step):
     return is_skill(step) and step[len(SKILL):].lower() in ITSELF
 
 
-def is_same_folder(cwd, path):
-    try:
-        mine, listed = os.stat(cwd), os.stat(path)
-    except OSError:
-        return False
-
-    return (mine.st_dev, mine.st_ino) == (listed.st_dev, listed.st_ino)
-
-
 def get_unmarked_reason(general, shared):
     if shared:
         return f"is not in projects of {general}"
@@ -344,8 +328,13 @@ def get_lines(
 
 
 def print_steps(given):
+    notes_root = handoff.get_notes_root()
+    if notes_root is None:
+        custom = os.environ.get(STATE_HOME)
+        print(get_clean(f"anchor-steps: {STATE_HOME}={custom!r} is not an absolute path, so there is no Hats folder"))
+        return 1
     cwd = handoff.find_work_folder(given, None if given else handoff.claude_process())
-    general = os.path.join(os.path.dirname(handoff.get_notes_root()), FILE_NAME)
+    general = os.path.join(os.path.dirname(notes_root), FILE_NAME)
     project = os.path.join(
         cwd,
         ".claude",
@@ -364,7 +353,7 @@ def print_steps(given):
             shared,
         ),
     ]
-    if shared and any(is_same_folder(cwd, path) for path in shared[PROJECTS]):
+    if shared and any(handoff_files.is_same_file(cwd, path) for path in shared[PROJECTS]):
         files.append((
             "project",
             project,
@@ -391,6 +380,8 @@ def print_steps(given):
     ):
         print(get_clean(line))
 
+    return 0
+
 
 def main(argv):
     parser = argparse.ArgumentParser(prog="anchor-steps.py", description="Prints the own steps of the anchor skill.")
@@ -398,12 +389,10 @@ def main(argv):
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(errors="backslashreplace")
     try:
-        print_steps(args.cwd)
+        return print_steps(args.cwd)
     except Exception as error:
         print(get_clean(f"anchor-steps: {type(error).__name__}: {error}"))
         return 1
-
-    return 0
 
 
 if __name__ == "__main__":

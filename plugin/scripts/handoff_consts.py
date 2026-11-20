@@ -23,7 +23,6 @@ TRACE_FIELD_LIMIT = 500
 TRACE_LOCK_S = 0.5
 NOTES_ROOT = "~/Library/Application Support/Hats/notes"
 NOTES_NAME = "notes"
-STATE_HOME = "HATS_STATE_HOME"
 PROJECT_NAME = re.compile(r"[0-9a-f]{16}")
 ALLOW_TOOLS = {
     "Write",
