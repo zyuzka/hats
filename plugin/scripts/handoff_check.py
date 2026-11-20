@@ -89,14 +89,18 @@ def check_text(text, base_dir, note_real):
         if len(line) > LINE_LENGTH_LIMIT:
             problems.append((number, "line longer than 5,000 characters — not checked"))
             continue
+        stopped = False
         for match in CITE.finditer(line):
             if out_of_time():
-                problems.append((number, "check ran out of time before the end of the note"))
+                stopped = True
                 break
             claims += 1
             reason = verify_cite(match, base_dir, note_real, cache)
             if reason:
                 problems.append((number, reason))
+        if stopped:
+            problems.append((number, "check ran out of time before the end of the note"))
+            break
         rest = CITE.sub(" ", line)
         if CITE_START.search(INLINE_CODE.sub(" ", rest)):
             problems.append((number, "quote not parsed — write (cite: <path>:<line> \"<exact text>\")"))

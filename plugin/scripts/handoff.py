@@ -204,7 +204,8 @@ the model's text — character for character what the hook printed before, witho
 run with nothing for the model prints `systemMessage` alone: no anchor saved in this Claude process, an
 anchor whose note is gone (the marker of this process is there, nothing is left at its note's path —
 deleted, renamed or moved away: "anchor "<topic>" not given — its note is gone: <path>"; a note that is
-there but not allowed still reads as no anchor saved), an anchor already given to another session, no
+there but not allowed, or behind a folder this user cannot search, still reads as no anchor saved), an
+anchor already given to another session, no
 Claude process found, no notes of closed sessions, notes that could not be checked in time, and an
 error raised before anything was printed. A note that could
 not be checked is one of this folder, saved within 30 days, whose process `ps` could not tell in time
