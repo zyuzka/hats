@@ -28,7 +28,9 @@ final class AutoSwitchWatch {
     private(set) var aliveAt: Date?
 
     var interval: TimeInterval = 300
-    var wakeDelay: TimeInterval = 25
+    static let afterAWake: TimeInterval = 25
+
+    var wakeDelay: TimeInterval = AutoSwitchWatch.afterAWake
     var makeWorld: (String) -> UsageWorld = { UsageWorld.real(keychain: .real(osAccount: $0)) }
     var onReadings: ([String: UsageReading]) -> Void = { _ in Journal.log("usage.readingsIgnored") }
     var onAuthObservation: (Set<String>, Set<String>) -> Void = { _, _ in Journal.log("usage.authIgnored") }

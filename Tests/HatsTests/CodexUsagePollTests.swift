@@ -428,6 +428,46 @@ final class CodexUsagePollTests: XCTestCase {
         XCTAssertEqual(passed.first?.1.source, .gateway)
     }
 
+    func testAWakeOfTheMacReadsCodexOnceTheNetworkHadTimeToComeUp() {
+        let wakes = NotificationCenter()
+        let hats = CodexHats(world: server.world(home: home, keychain: keychain), wakes: wakes)
+        defer { hats.stop() }
+        hats.wakeDelay = 0.6
+        var tickedAt: Date?
+        let ticked = expectation(description: "the usage tick ran after the wake")
+        ticked.assertForOverFulfill = false
+        hats.startReadingUsage(every: 600) {
+            tickedAt = tickedAt ?? Date()
+            ticked.fulfill()
+        }
+        let woke = Date()
+
+        wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+        wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+
+        wait(for: [ticked], timeout: 2.5)
+        XCTAssertGreaterThanOrEqual(tickedAt?.timeIntervalSince(woke) ?? 0, 0.6,
+                                    "the Claude poll waits for the network after a wake, and so does Codex")
+        XCTAssertEqual(CodexHats(world: server.world(home: home, keychain: keychain)).wakeDelay,
+                       AutoSwitchWatch.afterAWake)
+    }
+
+    func testAStopCancelsTheTickWaitingAfterAWake() {
+        let wakes = NotificationCenter()
+        let hats = CodexHats(world: server.world(home: home, keychain: keychain), wakes: wakes)
+        hats.wakeDelay = 0.3
+        var ticks = 0
+        hats.startReadingUsage(every: 600) { ticks += 1 }
+        wakes.post(name: NSWorkspace.didWakeNotification, object: nil)
+
+        hats.stop()
+
+        let quiet = expectation(description: "no tick after the stop")
+        quiet.isInverted = true
+        wait(for: [quiet], timeout: 0.8)
+        XCTAssertEqual(ticks, 0)
+    }
+
     func testASecondStartReplacesTheTimersInsteadOfAddingThem() {
         let hats = CodexHats(world: server.world(home: home, keychain: keychain))
         defer { hats.stop() }

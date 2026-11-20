@@ -5,11 +5,14 @@ final class CodexHats {
     let gateway: CodexGatewayRun
     let signIn = CodexSignInFlow()
     let usage: CodexUsagePoll
-    private var repeating: [String: (timer: DispatchSourceTimer, wake: NSObjectProtocol)] = [:]
+    private var repeating: [String: CodexRepeating] = [:]
+    private let wakes: NotificationCenter
 
     var repeatingCount: Int { repeating.count }
+    var wakeDelay: TimeInterval = AutoSwitchWatch.afterAWake
 
-    init(world: CodexWorld) {
+    init(world: CodexWorld, wakes: NotificationCenter = NSWorkspace.shared.notificationCenter) {
+        self.wakes = wakes
         desk = CodexDesk(world: world)
         gateway = CodexGatewayRun(broker: CodexGatewayDesk(desk: desk, state: CodexGatewayState()))
         usage = CodexUsagePoll(desk: desk)
@@ -29,9 +32,7 @@ final class CodexHats {
     }
 
     private func stopRepeating(_ name: String) {
-        guard let held = repeating.removeValue(forKey: name) else { return }
-        held.timer.cancel()
-        NSWorkspace.shared.notificationCenter.removeObserver(held.wake)
+        repeating.removeValue(forKey: name)?.cancel(wakes: wakes)
     }
 
     private func repeatEvery(
@@ -45,11 +46,40 @@ final class CodexHats {
         timer.schedule(deadline: .now() + delay, repeating: interval)
         timer.setEventHandler(handler: tick)
         timer.resume()
-        let wake = NSWorkspace.shared.notificationCenter.addObserver(
+        let held = CodexRepeating(timer: timer)
+        held.wake = wakes.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main
-        ) { _ in tick() }
-        repeating[name] = (timer, wake)
+        ) { [weak self, weak held] _ in
+            guard let self, let held else { return }
+            held.tickAfterAWake(in: self.wakeDelay, tick: tick)
+        }
+        repeating[name] = held
+    }
+}
+
+private final class CodexRepeating {
+    let timer: DispatchSourceTimer
+    var wake: NSObjectProtocol?
+    private var afterAWake: DispatchWorkItem?
+
+    init(timer: DispatchSourceTimer) {
+        self.timer = timer
+    }
+
+    func tickAfterAWake(in delay: TimeInterval, tick: @escaping () -> Void) {
+        afterAWake?.cancel()
+        let item = DispatchWorkItem(block: tick)
+        afterAWake = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    func cancel(wakes: NotificationCenter) {
+        timer.cancel()
+        afterAWake?.cancel()
+        afterAWake = nil
+        if let wake { wakes.removeObserver(wake) }
+        wake = nil
     }
 }
