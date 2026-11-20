@@ -2655,6 +2655,49 @@ case "$ms" in ''|*[!0-9]*) bad "внук ps в своей группе: врем
 wait_for '[ -s "$work/grandpids" ]'
 cat "$work/grandpids" >>"$work/sleepers" 2>/dev/null
 
+# --- list --cwd (запись 87): тот же вывод, что start на startup, и ничего на диск
+tree_of() { python3 -I -c 'import os,sys
+for top in sys.argv[1:]:
+    for folder, dirs, files in os.walk(top):
+        dirs.sort()
+        for name in sorted(dirs + files):
+            path = os.path.join(folder, name)
+            info = os.lstat(path)
+            print(path, info.st_size, info.st_mtime_ns, oct(info.st_mode))' "$work/.claude" "$work/Library" "$mem"; }
+list_raw() {  # list_raw [cwd] [env...] — stdout и код list
+  local cwd="${1:-$proj}"; shift || true
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@" python3 -I "$HOOK" list --cwd "$cwd" 2>&1; echo "rc=$?"
+}
+start_raw() {  # start_raw [cwd] — stdout и код start на startup, мимо помощника и сверки
+  printf '{"session_id":"s","cwd":"%s","source":"startup"}' "${1:-$proj}" |
+    env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1; echo "rc=$?"
+}
+list_matches() {  # list_matches <подпись> — list и start в одном состоянии печатают одно и то же, list ничего не пишет
+  local before after listed started
+  before=$(tree_of); listed=$(list_raw); after=$(tree_of)
+  same "list: $1 — на диске ничего не изменилось" "$before" "$after"
+  started=$(start_raw)
+  same "list: $1 — тот же вывод, что start на startup" "$started" "$listed"
+}
+reset; list_matches "якорей нет"
+out=$(list_raw); has "list: якорей нет — пользователю «закрытых нет»" "$told_no_closed" "$out"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"; list_matches "один якорь"
+has "list: один якорь — модели список" "additionalContext" "$(list_raw)"
+reset; for i in 1 2 3 4 5 6 7; do marker "m$i" $((99980 + i)) "$dead_started" "$proj" "$note" "тема $i"; done
+list_matches "семь якорей"; has "list: семь якорей — две счётом" "and 2 more" "$(list_raw)"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"; chmod 000 "$note"
+list_matches "нечитаемая записка"; has "list: нечитаемая записка — строка о ней" "could not read the note" "$(list_raw)"; chmod 600 "$note"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
+before=$(tree_of); attended=$(list_raw "$proj"); unattended_out=$(list_raw "$proj" CLAUDE_CODE_SESSION_ATTENDED=0); after=$(tree_of)
+same "list: без человека печатает то же, что с человеком" "$attended" "$unattended_out"
+same "list: два запуска — на диске ничего" "$before" "$after"
+if [ ! -e "$markers/runs.log" ] && [ ! -e "$markers/taken" ]; then ok; else bad "list: ни runs.log, ни taken/" "$(ls -a "$markers")"; fi
+same "list: HANDOFF_OFF=1 — тишина" "rc=0" "$(list_raw "$proj" HANDOFF_OFF=1)"
+out=$(env HOME="$work" python3 -I "$HOOK" list 2>&1); rc=$?
+if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *--cwd* ]]; then ok; else bad "list без --cwd — отказ argparse, код 2, без трассировки" "rc=$rc ${out:0:300}"; fi
+out=$(env HOME="$work" python3 -I "$HOOK" list --cwd proj 2>&1); rc=$?
+if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *"absolute"* ]]; then ok; else bad "list с относительной папкой — отказ, код 2, без трассировки" "rc=$rc ${out:0:300}"; fi
+
 # --- README: как поставить плагин, как его выключить и что хук пишет на диск
 readme=$(cat "$plugin_root/../README.md" 2>/dev/null)
 has "README: как поставить плагин" "claude plugin install hats --marketplace zyuzka/hats" "$readme"

@@ -127,7 +127,9 @@ jobs:
           bash plugin/tests/mod-validate.test.sh
 
       - name: Codex plugin hooks
-        run: bash codex-plugin/tests/window.test.sh
+        run: |
+          bash codex-plugin/tests/window.test.sh
+          bash codex-plugin/tests/anchor-list.test.sh
 
       - name: Plugin tests under the system Python
         run: |
@@ -141,3 +143,4 @@ jobs:
           bash plugin/tests/credential-services.test.sh
           bash plugin/tests/stage-limit-waiting.test.sh
           bash codex-plugin/tests/window.test.sh
+          bash codex-plugin/tests/anchor-list.test.sh
