@@ -474,6 +474,21 @@ if [ ! -e "$own" ]; then ok; else bad "неожиданная ошибка: св
 reset_failures
 quiet_run "ошибка без WINDOW_FILL_TEST не включается" "$(input)" WINDOW_FILL_TEST_FAIL=1
 if [ ! -e "$failures_log" ] && [ -f "$own" ]; then ok; else bad "WINDOW_FILL_TEST_FAIL без WINDOW_FILL_TEST: пишет файл, журнала нет" "$(ls -A "$folder")"; fi
+long_path="$work/$(python3 -I -c 'print("n" * 300)').jsonl"
+for case_ in "нет файла|$work/nope.jsonl" "путь сквозь файл|$tr/x.jsonl" "имя длиннее предела|$long_path"; do
+  reset_failures
+  quiet_run "переписка: ${case_%%|*}" "$(input PostToolUse "" "${case_#*|}")"
+  if [ ! -e "$failures_log" ] && [ ! -e "$own" ]; then ok
+  else bad "переписка: ${case_%%|*} — пропуск, журнала ошибок нет" "$(ls -A "$folder")"; fi
+done
+if [ "$(id -u)" -ne 0 ]; then
+  reset_failures; chmod 000 "$tr"
+  quiet_run "переписку не прочитать" "$(input)"
+  got=$(failure_line)
+  if [ "$got" = "1 ['at', 'error', 'event', 'script'] window-fill.py PostToolUse PermissionError 20" ]; then ok
+  else bad "переписку не прочитать: строка в журнале ошибок, а не тишина" "$got"; fi
+  chmod 600 "$tr"
+fi
 for data in 'не json' '[1]' ''; do
   reset_failures
   quiet_run "битый ввод «${data}» при готовой папке" "$data" WINDOW_FILL_TEST=1 WINDOW_FILL_TEST_FAIL=1
