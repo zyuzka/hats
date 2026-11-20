@@ -12,6 +12,15 @@ extension HatsCopy {
         return main + " (\(all)%)"
     }
 
+    static func tab(_ tool: Tool, averages summary: ProviderSummary) -> String {
+        let session = summary.session.withoutVacation
+        let week = summary.week.withoutVacation
+        guard session != nil || week != nil else { return tab(tool) }
+        let shown = { (percent: Int?) in percent.map { "\($0)%" } ?? "–" }
+
+        return tab(tool) + " " + shown(session) + " · " + shown(week)
+    }
+
     static func tab(_ tool: Tool) -> String {
         switch tool {
         case .claudeCode: return "Claude"

@@ -35,6 +35,7 @@ struct HatRowView: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(row.title).font(.system(size: 13, weight: row.isWearing ? .semibold : .regular))
+                        .foregroundColor(row.isOnVacation && !lit ? Color(nsColor: ProviderColors.vacation) : nil)
                     if row.title != row.address {
                         Text(row.address).font(.system(size: 11)).foregroundStyle(secondary)
                     }

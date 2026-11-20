@@ -88,7 +88,7 @@ struct AutoSwitchBlock: View {
                 HStack {
                     Text(row.isWearing ? "—" : "\(index + 1)").frame(width: 16).foregroundStyle(.secondary)
                     Text(row.title).font(.system(size: 12))
-                        .foregroundStyle(row.isOnVacation ? Color.secondary : Color.primary)
+                        .foregroundColor(row.isOnVacation ? Color(nsColor: ProviderColors.vacation) : nil)
                     if row.isWearing { Text("worn now").font(.system(size: 11)).foregroundStyle(.secondary) }
                     if row.isOnVacation {
                         Text(HatsCopy.vacationMark).font(.system(size: 11)).foregroundStyle(.secondary)

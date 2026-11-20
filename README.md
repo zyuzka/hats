@@ -137,8 +137,11 @@ access token has less than a day left. The hat you wear is renewed by Codex, and
 Codex gateway runs (below). Hats never signs a login out, because that revokes it on the server.
 
 The menu has two tabs above the hats, "Claude" and "Codex"; each shows only its own hats, with the
-average use of those hats on top, and the header names the hat worn for that tab. The tab you chose last
-opens next time, also after a restart of Hats.
+average use of those hats on top, and the header names the hat worn for that tab. Each tab also names its
+average 5-hour and weekly use, for example "Codex 42% · 61%", so both providers can be read without
+switching tabs; hats on vacation do not count in it. The tab you chose last opens next time, also after a
+restart of Hats. Settings → Hats lists the Claude hats and the Codex hats apart, each list with its own
+Add… button.
 
 ### The Codex gateway
 
@@ -343,7 +346,8 @@ Off by default. Turn it on and the app puts the next hat on when the worn one cr
 when its own limit is reached. The one put on is the first in the order you set that has room; if
 none has room, the first whose usage could not be read. When every hat is spent the app says so in
 its log rather than holding in silence. A hat marked "On vacation" in Settings → Hats is never put on
-by the switch until you clear the mark; you can still put it on yourself from the menu.
+by the switch until you clear the mark; you can still put it on yourself from the menu. Its name is
+shown in pink in the menu and in Settings.
 
 <details>
 <summary><strong>Troubleshooting:</strong> <code>claude</code> reports a connection error, and <code>echo $ANTHROPIC_BASE_URL</code> prints <code>http://127.0.0.1:8787</code></summary>

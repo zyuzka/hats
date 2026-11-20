@@ -5,22 +5,34 @@ struct ManageHatsPanel: View {
     @State var open: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                section(.claudeCode)
+                Divider().padding(.horizontal, 14).padding(.vertical, 6)
+                section(.codex)
+            }
+            .padding(.vertical, 8)
+        }
+        .frame(width: 340)
+    }
+
+    private func section(_ tool: Tool) -> some View {
+        let rows = model.snapshot.rows(of: tool)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack {
+                Text(tool.displayName).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button("Add…") { model.actions?.addHat(for: .claudeCode) }.controlSize(.small)
+                Button("Add…") { model.actions?.addHat(for: tool) }.controlSize(.small)
             }
             .padding(.horizontal, 14).padding(.bottom, 6)
-            ForEach(everyRow) { row in
+            ForEach(rows) { row in
                 hatEntry(row)
             }
-            if everyRow.isEmpty {
-                Text("No hats yet").font(.system(size: 12)).foregroundStyle(.secondary)
+            if rows.isEmpty {
+                Text(HatsCopy.noHats(on: tool)).font(.system(size: 12)).foregroundStyle(.secondary)
                     .padding(.horizontal, 14).padding(.vertical, 8)
             }
         }
-        .padding(.vertical, 8)
-        .frame(width: 340)
     }
 
     private var everyRow: [HatRowState] { model.snapshot.rows + model.snapshot.codexRows }
@@ -33,6 +45,7 @@ struct ManageHatsPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(row.title).font(.system(size: 13, weight: row.isWearing ? .semibold : .regular))
+                            .foregroundColor(row.isOnVacation ? Color(nsColor: ProviderColors.vacation) : nil)
                         Text(subtitle(row)).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -51,7 +64,6 @@ struct ManageHatsPanel: View {
 
     private func subtitle(_ row: HatRowState) -> String {
         var parts: [String] = []
-        if row.tool == .codex { parts.append(Tool.codex.displayName) }
         if row.title != row.address { parts.append(row.address) }
         if row.isWearing { parts.append("worn now") }
         if row.isOnVacation { parts.append(HatsCopy.vacationMark) }

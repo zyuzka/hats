@@ -92,9 +92,69 @@ final class PopoverTabTests: XCTestCase {
         }
 
         XCTAssertTrue(source("HatListView.swift").contains("model.actions?.addHat(for: tab)"))
-        XCTAssertTrue(source("ManageHatsPanel.swift").contains("model.actions?.addHat(for: .claudeCode)"),
-                      "Add… in the settings stays on Claude")
+        XCTAssertTrue(source("ManageHatsPanel.swift").contains("model.actions?.addHat(for: tool)"),
+                      "each provider section of the Hats tab adds a hat of its own provider")
         XCTAssertTrue(source("Dialogs+Forms.swift").contains("let state = HatFormState(tool: tool)"))
+    }
+
+    func testTheHatsTabListsClaudeHatsThenCodexHatsEachUnderItsName() {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let panel = (try? String(contentsOf: root.appendingPathComponent("Sources/Hats/ManageHatsPanel.swift"),
+                                 encoding: .utf8)) ?? ""
+        let claude = panel.range(of: "section(.claudeCode)")
+        let codex = panel.range(of: "section(.codex)")
+
+        XCTAssertNotNil(claude)
+        XCTAssertNotNil(codex)
+        if let claude, let codex { XCTAssertLessThan(claude.lowerBound, codex.lowerBound) }
+        XCTAssertTrue(panel.contains("let rows = model.snapshot.rows(of: tool)"), "one list per provider")
+        XCTAssertFalse(panel.contains("rows + model.snapshot.codexRows\n            ForEach"),
+                       "no list of every hat together")
+        XCTAssertTrue(panel.contains("Text(tool.displayName)"))
+    }
+
+    func testEachTabNamesTheAveragesOfItsHatsSoNoSwitchIsNeededToSeeThem() {
+        let summary = ProviderSummary(
+            session: ProviderAverage(withoutVacation: 42, withVacation: 50),
+            week: ProviderAverage(withoutVacation: 61, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.tab(.codex, averages: summary), "Codex 42% · 61%",
+                       "the tab shows the averages without hats on vacation, like the line under it")
+        let weekOnly = ProviderSummary(
+            session: ProviderAverage(withoutVacation: nil, withVacation: nil),
+            week: ProviderAverage(withoutVacation: 20, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.tab(.codex, averages: weekOnly), "Codex – · 20%")
+        let nothing = ProviderSummary(
+            session: ProviderAverage(withoutVacation: nil, withVacation: 70),
+            week: ProviderAverage(withoutVacation: nil, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.tab(.claudeCode, averages: nothing), "Claude",
+                       "a tab with nothing read, or only hats on vacation, is just its name")
+    }
+
+    func testTheNameOfAHatOnVacationIsPinkWhereverItIsListed() {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = { (name: String) in
+            (try? String(contentsOf: root.appendingPathComponent("Sources/Hats/\(name)"), encoding: .utf8)) ?? ""
+        }
+
+        XCTAssertTrue(source("HatRowView.swift")
+            .contains(".foregroundColor(row.isOnVacation && !lit ? Color(nsColor: ProviderColors.vacation) : nil)"),
+                      "pink in the popover, white on a highlighted row")
+        for name in ["ManageHatsPanel.swift", "AutoSwitchBlock.swift"] {
+            XCTAssertTrue(source(name)
+                .contains(".foregroundColor(row.isOnVacation ? Color(nsColor: ProviderColors.vacation) : nil)"), name)
+        }
+        let pink = ProviderColors.vacation.usingColorSpace(.sRGB)
+        XCTAssertNotNil(pink)
+        if let pink {
+            XCTAssertGreaterThan(pink.redComponent, pink.greenComponent + 0.3, "pink is red with some blue")
+            XCTAssertGreaterThan(pink.blueComponent, pink.greenComponent, "pink, not orange")
+        }
+        XCTAssertNotEqual(ProviderColors.vacation, ProviderColors.claude)
     }
 
     func testAnEmptyTabNamesItsProviderAndPointsAtAddHat() {

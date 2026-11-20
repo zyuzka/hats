@@ -45,7 +45,11 @@ struct HatListView: View {
             get: { tab },
             set: { model.actions?.setPopoverTab($0) }
         )) {
-            ForEach(Tool.allCases, id: \.self) { Text(HatsCopy.tab($0)).tag($0) }
+            ForEach(Tool.allCases, id: \.self) { tool in
+                Text(HatsCopy.tab(tool, averages: ProviderSummary.of(snapshot.rows(of: tool), now: Date())))
+                    .monospacedDigit()
+                    .tag(tool)
+            }
         }
         .pickerStyle(.segmented)
         .labelsHidden()
