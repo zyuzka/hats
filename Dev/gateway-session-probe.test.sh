@@ -92,6 +92,91 @@ equals "settings without a port are unknown" "unknown" "$(sessionsTheBuildWouldB
 HATS_SETTINGS_FILE="$work/there-is-no-such-file.json"
 equals "unreadable settings are unknown" "unknown" "$(sessionsTheBuildWouldBreak)"
 
+codexSecret="0123456789abcdef0123456789abcdef"
+gatewayAnswer() {
+    if [[ "${2:-}" == "/$codexSecret" ]]; then
+        printf 'readable 1\ncodex-thread 019a-thread-one\n'
+    else
+        printf 'readable 1\npid 4242\n'
+    fi
+}
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isCodexGatewayEnabled" : true,
+  "isGatewayEnabled" : true
+}')"
+equals "both gateways are asked, each its own way" "4242
+codex-thread 019a-thread-one" "$(sessionsTheBuildWouldBreak)"
+
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isCodexGatewayEnabled" : true,
+  "isGatewayEnabled" : false
+}')"
+equals "a Claude gateway switched off does not skip the Codex one" "codex-thread 019a-thread-one" \
+    "$(sessionsTheBuildWouldBreak)"
+
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isCodexGatewayEnabled" : true,
+  "isGatewayEnabled" : false
+}')"
+equals "a Codex gateway on without a secret is unknown" "unknown" "$(sessionsTheBuildWouldBreak)"
+
+gatewayAnswer() { [[ -n "${2:-}" ]] && return 0; printf 'readable 1\n'; }
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isCodexGatewayEnabled" : true,
+  "isGatewayEnabled" : true
+}')"
+equals "a Codex gateway that is on and does not answer is unknown" "unknown" "$(sessionsTheBuildWouldBreak)"
+
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isCodexGatewayEnabled" : false,
+  "isGatewayEnabled" : true
+}')"
+equals "a Codex gateway switched off is not asked" "" "$(sessionsTheBuildWouldBreak)"
+
+equals "a thread line is at risk whatever its characters" "codex-thread ok-1
+codex-thread odd id;with spaces" "$(pidsFromAnswer 'readable 1
+codex-thread ok-1
+codex-thread odd id;with spaces')"
+
+gatewayAnswer() { [[ -n "${2:-}" ]] && return 0; printf 'readable 1\n'; }
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : false,
+  "isCodexGatewayEnabled" : true,
+  "isGatewayEnabled" : true
+}')"
+equals "a Codex gateway with no Codex hat left is not serving and is not asked" "" "$(sessionsTheBuildWouldBreak)"
+
+HATS_SETTINGS_FILE="$(settingsSaying '{
+  "codexGatewayPort" : 8788,
+  "codexGatewaySecret" : "'"$codexSecret"'",
+  "gatewayPort" : 8787,
+  "hasCodexHats" : true,
+  "isGatewayEnabled" : true
+}')"
+equals "Codex hats and no switch at all mean on, as in the app" "unknown" "$(sessionsTheBuildWouldBreak)"
+
 mayStop 1
 mayStop yes
 mayStop true

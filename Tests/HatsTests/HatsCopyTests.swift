@@ -121,6 +121,24 @@ final class HatsCopyTests: XCTestCase {
         XCTAssertEqual(HatsCopy.handover(to: "Personal"), "next: Personal")
     }
 
+    func testTheProviderAverageLineCarriesBracketsOnlyWhereAVacationHatCounted() {
+        let plain = ProviderSummary(
+            session: ProviderAverage(withoutVacation: 40, withVacation: nil),
+            week: ProviderAverage(withoutVacation: 93, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(plain), "5h 40% · week 93%")
+        let away = ProviderSummary(
+            session: ProviderAverage(withoutVacation: 40, withVacation: 45),
+            week: ProviderAverage(withoutVacation: 93, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(away), "5h 40% (45%) · week 93%")
+        let empty = ProviderSummary(
+            session: ProviderAverage(withoutVacation: nil, withVacation: 50),
+            week: ProviderAverage(withoutVacation: nil, withVacation: nil)
+        )
+        XCTAssertEqual(HatsCopy.providerAverage(empty), "5h – (50%) · week –")
+    }
+
     func testTheSessionsLineIsHonestAboutWhatItKnows() {
         XCTAssertEqual(HatsCopy.sessions(count: nil),
                        "Live sessions unknown — the process table could not be read")
@@ -361,51 +379,67 @@ final class HatsCopyTests: XCTestCase {
         }
     }
 
-    func testBothRowBranchesThatShowANumberAlsoShowAFailedLatestCheck() throws {
-        let source = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/Hats/HatRowView.swift")
-        let text = try String(contentsOf: source, encoding: .utf8)
-
-        XCTAssertEqual(text.components(separatedBy: "HatsCopy.staleReading(row.usageTrouble)").count - 1, 2,
-                       "the row is an else-if chain, so a hat that keeps a number after a failed "
-                           + "poll showed the percentage and nothing else — the pair the data now "
-                           + "produces was invisible. Both branches that render a number, worn and "
-                           + "parked, have to render this line too, and a SwiftUI body cannot be "
-                           + "driven from here, so the wiring is asserted by reading it")
+    private func row(wearing: Bool, trouble: UsageTrouble?, usage: UsageReading?) -> HatRowState {
+        HatRowState(
+            hat: Account(id: "work", email: "work@company.com", browser: nil),
+            isWearing: wearing,
+            usage: usage,
+            usageTrouble: trouble,
+            week: WeekSighting(window: UsageWindow(used: 30, limit: 100, resetsAt: nil), isConfirmed: false)
+        )
     }
 
-    func testEveryRowBranchShowsTheWeekBelowItsOwnLine() throws {
+    func testBothRowBranchesThatShowANumberAlsoShowAFailedLatestCheck() {
+        let reading = UsageReading(session: UsageWindow(used: 40, limit: 100, resetsAt: nil), weekly: nil)
+        for display in UsageDisplay.allCases {
+            for wearing in [true, false] {
+                let lines = RowDetail.lines(
+                    of: row(wearing: wearing, trouble: .fetchFailed("unreachable"), usage: reading),
+                    display: display,
+                    handover: nil
+                )
+                XCTAssertTrue(lines.contains(.text("latest check failed — unreachable")),
+                              "a hat that keeps a number after a failed poll has to say the number may be "
+                                  + "stale, worn or parked, in either display: \(display) wearing=\(wearing)")
+            }
+        }
+    }
+
+    func testEveryRowBranchShowsTheWeekBelowItsOwnLine() {
+        let reading = UsageReading(session: UsageWindow(used: 40, limit: 100, resetsAt: nil), weekly: nil)
+        let branches: [(Bool, UsageTrouble?, UsageReading?)] = [
+            (true, nil, reading),
+            (true, .tokenExpired, nil),
+            (false, nil, reading),
+            (false, .tokenExpired, nil),
+            (false, nil, nil),
+        ]
+        for (wearing, trouble, usage) in branches {
+            let hat = row(wearing: wearing, trouble: trouble, usage: usage)
+            XCTAssertTrue(RowDetail.lines(of: hat, display: .percent, handover: nil)
+                .contains(.text("week: 30%?", spoken: hat.weekSpoken)),
+                          "the week is shown on every hat: wearing=\(wearing) trouble=\(String(describing: trouble))")
+            XCTAssertTrue(RowDetail.lines(of: hat, display: .bars, handover: nil).contains {
+                if case .bar(let bar) = $0 { return bar.label == "week" }
+                return false
+            })
+        }
+    }
+
+    func testTheRowDrawsItsDetailAndItsMarkFromTheirOwnParts() throws {
         let source = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/Hats/HatRowView.swift")
         let text = try String(contentsOf: source, encoding: .utf8)
-        let detail = try XCTUnwrap(text.components(separatedBy: "@ViewBuilder private var detail").last?
-            .components(separatedBy: "@ViewBuilder private var weekBelow").first)
-        let branches = detail.components(separatedBy: "} else").count
-        let weeks = detail.components(separatedBy: "\n").filter {
-            $0.trimmingCharacters(in: .whitespaces) == "weekBelow"
-        }.count
 
-        XCTAssertEqual(branches, 5)
-        XCTAssertEqual(weeks, branches,
-                       "the week is shown on every hat, worn or parked, with a number, with a "
-                           + "trouble line, or with nothing but a remembered week after a restart; "
-                           + "the row is an else-if chain, so each branch has to render it itself")
-        let opening = try XCTUnwrap(detail.range(of: "{\n"))
-        let body = String(detail[opening.upperBound...])
-        let chain = body.components(separatedBy: "} else")
-        for (index, branch) in chain.enumerated() {
-            let before = try XCTUnwrap(branch.components(separatedBy: "\n").split {
-                $0.trimmingCharacters(in: .whitespaces) == "weekBelow"
-            }.first.map { $0.joined(separator: "\n") })
-            let depth = before.filter { $0 == "{" }.count - before.filter { $0 == "}" }.count
-            XCTAssertEqual(depth, 1, "branch \(index): weekBelow sits in the branch itself, not inside a nested if")
-            XCTAssertFalse(before.contains("stale"), "branch \(index): the week comes before the stale line")
-            if index < chain.count - 1 {
-                XCTAssertTrue(before.contains("Text("),
-                              "branch \(index): the week is below the branch's own percent or trouble line")
-            }
-        }
+        XCTAssertTrue(text.contains("RowDetail.lines(of: row, display: display, handover: handover)"),
+                      "the row renders what the pure function decides, so the tests of that function "
+                          + "are tests of the row")
+        XCTAssertTrue(text.contains("UsageBarView(bar: bar"))
+        XCTAssertTrue(text.contains("HatMarkView(tool: tool)"))
+        XCTAssertFalse(text.contains("✓"), "the worn hat is marked by the hat, not a check mark")
+        XCTAssertFalse(text.contains("HatsCopy.usageLine"), "percent text comes only through RowDetail")
+        XCTAssertTrue(text.contains(".accessibilityLabel(spoken ?? text)"),
+                      "VoiceOver reads the spoken form of a percent line, not its short signs")
     }
 }

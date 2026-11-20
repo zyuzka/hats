@@ -23,6 +23,21 @@ extension HatsCopy {
          "Hats can't read \(hat)'s usage, and \(getOthersOnVacation(away))")
     }
 
+    static func cannotReadTheUsage(of hat: String, strandedBy by: AutoSwitchDeadEnd.StrandedBy) -> (String, String) {
+        switch by {
+        case .noOtherHat:
+            return ("Can't read usage", "Hats can't read \(hat)'s usage, and there is no other hat to switch to.")
+        case .othersNeedSigningIn(let only, let also):
+            return ("Can't read usage", "Hats can't read \(hat)'s usage, and \(signingIn(only, alsoShutOut: also)).")
+        case .othersAreSpent:
+            return cannotReadTheUsageAndTheOthersAreSpent(of: hat)
+        case .othersAreSpentOrOnVacation(_, let away):
+            return getUnreadableAndSpentOrOnVacation(of: hat, onVacation: away)
+        case .othersAreOnVacation(let away):
+            return getCannotReadTheUsageAndTheOthersAreOnVacation(of: hat, onVacation: away)
+        }
+    }
+
     static func getOthersOnVacation(_ hats: [HatOnVacation]) -> String {
         guard hats.count == 1, let only = hats.first else {
             return "the other hats are on vacation. End a vacation in Settings → Hats."

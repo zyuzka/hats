@@ -240,6 +240,19 @@ final class ContextThresholdsTests: XCTestCase {
                         .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
                         Text(HatsCopy.drainNote)
             """,
+            """
+                        HatLimitSection(model: model, drafts: drafts)
+                        codexContinue
+                        Spacer()
+            """,
+            """
+                        Toggle(HatsCopy.continueCodex, isOn: Binding(
+                            get: { model.snapshot.settings.continuesCodexAfterCompaction },
+                            set: { isOn in model.actions?.setCodexContinue(isOn) }
+                        ))
+                        .font(.system(size: 13))
+                        .disabled(thresholds.savePercent == nil || thresholds.warnPercent == nil)
+            """,
         ]
         for row in rows {
             XCTAssertTrue(panel.contains(row), "the panel no longer reads, as one block:\n\(row)")

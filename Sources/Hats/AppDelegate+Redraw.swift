@@ -6,10 +6,10 @@ extension AppDelegate {
         snapshot.header = liveIdentity.display
         let somebodyLooks = popover.isShown || sessions.isVisible
         let chromeNames = somebodyLooks ? ChromeProfiles.names() : [:]
-        snapshot.rows = store.accounts.map { hat in
+        snapshot.rows = ClaudeDoors.claudeRows(store.accounts, live: liveIdentity.email) { hat, isWearing in
             HatRowState(
                 hat: hat,
-                isWearing: liveIdentity.email.map { Account.sameAddress(hat.email, $0) } ?? false,
+                isWearing: isWearing,
                 usage: usage.readings[hat.id],
                 usageTrouble: usage.troubles[hat.id],
                 roseWhileParked: usage.roseWhileParked[hat.id],
@@ -17,6 +17,7 @@ extension AppDelegate {
                 chromeNames: chromeNames
             )
         }
+        snapshot.codexRows = codexRows(chromeNames: chromeNames)
         let taken: [Session]?? = lookAtTheProcessTable ?? (somebodyLooks
             ? .some(SessionDiscovery.everySessionSeenRecently())
             : nil)
@@ -29,11 +30,12 @@ extension AppDelegate {
         }
         snapshot.horizon = SessionHorizon.line(soonestParkedAccessExpiry: store.soonestParkedAccessExpiry)
         snapshot.gateway = GatewayProcess.status
+        snapshot.hasFullDiskAccess = FullDiskAccess.isGranted()
         snapshot.gatewaySessions = somebodyLooks ? GatewayProcess.sessionRows : popover.model.snapshot.gatewaySessions
         snapshot.environment = gatewayEnvironment
         snapshot.settings = settings
-        snapshot.banner = settings.autoSwitchRecord.flatMap { $0.seenInPopover ? nil : $0 }
-        snapshot.bannerFromTitle = settings.autoSwitchRecord.map { snapshot.title(of: $0.from) } ?? ""
+        snapshot.showTheBanners(of: settings)
+        snapshot.codexAutoSwitchWarning = codexSwitch.lastWarning
         snapshot.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
         snapshot.setUpdates(from: updater)
         snapshot.changing = changing
@@ -42,43 +44,38 @@ extension AppDelegate {
         snapshot.portRefusal = GatewayProcess.lastPortRefusal
         snapshot.reducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         snapshot.sessionHandoff = handoff.row
+        snapshot.showTheCodexPluginRow(of: codexPlugin)
         snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
+        syncTheCodexGatewayIfItsInputsMoved()
+        snapshot.codexGateway = codexGatewayFace
         popover.model.snapshot = snapshot
         writeTheHatUsage()
         contextChannel.setThresholds(settings.contextThresholds, limits: settings.limitThresholds, at: Date())
+        syncTheCodexWindow()
 
         if let blink {
-            blink.show(markState(snapshot), blinking: settings.blinksTheCursorInTheMenuBar)
+            blink.show(snapshot.markState, blinking: settings.blinksTheCursorInTheMenuBar)
         } else {
-            statusItem.button?.image = Mark.image(state: markState(snapshot))
+            statusItem.button?.image = Mark.image(state: snapshot.markState)
         }
         statusItem.button?.title = snapshot.menuBarTitle
         statusItem.button?.setAccessibilityLabel(snapshot.menuBarAccessibilityLabel)
         let sighting = BannerSighting.of(popoverShown: popover.isShown,
                                          popoverClosing: popover.isClosing,
-                                         hasBanner: snapshot.banner != nil)
-        if sighting == .seen { markBannerSeen() }
+                                         hasBanner: snapshot.banner(on: settings.popoverTab) != nil)
+        if sighting == .seen { markBannerSeen(on: settings.popoverTab) }
     }
 
     func showTheContextRows() {
         popover.model.snapshot.contextRows = SessionWindow.getMenuRows(sessionWindows.windows, now: Date())
     }
 
-    private func markState(_ snapshot: HatsSnapshot) -> MarkState {
-        MarkState.decide(
-            anyHatBlocked: snapshot.hasABlockedHatInPlay,
-            gatewayEnabled: settings.isGatewayEnabled,
-            gatewayServing: snapshot.gateway.isServing,
-            wearing: snapshot.wearing != nil,
-            percent: snapshot.wearing?.usage?.session?.percent,
-            autoSwitchWarnsAboutTheWornHat: snapshot.showsAWarningAboutTheWornHat
-        )
-    }
-
-    private func markBannerSeen() {
-        guard var record = settings.autoSwitchRecord, !record.seenInPopover else { return }
+    private func markBannerSeen(on tool: Tool) {
+        let key: WritableKeyPath<AppSettings, AutoSwitchRecord?> =
+            tool == .codex ? \.codexAutoSwitchRecord : \.autoSwitchRecord
+        guard var record = settings[keyPath: key], !record.seenInPopover else { return }
         record.seenInPopover = true
-        settings.autoSwitchRecord = record
+        settings[keyPath: key] = record
         saveSettings()
     }
 
@@ -120,8 +117,6 @@ extension AppDelegate {
             decideAutoSwitch(from: .aPollLanded)
         }
     }
-
-    var settleWanted: TimeInterval { TimeInterval(settings.gatewaySettleSeconds) }
 
     var wantsTheProcessTable: Bool {
         GatewayProcess.hasARetiredListener || popover.isShown || sessions.isVisible

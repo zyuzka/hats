@@ -3,6 +3,7 @@ import Foundation
 final class AccountStore {
     private(set) var accounts: [Account] = []
     private(set) var activeID: String?
+    private(set) var codexActiveID: String?
 
     let keychain: KeychainWorld
 
@@ -11,19 +12,28 @@ final class AccountStore {
     init(
         osAccount: String = NSUserName(),
         keychain: KeychainWorld? = nil,
-        system: SystemWorld = .real
+        system: SystemWorld = .real,
+        index: URL? = nil
     ) {
         self.keychain = keychain ?? .real(osAccount: osAccount)
         self.system = system
-        file = AccountsFile(keychain: self.keychain)
+        file = AccountsFile(keychain: self.keychain, location: index)
         load()
     }
 
     private let file: AccountsFile
 
-    private typealias Snapshot = (accounts: [Account], activeID: String?)
+    private struct Snapshot {
+        let accounts: [Account]
+        let activeID: String?
+        let codexActiveID: String?
+    }
 
-    private var snapshot: Snapshot { (accounts, activeID) }
+    private var snapshot: Snapshot { Snapshot(accounts: accounts, activeID: activeID, codexActiveID: codexActiveID) }
+
+    private func restore(_ snapshot: Snapshot) {
+        (accounts, activeID, codexActiveID) = (snapshot.accounts, snapshot.activeID, snapshot.codexActiveID)
+    }
 
     private(set) var hasUnsavedChanges = false
 
@@ -32,6 +42,8 @@ final class AccountStore {
     let identityQueue = DispatchQueue(label: "hats.identity-from-token")
 
     var fetchingTokenIdentity: (String) -> ProfileFetch = { ProfileFetcher.fetch(token: $0) }
+
+    var journaling: (String, [String: String]) -> Void = { Journal.log($0, $1) }
 
     private func recordCompletedChange(_ what: String) throws {
         do {
@@ -46,7 +58,7 @@ final class AccountStore {
         do {
             try save()
         } catch {
-            (accounts, activeID) = snapshot
+            restore(snapshot)
             throw error
         }
     }
@@ -58,7 +70,7 @@ final class AccountStore {
     func capture(into id: String) throws {
         try requireReadableIndex()
         let configuration = try CLIState.configurationNow(world: system)
-        guard accounts.contains(where: { $0.id == id }) else {
+        guard claudeHats.contains(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
         guard let live = try keychain.read(configuration.credentialService) else {
@@ -76,7 +88,7 @@ final class AccountStore {
         credential live: Data,
         using configuration: CLIConfiguration
     ) throws {
-        guard let account = accounts.first(where: { $0.id == id }) else {
+        guard let account = claudeHats.first(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
         guard Account.sameAddress(liveEmail, account.email) else {
@@ -167,7 +179,7 @@ final class AccountStore {
     }
 
     func noteAuthObservation(refused: Set<String>, accepted: Set<String>, at now: Date = Date()) {
-        let changes = AuthObservation.changes(in: accounts, refused: refused, accepted: accepted, at: now)
+        let changes = AuthObservation.changes(in: claudeHats, refused: refused, accepted: accepted, at: now)
         guard !changes.isEmpty else { return }
         for change in changes {
             guard let index = accounts.firstIndex(where: { $0.id == change.id }) else { continue }
@@ -207,7 +219,7 @@ final class AccountStore {
             live = data
         }
 
-        guard let match = accounts.first(
+        guard let match = claudeHats.first(
             where: { Account.sameAddress($0.email, email) }) else {
             guard claim.allowsDiscovery(of: email, credential: live) else {
                 Journal.log("reconcile.credentialNotClaimed", [
@@ -291,7 +303,7 @@ final class AccountStore {
             throw SwitchError.blankAddress
         }
         let before = snapshot
-        if let existing = accounts.first(
+        if let existing = claudeHats.first(
             where: { Account.sameAddress($0.email, address) }) {
             throw SwitchError.duplicateEmail(existing.display)
         }
@@ -303,7 +315,7 @@ final class AccountStore {
 
     func beginLogin(_ id: String) throws -> SignInCommand {
         try requireReadableIndex()
-        guard let account = accounts.first(where: { $0.id == id }) else {
+        guard let account = claudeHats.first(where: { $0.id == id }) else {
             throw SwitchError.unknownAccount(id)
         }
         guard let browser = account.browser, browser.overridesBrowser else {
@@ -320,41 +332,6 @@ final class AccountStore {
         return command
     }
 
-    func remove(_ id: String) throws {
-        try requireReadableIndex()
-        let before = snapshot
-        guard id != activeID else { throw SwitchError.cannotRemoveActive }
-        guard accounts.count > 1 else { throw SwitchError.cannotRemoveLast }
-        let payload = try? keychain.read(Slot.parked(id))
-        let display = accounts.first(where: { $0.id == id })?.display ?? id
-        accounts.removeAll { $0.id == id }
-        try persist(orRestore: before)
-        var deletionError: Error?
-        do {
-            try keychain.deleteParked(id: id)
-        } catch {
-            deletionError = error
-        }
-        Journal.log("remove", [
-            "id": String(id.prefix(8)),
-            "payload": Journal.fingerprint(payload ?? nil),
-            "credentialDeleted": deletionError == nil ? "true" : "failed",
-            "deletionFailure": deletionError?.localizedDescription ?? "none",
-        ])
-        if let deletionError {
-            throw SwitchError.credentialNotDeleted(
-                display, cause: deletionError.localizedDescription)
-        }
-    }
-
-    func update(_ account: Account) throws {
-        try requireReadableIndex()
-        let before = snapshot
-        guard let index = accounts.firstIndex(of: account) else { return }
-        accounts[index] = account
-        try persist(orRestore: before)
-    }
-
     func setVacation(
         _ id: String,
         on: Bool,
@@ -369,11 +346,19 @@ final class AccountStore {
         let before = snapshot
         accounts[index].vacationSince = on ? now : nil
         try persist(orRestore: before)
-        Journal.log("hat.vacation", [
-            "hat": String(id.prefix(8)),
-            "on": String(on),
-            "since": (on ? now : was).map { ISO8601DateFormatter().string(from: $0) } ?? "-",
-        ])
+        journaling("hat.vacation", HatJournalLine.vacation(hat: id, on: on, since: on ? now : was))
+    }
+
+    func commit(_ change: (inout [Account], inout String?) throws -> Void) throws {
+        try requireReadableIndex()
+        let before = snapshot
+        do {
+            try change(&accounts, &codexActiveID)
+        } catch {
+            restore(before)
+            throw error
+        }
+        try persist(orRestore: before)
     }
 
     private(set) var indexUnusable: SwitchError?
@@ -383,7 +368,8 @@ final class AccountStore {
         case .contents(let contents):
             accounts = contents.accounts
             activeID = contents.activeID
-            keychain.adoptLegacyParked(ids: accounts.map(\.id)) { Journal.log($0, $1) }
+            codexActiveID = contents.codexActiveID
+            keychain.adoptLegacyParked(ids: claudeHats.map(\.id)) { Journal.log($0, $1) }
         case .nothingYet:
             break
         case .unusable(let reason):
@@ -393,7 +379,11 @@ final class AccountStore {
 
     private func save() throws {
         if let reason = indexUnusable { throw reason }
-        try file.save(AccountsFile.Contents(accounts: accounts, activeID: activeID))
+        try file.save(AccountsFile.Contents(
+            accounts: accounts,
+            activeID: activeID,
+            codexActiveID: codexActiveID
+        ))
         hasUnsavedChanges = false
     }
 }

@@ -126,6 +126,9 @@ jobs:
           export HOME="$(mktemp -d)" CLAUDE_CONFIG_DIR="$(mktemp -d)"
           bash plugin/tests/mod-validate.test.sh
 
+      - name: Codex plugin hooks
+        run: bash codex-plugin/tests/window.test.sh
+
       - name: Plugin tests under the system Python
         run: |
           export PATH="/usr/bin:$PATH"
@@ -137,3 +140,4 @@ jobs:
           bash plugin/tests/stop-snapshot.test.sh
           bash plugin/tests/credential-services.test.sh
           bash plugin/tests/stage-limit-waiting.test.sh
+          bash codex-plugin/tests/window.test.sh

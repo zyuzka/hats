@@ -9,6 +9,13 @@ extension HatsCopy {
             + "once per threshold, again after its context gets smaller; an idle session hears of it with its "
             + "next message. A session already past the lower threshold at its first answer gets neither."
     static let drainBackgroundWork = "Drain background work"
+    static let continueCodex = "Continue Codex sessions after compaction"
+    static let continueCodexNeedsThresholds = "Needs both Warn at and Anchor at turned on."
+    static let continueCodexNote =
+        "A Codex window in the shared service that ends a turn past the anchor threshold, has a resume note and "
+            + "stays idle for 20 seconds is compacted by Hats, which then starts a turn that tells it to go on "
+            + "from its resume note. "
+            + "That turn shows in the window as if you typed it. A turn you start at that very moment can be cut off."
     static let drainNote =
         "From a context or hat-limit warning on, new subagents, workflows, monitors and background commands "
             + "are refused. Not refused: a command Claude Code moves to the background itself, after its time "

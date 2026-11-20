@@ -5,6 +5,18 @@ enum ForeignProfileResolution: String, Codable, Equatable {
     case keepMine
 }
 
+enum UsageDisplay: String, Codable, Equatable, CaseIterable {
+    case percent
+    case bars
+
+    var title: String {
+        switch self {
+        case .percent: return "Percent"
+        case .bars: return "Bars"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var gatewayPort = 8787
     var isGatewayEnabled = true
@@ -17,6 +29,18 @@ struct AppSettings: Codable, Equatable {
     var pluginVersionToldAbout: String?
     var contextThresholds = ContextThresholds()
     var limitThresholds = LimitThresholds()
+    var usageDisplay = UsageDisplay.percent
+    var codexGatewayPort = CodexGatewayPaths.defaultPort
+    var isCodexGatewayEnabled: Bool?
+    var codexGatewaySecret: String?
+    var codexConfigCreatedByHats = false
+    var hasToldToRestartCodexWindows = false
+    var hasCodexHats = false
+    var popoverTab = Tool.claudeCode
+    var codexAutoSwitch = AutoSwitchPolicy()
+    var codexAutoSwitchRecord: AutoSwitchRecord?
+    var continuesCodexAfterCompaction = true
+    var codexPluginVersionToldAbout: String?
 
     init(gatewayPort: Int = 8787) {
         self.gatewayPort = gatewayPort
@@ -42,6 +66,28 @@ struct AppSettings: Codable, Equatable {
             ?? ContextThresholds()
         limitThresholds = (try? c.decodeIfPresent(LimitThresholds.self, forKey: .limitThresholds))
             ?? LimitThresholds()
+        usageDisplay = (try? c.decodeIfPresent(UsageDisplay.self, forKey: .usageDisplay)) ?? .percent
+        popoverTab = (try? c.decodeIfPresent(Tool.self, forKey: .popoverTab)) ?? .claudeCode
+        try decodeTheCodexGateway(from: decoder)
+    }
+
+    private mutating func decodeTheCodexGateway(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let port = try? c.decodeIfPresent(Int.self, forKey: .codexGatewayPort)
+        codexGatewayPort = port.flatMap { Self.isAUsablePort($0) ? $0 : nil } ?? CodexGatewayPaths.defaultPort
+        isCodexGatewayEnabled = try? c.decodeIfPresent(Bool.self, forKey: .isCodexGatewayEnabled)
+        let secret = try? c.decodeIfPresent(String.self, forKey: .codexGatewaySecret)
+        codexGatewaySecret = secret.flatMap { CodexGatewayPaths.isAUsableSecret($0) ? $0 : nil }
+        codexConfigCreatedByHats = (try? c.decodeIfPresent(Bool.self, forKey: .codexConfigCreatedByHats)) ?? false
+        let told = try? c.decodeIfPresent(Bool.self, forKey: .hasToldToRestartCodexWindows)
+        hasToldToRestartCodexWindows = told ?? false
+        hasCodexHats = (try? c.decodeIfPresent(Bool.self, forKey: .hasCodexHats)) ?? false
+        codexAutoSwitch = (try? c.decodeIfPresent(AutoSwitchPolicy.self, forKey: .codexAutoSwitch))
+            ?? AutoSwitchPolicy()
+        codexAutoSwitchRecord = try? c.decodeIfPresent(AutoSwitchRecord.self, forKey: .codexAutoSwitchRecord)
+        continuesCodexAfterCompaction =
+            (try? c.decodeIfPresent(Bool.self, forKey: .continuesCodexAfterCompaction)) ?? true
+        codexPluginVersionToldAbout = try? c.decodeIfPresent(String.self, forKey: .codexPluginVersionToldAbout)
     }
 
     static var defaultURL: URL {
@@ -66,6 +112,7 @@ struct AppSettings: Codable, Equatable {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(self).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     static let portRange = 1024...65535

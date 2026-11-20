@@ -18,6 +18,44 @@ final class MarkTests: XCTestCase {
                                         wearing: false, percent: nil, autoSwitchWarnsAboutTheWornHat: false), .idle)
     }
 
+    func testACodexTroubleLightsTheDotLikeAClaudeOne() {
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: true,
+                                        wearing: true, percent: 40, autoSwitchWarnsAboutTheWornHat: false,
+                                        codexAsksForAttention: true), .attention)
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: false, gatewayServing: false,
+                                        wearing: false, percent: nil, autoSwitchWarnsAboutTheWornHat: false,
+                                        codexAsksForAttention: true), .attention,
+                       "only a Codex hat is worn, and it is stuck: the dot still shows")
+        XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: false, gatewayServing: false,
+                                        wearing: true, percent: 40, autoSwitchWarnsAboutTheWornHat: false,
+                                        codexAsksForAttention: false), .wearing(percent: 40))
+    }
+
+    func testEachCodexTroubleOfTheSnapshotAsksForAttention() {
+        var calm = HatsSnapshot()
+        calm.settings.isGatewayEnabled = false
+        calm.settings.isCodexGatewayEnabled = false
+        XCTAssertFalse(calm.codexAsksForAttention)
+        XCTAssertEqual(calm.markState, .idle, "nothing else lights the dot in these snapshots")
+
+        var gatewayDown = calm
+        gatewayDown.codexGateway.hasCodexHats = true
+        gatewayDown.settings.isCodexGatewayEnabled = true
+        gatewayDown.codexGateway.status = .notRunning
+        XCTAssertTrue(gatewayDown.codexAsksForAttention, "the Codex gateway is wanted and does not serve")
+        XCTAssertEqual(gatewayDown.markState, .attention)
+
+        var gatewayOff = gatewayDown
+        gatewayOff.settings.isCodexGatewayEnabled = false
+        XCTAssertFalse(gatewayOff.codexAsksForAttention, "a gateway turned off is no trouble")
+
+        var blocked = calm
+        let hat = Account(id: "codex-plus", email: "plus@company.com", browser: nil)
+        blocked.codexRows = [HatRowState(hat: hat, isWearing: false, usage: nil, usageTrouble: nil)]
+        XCTAssertFalse(AutoSwitchEngine.blocked(in: blocked.codexRows).isEmpty, "a Codex hat with no login is blocked")
+        XCTAssertTrue(blocked.codexAsksForAttention)
+    }
+
     func testAWarningAboutTheWornHatKeepsTheMeterAndAddsTheDot() {
         XCTAssertEqual(MarkState.decide(anyHatBlocked: false, gatewayEnabled: true, gatewayServing: true,
                                         wearing: true, percent: 89, autoSwitchWarnsAboutTheWornHat: true),

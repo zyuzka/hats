@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 -I \"${PLUGIN_ROOT}/scripts/window.py\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 -I \"${PLUGIN_ROOT}/scripts/window.py\"" } ] }
+    ],
+    "SessionStart": [
+      { "matcher": "^compact$", "hooks": [ { "type": "command", "command": "python3 -I \"${PLUGIN_ROOT}/scripts/note_back.py\"" } ] }
+    ]
+  }
+}

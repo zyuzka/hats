@@ -15,6 +15,22 @@ extension AppDelegate {
         redraw()
     }
 
+    func syncTheCodexWindow() {
+        codexCompact.sync(savePercent: settings.contextThresholds.savePercent)
+        codexContinue.configure(CodexContinueRun.Wish(
+            isOn: settings.continuesCodexAfterCompaction,
+            warnPercent: settings.contextThresholds.warnPercent,
+            savePercent: settings.contextThresholds.savePercent
+        ))
+    }
+
+    func setCodexContinue(_ isOn: Bool) {
+        guard settings.continuesCodexAfterCompaction != isOn else { return }
+        settings.continuesCodexAfterCompaction = isOn
+        saveSettings()
+        redraw()
+    }
+
     func updateLimitThresholds(_ thresholds: LimitThresholds) {
         settings.limitThresholds = thresholds
         saveSettings()

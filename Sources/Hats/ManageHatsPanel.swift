@@ -5,23 +5,37 @@ struct ManageHatsPanel: View {
     @State var open: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                section(.claudeCode)
+                Divider().padding(.horizontal, 14).padding(.vertical, 6)
+                section(.codex)
+            }
+            .padding(.vertical, 8)
+        }
+        .frame(width: 340)
+    }
+
+    private func section(_ tool: Tool) -> some View {
+        let rows = model.snapshot.rows(of: tool)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack {
+                Text(tool.displayName).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button("Add…") { model.actions?.addHat() }.controlSize(.small)
+                Button("Add…") { model.actions?.addHat(for: tool) }.controlSize(.small)
             }
             .padding(.horizontal, 14).padding(.bottom, 6)
-            ForEach(model.snapshot.rows) { row in
+            ForEach(rows) { row in
                 hatEntry(row)
             }
-            if model.snapshot.rows.isEmpty {
-                Text("No hats yet").font(.system(size: 12)).foregroundStyle(.secondary)
+            if rows.isEmpty {
+                Text(HatsCopy.noHats(on: tool)).font(.system(size: 12)).foregroundStyle(.secondary)
                     .padding(.horizontal, 14).padding(.vertical, 8)
             }
         }
-        .padding(.vertical, 8)
-        .frame(width: 340)
     }
+
+    private var everyRow: [HatRowState] { model.snapshot.rows + model.snapshot.codexRows }
 
     private func hatEntry(_ row: HatRowState) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -31,6 +45,7 @@ struct ManageHatsPanel: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(row.title).font(.system(size: 13, weight: row.isWearing ? .semibold : .regular))
+                            .foregroundColor(row.isOnVacation ? Color(nsColor: ProviderColors.vacation) : nil)
                         Text(subtitle(row)).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -93,7 +108,7 @@ struct ManageHatsPanel: View {
             Button("Browser…") { model.actions?.chooseBrowser(row.id) }
             Spacer()
             Button("Remove") { model.actions?.remove(row.id) }
-                .disabled(row.isWearing || model.snapshot.rows.count < 2)
+                .disabled(row.isWearing || everyRow.filter { $0.tool == row.tool }.count < 2)
         }
         .controlSize(.small)
     }

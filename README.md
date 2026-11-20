@@ -106,6 +106,219 @@ Click the hat in the menu bar and pick one from the list — that account is the
 with from then on. A hat is a named account: the name is what you read, the email address is the
 detail underneath.
 
+The hat you wear has a small hat drawn left of its name, in the colour of its provider — terracotta
+for Claude, lighter in dark mode. Under each hat Hats shows how much of the 5-hour and the weekly
+limit is used. Settings › General › Usage as picks how: Percent shows the numbers, Bars shows two
+bars, `5h` and `week`, with the reset time beside each. A bar turns orange from 70% and red from 90%;
+a week Hats only remembers is pale, and a week that has already reset is a dashed outline.
+
+## Codex hats
+
+A hat can also be a Codex account. In Add hat, pick Codex, type the address and pick the hat's own
+browser. Hats signs in to ChatGPT the way `codex login` does, but opens the sign-in page only in that
+browser, so one browser stays one account. A small window waits for the answer; closing it, or 15
+minutes without an answer, stops the sign-in and stores nothing. The sign-in listens on
+`127.0.0.1:1455`, or on `1457` when 1455 is busy; those are the only two addresses the sign-in server
+accepts. If Codex is already signed in as that address, the hat takes that login as it is.
+
+Hats keeps each Codex login in the keychain, in an item of its own (`Hats Codex parked <id>`). Putting
+a Codex hat on replaces `~/.codex/auth.json` the way Codex writes it: under both of Codex's locks, the
+login in the file goes back to its own hat first, then the new one is written through a temporary file
+and read back. Besides `auth.json`, Hats creates in `~/.codex` only Codex's own lock files
+(`auth.lock`, `auth.json.lock`, kept as Codex keeps them) and its temporary file `.auth-hats-*`, which
+the write renames into place or removes. Apart from the one gateway line in `config.toml` (below), it
+changes nothing else there (it honours `CODEX_HOME`), and refuses when Codex keeps its login
+elsewhere (`cli_auth_credentials_store` other than `file`) or the file is a link, read-only or not a
+ChatGPT login. A login in the file that belongs to none of your hats is never overwritten: add it as a
+hat first.
+
+Hats renews the parked Codex hats — right after a hat comes off, and on the usage timer when its
+access token has less than a day left. The hat you wear is renewed by Codex, and also by Hats while the
+Codex gateway runs (below). Hats never signs a login out, because that revokes it on the server.
+
+The menu has two tabs above the hats, "Claude" and "Codex"; each shows only its own hats, with the
+average use of those hats on top, and the header names the hat worn for that tab. Each tab also names its
+average 5-hour and weekly use, for example "Codex 42% · 61%", so both providers can be read without
+switching tabs; hats on vacation do not count in it. The tab you chose last opens next time, also after a
+restart of Hats. Settings → Hats lists the Claude hats and the Codex hats apart, each list with its own
+Add… button.
+
+### The Codex gateway
+
+A Codex window keeps its login in memory, so putting another hat on reaches only windows started after
+it — unless the window goes through the Codex gateway. The gateway is separate from Claude's: it
+listens on `127.0.0.1:8788` (Settings → Gateway, under Codex; on by default once a Codex hat exists) and, while
+it runs, Hats writes one line into the top of `~/.codex/config.toml`:
+
+```toml
+openai_base_url = "http://127.0.0.1:8788/<secret>/codex"
+```
+
+Every request Codex sends there goes on to ChatGPT with the login of the hat you wear right now, so a
+thread started after the gateway came on changes hats between two requests without noticing. A request
+already streaming finishes on the hat it started with. When the worn hat answers `usage_limit_reached`,
+Hats puts on the next Codex hat that is not on vacation and does not need a sign-in, and sends the
+request again; Codex sees the limit only when every hat refused it; you then get a notification, at most one every 10
+minutes.
+An expired login is renewed and the request repeated once; if the server refuses the login, Codex is told
+that the hat needs a sign-in, and if the renewal could not reach the server, Codex gets a 502 and repeats
+the turn itself. While the gateway runs, Hats also renews the hat you wear a day before its access token
+expires, in `auth.json` itself, and leaves the file alone when Codex has renewed it first.
+
+A thread counts as going through the gateway for 6 hours after its last request; an older one is only
+written to the log. Turning the gateway off, changing its port, quitting Hats or removing the last Codex
+hat asks first while such threads exist. Hats removes the line when the gateway stops, is turned off, or
+Hats quits (and removes the file if Hats created it and nothing else is in it); the usage timer puts a
+deleted line back while the gateway runs. Hats does not edit a `config.toml` that has a value over
+several lines before its first table, and says so in the panel. It never touches a line someone else wrote: if
+`openai_base_url` already points elsewhere, the panel says so and the gateway stays unused. A link
+named `config.toml` stays a link; the file it points at is edited. The first time the gateway comes on,
+Hats shows one notification asking you to restart the Codex windows that are already open — a thread keeps the address it
+started with, so only threads started afterwards go through it.
+
+The `<secret>` part of the address is random and kept in Hats' settings. A request without it gets 404
+and never leaves the Mac. It keeps out web pages that call `127.0.0.1` and other users of the Mac, not
+programs you run yourself — those can read `config.toml` anyway, and Codex shows the address in its own
+window and logs.
+
+What the gateway does not cover:
+
+- Threads already open when the line was written stay on their old address.
+- Voice mode (`realtime/calls`) is not supported through it and gets 404.
+- The model catalog of a Codex service that was already running, and `model_catalog_url`, go around it.
+- Requests to `chatgpt_base_url` (account limits, `wham/*`) keep the login the Codex service started
+  with; once that login expires, the limits Codex shows can fail or disagree with the gateway.
+- Codex and Hats share no lock on `config.toml`. Hats writes it through a temporary file, checks that
+  nothing changed it in between, reads it back and redoes the edit when it differs, but a write from
+  Codex at the very same moment cannot be ruled out.
+
+The build script refuses to stop Hats while threads went through the Codex gateway in the last 6 hours,
+as it does for Claude Code sessions on the Claude gateway, and names them as `codex-thread <id>`. It
+decides whether the Codex gateway should be running by the app's own rule — a Codex hat exists and the
+gateway is not switched off — from two values the app keeps in its settings.
+
+### The Codex note before compaction
+
+When a Codex session nears the end of its context window, Codex compacts the window into its own summary,
+and the thread of the work can get lost. The Codex plugin `hats`, in this repository, keeps a resume note
+for that moment.
+
+Install it from Settings → General → Codex plugin, under the row of the Claude plugin. The row reads the
+state with Codex's own commands and changes it only after you agree in a window that shows the exact
+commands:
+
+- **Install…** runs `codex plugin marketplace add zyuzka/hats` (only when no marketplace named `hats` is
+  listed) and `codex plugin add hats@hats`.
+- **Update…** appears when Codex lists an older version of the plugin than the one this Hats comes with. It
+  runs `codex plugin marketplace upgrade hats` and `codex plugin add hats@hats`. Hats tells you about a new
+  version once, with a notification.
+- Install and Update take the plugin from the `main` branch of `zyuzka/hats` on GitHub, not from the Hats
+  app: the app does not carry the plugin, so the version GitHub offers can lag behind the one this Hats
+  names.
+- **Remove…** runs `codex plugin remove hats@hats`. The marketplace stays.
+- When the plugin is switched off in Codex, the row says so.
+- A marketplace `hats` added from a folder is a developer's install: the row says "installed from a
+  folder" and offers no update. Codex keeps its own copy of the plugin in
+  `~/.codex/plugins/cache/hats/hats/<version>/` and does not refresh it when the folder changes; when the
+  copy and the folder differ, the row offers **Refresh…**, which runs `codex plugin add hats@hats` again.
+- A marketplace `hats` from another source, or another plugin named `hats`, is not ours: the row says so
+  and offers nothing.
+
+Hats finds `codex` in `/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin` or on the `PATH` of a new login
+shell, and runs it with `CODEX_HOME` set the way Hats reads the Codex folder. Without `codex` the row says
+"Codex not found".
+
+Without Hats, the same install is two commands:
+
+```sh
+codex plugin marketplace add zyuzka/hats
+codex plugin add hats@hats
+```
+
+When an install, update or refresh brings hooks that are new or changed, the next Codex window says so;
+choose to trust them there. Hooks trusted before and unchanged are not asked about again: Remove keeps
+Codex's trust, so Install of the same plugin opens the next window without a question. Hats never trusts
+them for you and never edits `~/.codex/hooks.json`.
+
+The plugin uses the same window thresholds as the Claude plugin (Settings → Context; 60% and 70% when Hats
+has never run):
+
+- At the start of a turn past the warning threshold, the hook asks the model to write a resume note to
+  `$TMPDIR/hats-codex-notes/<session id>.md` and tell you so in one line.
+- At the start of every later turn, until the compaction, it asks the model to update the note, silently.
+- Codex compacts the window by itself at the save threshold. Right after that, the hook hands the note back
+  to the session, and the turn goes on by itself.
+- After the compaction the warning comes again the next time the window passes the warning threshold.
+
+The fill the hook sees is the input of the last answer over the model's window, from Codex's own session
+file, so it lags one answer behind. One long turn can jump past both thresholds at once; Codex then compacts
+before any request reached the model, and there is no note. If the model cannot write the note, it is told
+to tell you only once; later turns ask it to write the note again, and the hook journal says `note-missing`.
+
+The save threshold reaches Codex through one line Hats writes at the top of `~/.codex/config.toml`, like
+the gateway line:
+
+```toml
+model_auto_compact_token_limit = 332500 # set by Hats
+```
+
+The number is the save threshold of the model's window, which the hook writes for Hats into
+`codex-windows/<session id>.json` in the Hats folder. With several such files from the last 7 days, the
+smallest window counts, so no thread gets a limit above its own window; older files count for nothing. The
+first Codex session after the install teaches Hats the window: until then there is no line, and threads
+started before the line exists compact at Codex's own limit. Codex reads the line when a thread starts, so
+open threads keep the limit they started with.
+
+Hats writes no line when the number would be 40 000 or less (a compacted window alone takes about 20 000).
+It removes its line when the save threshold is turned off or no window is known any more, and puts it back
+the next time it looks (at most once in 10 seconds) when someone else deletes it. The line stays in `config.toml` after Hats quits. A line
+without the `# set by Hats` mark belongs to someone else and stays as it is; Hats writes that to its log.
+With either threshold off, the hook asks for no note. The hooks never stop a turn: on any error they stay
+silent and write a line to `codex-hooks.log` in the Hats folder.
+
+### Continuing a Codex session after compaction
+
+A Codex thread that ends a turn past the save threshold stops there: Codex compacts it and hands the note
+back only with your next message. Hats can do that step for you, so the work goes on by itself. It is the
+switch "Continue Codex sessions after compaction" in Settings → Context, on by default; with it off, Hats
+does nothing and writes nothing about it.
+
+When the plugin's `Stop` hook has written that a turn ended at or past the anchor (save) threshold, the
+model has written its resume note, and the thread has stayed idle for 20 seconds since, Hats talks to the Codex service over its socket
+(`~/.codex/app-server-control/app-server-control.sock`). Here the fill counts the turn's last answer too
+(`end_percent` in the window file): Codex compacts by Hats' line before any request whose input would pass it,
+so a turn can end past the save threshold only by its last answer, which the lagging fill above does not see yet.
+
+1. It reads the thread and goes on only when the thread is idle, kept in a file and not a subagent's.
+2. It reads the thread once more and compacts it ("Context compacted" shows in the window).
+3. It waits up to 60 seconds for the thread to go busy and then idle again, then reads it once more.
+4. It starts a turn with the text "Hats: this thread was compacted at the save threshold. Continue the task
+   from your resume note. If the note says the task is done, say so in one line and stop." The window shows this turn as if you had typed it. The plugin hands the note
+   back at the start of that turn, and the model goes on from it.
+
+Hats does this once per crossing: the same thread gets it again only after its window was below the warning
+threshold. A turn that ended more than 10 minutes ago is left alone. Both thresholds must be on. Without a
+note file the thread is left alone (`skipped reason=noNote`). When the compaction does not end within 60
+seconds (`compactTimeout`), no turn starts, and Hats does not try that thread again until its window falls
+below the warning threshold. Hats keeps in memory which threads it continued; after a restart of Hats it
+has forgotten them, so a thread whose turn ended past the threshold less than 10 minutes before may be
+continued once more.
+
+What to know:
+
+- Only windows in the shared Codex service are reached. A window started with `--no-daemon`, with a `-c`
+  flag or by `codex exec` has no socket; it compacts with your next message, as described above.
+- Codex has no way to compact a thread only if it is idle. If you start a turn in the instant between Hats'
+  last read and the compaction, the compaction cuts your turn off and your text comes back to the input
+  line. The 20 seconds of quiet make this rare, not impossible; the read right before the compaction narrows
+  the gap only a little.
+- What happens when the turn Hats started asks for a permission has not been measured. Hats does not answer
+  requests from the service; it writes `codexContinue.serviceRequest` with the method to its log.
+- The log says `codexContinue.done`, or `codexContinue.skipped` and `codexContinue.failed` with a reason
+  (`active`, `notLoaded`, `noNote`, `noService`, `compactTimeout` and others). A line is written when the
+  name, reason or thread differs from the previous line; the same line in a row is written once, so two
+  threads or two reasons taking turns each write again.
+
 ## The one thing to know before using it
 
 A switch takes effect immediately for **new** sessions. A session already running follows only if it
@@ -133,7 +346,8 @@ Off by default. Turn it on and the app puts the next hat on when the worn one cr
 when its own limit is reached. The one put on is the first in the order you set that has room; if
 none has room, the first whose usage could not be read. When every hat is spent the app says so in
 its log rather than holding in silence. A hat marked "On vacation" in Settings → Hats is never put on
-by the switch until you clear the mark; you can still put it on yourself from the menu.
+by the switch until you clear the mark; you can still put it on yourself from the menu. Its name is
+shown in pink in the menu and in Settings.
 
 <details>
 <summary><strong>Troubleshooting:</strong> <code>claude</code> reports a connection error, and <code>echo $ANTHROPIC_BASE_URL</code> prints <code>http://127.0.0.1:8787</code></summary>
@@ -277,6 +491,7 @@ own tmux pane is a session of its own to the plugin, and is warned and anchored 
 are 60%, 70% and the `/clear` offer, and the choice survives a restart of Hats. Hats writes them to `window-thresholds.json` in
 `~/Library/Application Support/Hats` and puts the file back if it is removed; the plugin reads it at
 every decision, also while Hats is not running, and without it takes 60%, 70% and the `/clear` offer.
+The Codex plugin reads the same two thresholds from the same file (see "The Codex note before compaction").
 Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
 Hats made. A running Hats reads those files and shows one notification for each threshold a session
 crosses, titled with the session's name — the title you gave it, else its folder, else the start of
@@ -417,6 +632,7 @@ session is told when one ends.
 | Tool | Status |
 | --- | --- |
 | Claude Code | supported |
+| Codex | hats: sign-in, wearing, renewing; the Codex gateway moves new threads between hats and past a usage limit; no usage display yet |
 
 ## Where things live
 
@@ -424,6 +640,12 @@ session is told when one ends.
 | --- | --- |
 | Hats, settings, operations log | `~/Library/Application Support/Hats/` |
 | Stored logins | macOS Keychain, one item per hat |
+| The Codex login in use | `~/.codex/auth.json`, Codex's own file |
+| The Codex gateway address | one `openai_base_url` line in `~/.codex/config.toml`, only while the gateway runs |
+| The Codex compaction limit | one `model_auto_compact_token_limit` line in `~/.codex/config.toml`, marked `# set by Hats` |
+| Codex resume notes | `$TMPDIR/hats-codex-notes/<session id>.md`, written by the Codex session itself; beside it `<session id>.state.json`, whether you were told; both removed after 30 days |
+| Codex model windows | `codex-windows/<session id>.json` in the Hats folder: session id, working folder, window and fill; removed after 30 days |
+| Codex hook journal | `codex-hooks.log` in the Hats folder (`hooks.log` in the notes folder when there is no Hats folder) |
 | Updater state: last check, a skipped version, whether to check automatically | macOS defaults, domain `dev.tmk.hats`, shared by every build with that bundle id |
 
 Credentials are never written to the state directory. Earlier versions kept state under

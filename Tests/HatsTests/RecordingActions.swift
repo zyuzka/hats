@@ -26,6 +26,17 @@ final class RecordingActions: HatsActions {
         model.snapshot.settings.autoSwitch = policy
     }
 
+    func applyCodexGatewayPort(_ port: Int) {
+        calls.append("codexPort \(port)")
+        guard isPortMoved else { return }
+        model.snapshot.settings.codexGatewayPort = port
+    }
+
+    func updateCodexAutoSwitch(_ policy: AutoSwitchPolicy) {
+        calls.append("codexAutoSwitch \(policy.sessionThresholdPercent ?? 0) \(policy.weeklyThresholdPercent ?? 0)")
+        model.snapshot.settings.codexAutoSwitch = policy
+    }
+
     func updateContextThresholds(_ thresholds: ContextThresholds) {
         calls.append("context \(thresholds.warnPercent ?? 0) \(thresholds.savePercent ?? 0)")
         model.snapshot.settings.contextThresholds = thresholds
@@ -37,7 +48,7 @@ final class RecordingActions: HatsActions {
     }
 
     func wear(_ id: String) {}
-    func addHat() {}
+    func addHat(for tool: Tool) {}
     func relogin(_ id: String) {}
     func rename(_ id: String) {}
     func chooseBrowser(_ id: String) {}
@@ -50,6 +61,15 @@ final class RecordingActions: HatsActions {
     func copyVariables() {}
     func openLog() {}
     func switchBack() {}
+    func switchBackCodex() {}
+    func setCodexGateway(enabled: Bool) {}
+    func setCodexContinue(_ isOn: Bool) {}
+    func setUsageDisplay(_ display: UsageDisplay) {}
+    func setPopoverTab(_ tool: Tool) {}
+    func installCodexPlugin() {}
+    func updateCodexPlugin() {}
+    func refreshCodexPlugin() {}
+    func removeCodexPlugin() {}
     func openSessions() {}
     func showSettings() {}
     func checkForUpdates() {}

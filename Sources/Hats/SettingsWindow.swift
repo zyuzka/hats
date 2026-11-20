@@ -16,7 +16,7 @@ struct SettingsTabs: View {
                     .tabItem { Text("Auto-switch") }
                 ContextThresholdsPanel(model: model, drafts: drafts)
                     .tabItem { Text("Context") }
-                GatewayPanel(model: model, drafts: drafts)
+                GatewaysPanel(model: model, drafts: drafts)
                     .tabItem { Text("Gateway") }
             }
             HStack {

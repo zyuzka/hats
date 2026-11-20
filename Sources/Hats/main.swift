@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settingsWindow = SettingsWindow()
     let usage = AutoSwitchWatch(wakes: NSWorkspace.shared.notificationCenter)
     lazy var login = LoginFlow(store: store)
+    lazy var codex = CodexHats(world: .real(keychain: store.keychain))
 
     var statusItem: NSStatusItem!
     var blink: MarkBlink?
@@ -19,11 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastHatUsageFailure = NoteOnChange()
     let sessionWindows = SessionWindows(folder: SessionWindows.defaultFolder)
     let contextChannel = ContextThresholdsChannel(launchedAt: Date())
+    let codexCompact = CodexCompactLimitSync()
+    let codexContinue = CodexContinueRun()
     var lastSyncFailure: String?
     var lastAutoSwitchHold: AutoSwitchHold?
     var lastAutoSwitchNowhere = NoteOnChange()
     var lastAutoSwitchWarning: AutoSwitchWarning?
     var lastAnnouncedWarning: AutoSwitchWarning?
+    var codexSwitch = CodexAutoSwitchMemory()
     var pollsLanded = 0
     var pollsOnHeaders = PollsOnHeaders()
     var gatewayEnvironment: GatewayEnvironmentReport?
@@ -39,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inform: { HatDialogs.inform($0, $1) },
         show: { [weak self] in self?.redraw() }
     )
+    lazy var codexPlugin = CodexPluginFlow.real(CodexPluginProvenance.bundledVersion) { [weak self] in self?.redraw() }
 
     func withOneLookAtTheProcessTable(_ body: () -> Void) {
         guard lookAtTheProcessTable == nil, wantsTheProcessTable else {
@@ -73,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.withOneLookAtTheProcessTable {
                 self?.releaseTheRetiredListenerIfNothingNeedsIt()
                 self?.syncWithWorld(reportingErrors: false)
-                self?.decideAutoSwitch(from: .thePopoverOpened)
+                self?.decideEverySwitch(from: .thePopoverOpened)
             }
         }
         login.liveLoginMoved = { [weak self] identity in self?.redraw(ifTheLiveLoginMoved: identity) }
@@ -100,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sessionWindows.start()
         startTheContextChannel()
         startTheUpdater()
+        startTheCodexHats()
         DockPresence.watch()
 
         redraw()
@@ -109,9 +115,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         usage.stop()
+        noteTheLostCodexAnswers()
         blink?.stop()
-        GatewayProcess.stop()
-        gatewayEnvironment = GatewayEnvironment.ensure(serving: false)
+        stopEveryGateway()
     }
 
     @objc private func markClicked() {
@@ -121,13 +127,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showSettings()
         case .popover:
             popover.toggle(relativeTo: button)
-        }
-    }
-
-    func hatsForUsage() -> [(id: String, isWearing: Bool)] {
-        let live = liveIdentity.email
-        return store.accounts.map { hat in
-            (hat.id, live.map { Account.sameAddress(hat.email, $0) } ?? false)
         }
     }
 

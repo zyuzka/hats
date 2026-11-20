@@ -111,6 +111,6 @@ final class SessionHandoffVersionTests: XCTestCase {
             if text.contains("bundledVersion") { users.append(name) }
         }
 
-        XCTAssertEqual(users.sorted(), ["SessionHandoffFace.swift", "main.swift"])
+        XCTAssertEqual(users.sorted(), ["CodexPluginFace.swift", "SessionHandoffFace.swift", "main.swift"])
     }
 }

@@ -9,9 +9,12 @@ enum UsageTrouble: Equatable {
     case renewalFailed(String)
     case fetchFailed(String)
     case liveSlotUnknown
+    case codex(CodexUsageTrouble, seenAt: Date?)
 
     var keepsAnEarlierReading: Bool {
         switch self {
+        case .codex(let trouble, _):
+            return trouble.keepsAnEarlierReading
         case .fetchFailed, .renewalFailed:
             return true
         case .nothingStored, .credentialUnreadable, .noTokenStored, .tokenExpired,
@@ -30,7 +33,17 @@ enum UsageTrouble: Equatable {
         case .renewalFailed(let reason): return "renewal \(reason)"
         case .fetchFailed(let reason): return reason
         case .liveSlotUnknown: return "which account file the CLI reads cannot be told"
+        case .codex(let trouble, _): return trouble.journalLine
         }
+    }
+
+    func staleLine(timeZone: TimeZone, now: Date) -> String? {
+        guard case .codex(let codex, let seenAt) = self, let seenAt, codex.keepsAnEarlierReading else { return nil }
+        return codex.staleLine(seenAt: seenAt, timeZone: timeZone, now: now)
+    }
+
+    func line(timeZone: TimeZone, now: Date) -> String {
+        staleLine(timeZone: timeZone, now: now) ?? onTheRow
     }
 
     var onTheRow: String {
@@ -53,6 +66,8 @@ enum UsageTrouble: Equatable {
         case .liveSlotUnknown:
             return "limits unknown — which account file Claude Code reads cannot be told, so "
                 + "there is no telling which credential to measure"
+        case .codex(let trouble, _):
+            return trouble.onTheRow
         }
     }
 }

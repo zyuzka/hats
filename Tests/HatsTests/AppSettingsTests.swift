@@ -34,6 +34,18 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(AppSettings.loaded(from: url), settings)
     }
 
+    func testTheSettingsThatCarryTheCodexGatewaySecretAreReadableByTheOwnerOnly() throws {
+        var settings = AppSettings()
+        settings.codexGatewaySecret = String(repeating: "4d", count: 32)
+        try settings.save(to: url)
+        let mode = { try FileManager.default.attributesOfItem(atPath: self.url.path)[.posixPermissions] as? Int }
+        XCTAssertEqual(try mode(), 0o600)
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        try settings.save(to: url)
+        XCTAssertEqual(try mode(), 0o600, "a file left readable by others is closed again on the next save")
+    }
+
     func testAFileThatStillCarriesTheAnnouncedUpdateLoads() throws {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data(#"{"gatewayPort": 9000, "announcedUpdate": "0.3.2"}"#.utf8).write(to: url)

@@ -2,6 +2,7 @@ import AppKit
 
 extension AppDelegate: HatsActions {
     func wear(_ id: String) {
+        if ClaudeDoors.route(ofAClickOn: id, among: store.accounts) == .codex { return wearCodex(id) }
         changing = id
         let takenAway = whatTheWearTakesAway()
         redraw()
@@ -25,12 +26,16 @@ extension AppDelegate: HatsActions {
         }
     }
 
-    func addHat() {
+    func addHat(for tool: Tool) {
         popover.close()
         afterThePopoverSettles { [weak self] in
             guard let self else { return }
             self.whenNoSignInIsRunning { [weak self] in
-                guard let self, let wanted = HatDialogs.addHat() else { return }
+                guard let self, let wanted = HatDialogs.addHat(
+                    remembered: self.store.accounts.compactMap(\.browser),
+                    tool: tool
+                ) else { return }
+                if wanted.tool == .codex { return self.addCodexHat(wanted) }
                 do {
                     var hat = try self.store.add(email: wanted.email, browser: wanted.browser)
                     if let name = wanted.name {
@@ -66,6 +71,7 @@ extension AppDelegate: HatsActions {
                     guard self.store.accounts.first(where: { $0.id == id })?.browser?.overridesBrowser == true
                     else { return }
                 }
+                if hat.wornTool == .codex { return self.reloginCodex(id) }
                 do {
                     try self.login.begin(id, expecting: self.store.accounts.first { $0.id == id }?.email)
                 } catch {
@@ -93,7 +99,7 @@ extension AppDelegate: HatsActions {
 
     private func chooseBrowserNow(_ id: String) {
         guard var hat = store.accounts.first(where: { $0.id == id }),
-              let chosen = HatDialogs.browser(for: hat) else { return }
+              let chosen = HatDialogs.browser(for: hat, remembered: store.accounts.compactMap(\.browser)) else { return }
         hat.browser = chosen
         apply(hat)
     }
@@ -109,28 +115,25 @@ extension AppDelegate: HatsActions {
     }
 
     func setVacation(_ id: String, on: Bool) {
-        do {
-            try store.setVacation(
-                id,
-                on: on,
-                at: Date()
-            )
-            redraw()
-            usage.poll(hatsForUsage())
-        } catch {
-            redraw()
-            HatDialogs.present(error, title: "Could not save that change")
-        }
+        VacationChange(
+            redraw: { [weak self] in self?.redraw() },
+            poll: { [weak self] in
+                guard let self else { return }
+                self.usage.poll(self.hatsForUsage())
+            },
+            sayItCouldNotSave: { HatDialogs.present($0, title: "Could not save that change") }
+        ).apply(id, on: on, at: Date(), in: store)
     }
 
     func remove(_ id: String) {
         popover.close()
         afterThePopoverSettles { [weak self] in
             guard let self, let hat = self.store.accounts.first(where: { $0.id == id }),
-                  HatDialogs.hasConfirmedRemoval(of: hat) else { return }
+                  HatDialogs.hasConfirmedRemoval(of: hat),
+                  self.hasConfirmedLosingTheCodexGateway(by: hat) else { return }
             do {
                 try self.store.remove(id)
-                self.settings.autoSwitch.order.removeAll { $0 == id }
+                self.settings.forgetInTheSwitches(id)
                 self.saveSettings()
                 self.redraw()
                 self.usage.poll(self.hatsForUsage())
@@ -139,18 +142,5 @@ extension AppDelegate: HatsActions {
                 HatDialogs.present(error, title: "Could not remove that hat")
             }
         }
-    }
-
-    func wornMetersForTheJournal() -> MeterReading {
-        guard let id = hatsForUsage().first(where: \.isWearing)?.id else { return .unavailable }
-        return metersForTheJournal(of: id)
-    }
-
-    func metersForTheJournal(of id: String) -> MeterReading {
-        MeterReading.of(usage.readings[id], readAt: usage.readAt[id], trouble: usage.troubles[id])
-    }
-
-    func afterThePopoverSettles(_ work: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
     }
 }

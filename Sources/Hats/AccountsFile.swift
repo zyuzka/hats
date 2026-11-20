@@ -3,11 +3,14 @@ import Foundation
 struct AccountsFile {
     let keychain: KeychainWorld
 
-    var url: URL { StateDirectory.url.appendingPathComponent("accounts.json") }
+    var location: URL?
+
+    var url: URL { location ?? StateDirectory.url.appendingPathComponent("accounts.json") }
 
     struct Contents: Codable {
         var accounts: [Account]
         var activeID: String?
+        var codexActiveID: String?
     }
 
     enum Loaded {
@@ -22,7 +25,7 @@ struct AccountsFile {
         if !exists {
             let parked: [String]
             do {
-                parked = try keychain.parkedAccountIDs()
+                parked = try keychain.parkedAccountIDs() + keychain.codexParkedAccountIDs()
             } catch {
                 return .unusable(.keychainUnlistable(path, cause: error.localizedDescription))
             }

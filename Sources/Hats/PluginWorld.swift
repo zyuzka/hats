@@ -22,6 +22,9 @@ struct PluginWorld {
     var isSameFile: (String, String) -> Bool
     var ownEnvironment: () -> [String: String]
     var home: () -> String
+    var compareCopy: (_ copy: String, _ folder: String) -> CodexCopyState = { _, _ in
+        .unreadable("this world cannot compare folders")
+    }
 
     static let real = PluginWorld(
         run: { GroupRun.getOutcome(of: $0) },
@@ -38,6 +41,7 @@ struct PluginWorld {
         isExecutableFile: { PluginFiles.isExecutableFile($0) },
         isSameFile: { PluginFiles.isSameFile($0, $1) },
         ownEnvironment: { ProcessInfo.processInfo.environment },
-        home: { NSHomeDirectory() }
+        home: { NSHomeDirectory() },
+        compareCopy: { CodexPluginCopy.compare(copy: $0, folder: $1) }
     )
 }

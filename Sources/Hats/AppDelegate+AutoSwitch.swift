@@ -13,7 +13,8 @@ extension AppDelegate {
                 decision: outcome.decision,
                 holding: holding,
                 blindness: world.blindness,
-                onVacation: world.onVacation
+                onVacation: world.onVacation,
+                stranded: AutoSwitchEngine.strandedWhileBlind(policy: settings.autoSwitch, world: world, at: now)
             )
             noteTheWarning(warning, on: snapshot, at: now)
         }

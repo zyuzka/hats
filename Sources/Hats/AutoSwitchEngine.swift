@@ -89,6 +89,7 @@ enum AutoSwitchEngine {
             blocked: world.blocked,
             onVacation: world.onVacation
         ) == nil else { return .blindAndOthersAreOnVacation }
+        guard !policy.candidates(after: wearing, among: world.eligible).isEmpty else { return .blindAndNowhereToGo }
         guard world.blindness.isBlindEnoughToSwitch else { return .blindAndNear }
         guard policy.blindTarget(
             after: wearing,
@@ -99,6 +100,21 @@ enum AutoSwitchEngine {
         ) == nil else { return nil }
 
         return .blindTargetSpent
+    }
+
+    static func strandedWhileBlind(
+        policy: AutoSwitchPolicy,
+        world: AutoSwitchWorld,
+        at now: Date
+    ) -> AutoSwitchDeadEnd.StrandedBy {
+        policy.strandedBy(
+            after: world.wearing,
+            among: world.eligible,
+            blocked: world.blocked,
+            onVacation: world.onVacation,
+            readings: world.readings,
+            at: now
+        )
     }
 
     static func eligible(in rows: [HatRowState]) -> [String] {

@@ -93,6 +93,7 @@ enum AutoSwitchHold: String, Equatable {
     case blindAndFar
     case blindTargetSpent
     case blindAndOthersAreOnVacation
+    case blindAndNowhereToGo
 
     var isWorthAJournalLine: Bool { self != .off }
 }
@@ -140,6 +141,17 @@ extension AutoSwitchPolicy {
             onVacation: onVacation
         ) {
             return .nowhereToGo(.unreadableAndOthersAreOnVacation(away))
+        }
+        guard !candidates(after: wearing, among: eligible).isEmpty else {
+            let by = strandedBy(
+                after: wearing,
+                among: eligible,
+                blocked: blocked,
+                onVacation: onVacation,
+                readings: readings,
+                at: now
+            )
+            return .nowhereToGo(.unreadableAndStranded(by))
         }
         let seen = candidatesReadInThisPoll(
             after: wearing,

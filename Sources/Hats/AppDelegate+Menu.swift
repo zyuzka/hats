@@ -15,6 +15,7 @@ extension AppDelegate {
             guard let self else { return }
             self.settingsWindow.show(model: self.popover.model)
             self.handoff.refresh(then: nil)
+            self.codexPlugin.refresh(then: nil)
         }
     }
 
@@ -40,6 +41,20 @@ extension AppDelegate {
         redraw()
     }
 
+    func setUsageDisplay(_ display: UsageDisplay) {
+        guard settings.usageDisplay != display else { return }
+        settings.usageDisplay = display
+        saveSettings()
+        redraw()
+    }
+
+    func setPopoverTab(_ tool: Tool) {
+        guard settings.popoverTab != tool else { return }
+        settings.popoverTab = tool
+        saveSettings()
+        redraw()
+    }
+
     func showReleases() {
         popover.close()
         afterThePopoverSettles { [weak self] in
@@ -49,10 +64,11 @@ extension AppDelegate {
     }
 
     func startTheUpdater() {
-        updater = SparkleUpdates.createIfConfigured {
+        updater = SparkleUpdates.createIfConfigured { [weak self] in
             GatewayStopDecision.getForAnUpdate(
                 ports: GatewayProcess.heldPorts,
-                sessions: SessionDiscovery.everySessionSeenRecently()
+                sessions: SessionDiscovery.everySessionSeenRecently(),
+                codexThreads: self?.codexThreadsThroughTheGateway ?? 0
             )
         }
         updater?.whenCanCheckNowChanges = { [weak self] in self?.redraw() }
@@ -70,15 +86,24 @@ extension AppDelegate {
         redraw()
     }
 
+    var codexThreadsThroughTheGateway: Int {
+        codex.gateway.isServing ? codex.gateway.state.threadIDs.count : 0
+    }
+
     func quit() {
         let live = SessionDiscovery.everySessionSeenRecently()
-        guard let cost = HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown) else {
+        let threads = codexThreadsThroughTheGateway
+        let costs = [
+            HatsCopy.quitCost(live.map(SessionsState.counted) ?? .unknown),
+            HatsCopy.codexQuitCost(threads: threads),
+        ].compactMap { $0 }
+        guard !costs.isEmpty else {
             NSApp.terminate(nil)
             return
         }
         popover.close()
         afterThePopoverSettles {
-            guard HatDialogs.hasConfirmedQuit(cost: cost) else { return }
+            guard HatDialogs.hasConfirmedQuit(cost: costs.joined(separator: " ")) else { return }
             NSApp.terminate(nil)
         }
     }

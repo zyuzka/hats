@@ -32,7 +32,7 @@ extension AccountStore {
             email = owner
         }
         guard !Account.sameAddress(email, target.email) else { return }
-        guard accounts.contains(where: { Account.sameAddress($0.email, email) }) else {
+        guard claudeHats.contains(where: { Account.sameAddress($0.email, email) }) else {
             Journal.log("signIn.liveNotParked", [
                 "reason": "not a hat",
                 "live": Journal.fingerprint(live),

@@ -9,6 +9,9 @@ enum SettingsField: CaseIterable, Hashable {
     case weeklySwitch
     case port
     case settle
+    case codexSessionSwitch
+    case codexWeeklySwitch
+    case codexPort
 }
 
 enum PlainSettingsField: Equatable {
@@ -32,7 +35,9 @@ struct SettingsChanges: Equatable {
     var contextThresholds: ContextThresholds?
     var limitThresholds: LimitThresholds?
     var autoSwitch: AutoSwitchPolicy?
+    var codexAutoSwitch: AutoSwitchPolicy?
     var gatewayPort: Int?
+    var codexGatewayPort: Int?
     var gatewaySettleSeconds: Int?
 }
 
@@ -80,8 +85,15 @@ final class SettingsDrafts: ObservableObject {
         var changes = SettingsChanges()
         changes.contextThresholds = getContext(in: settings, value: value)
         changes.limitThresholds = getLimits(in: settings, value: value)
-        changes.autoSwitch = getAutoSwitch(in: settings, value: value)
+        changes.autoSwitch = getAutoSwitch(settings.autoSwitch, .sessionSwitch, .weeklySwitch, value: value)
+        changes.codexAutoSwitch = getAutoSwitch(
+            settings.codexAutoSwitch,
+            .codexSessionSwitch,
+            .codexWeeklySwitch,
+            value: value
+        )
         changes.gatewayPort = value(.port)
+        changes.codexGatewayPort = value(.codexPort)
         changes.gatewaySettleSeconds = value(.settle)
 
         return changes
@@ -90,16 +102,22 @@ final class SettingsDrafts: ObservableObject {
     func apply(_ model: HatsModel) {
         guard let changes = getChanges(in: model.snapshot.settings) else { return }
         Self.send(changes, to: model.actions)
-        let port = model.snapshot.settings.gatewayPort
+        let settings = model.snapshot.settings
         drafts = drafts.filter { field, _ in
-            field == .port && changes.gatewayPort.map { $0 != port } == true
+            switch field {
+            case .port: return changes.gatewayPort.map { $0 != settings.gatewayPort } == true
+            case .codexPort: return changes.codexGatewayPort.map { $0 != settings.codexGatewayPort } == true
+            default: return false
+            }
         }
     }
 
     static func send(_ changes: SettingsChanges, to actions: HatsActions?) {
         if let seconds = changes.gatewaySettleSeconds { actions?.applyGatewaySettle(seconds) }
         if let port = changes.gatewayPort { actions?.applyGatewayPort(port) }
+        if let port = changes.codexGatewayPort { actions?.applyCodexGatewayPort(port) }
         if let policy = changes.autoSwitch { actions?.updateAutoSwitch(policy) }
+        if let policy = changes.codexAutoSwitch { actions?.updateCodexAutoSwitch(policy) }
         if let thresholds = changes.contextThresholds { actions?.updateContextThresholds(thresholds) }
         if let limits = changes.limitThresholds { actions?.updateLimitThresholds(limits) }
     }
@@ -126,11 +144,16 @@ final class SettingsDrafts: ObservableObject {
         return LimitThresholds.isAUsablePair(warn: next.warnPercent, save: next.savePercent) ? next : nil
     }
 
-    private func getAutoSwitch(in settings: AppSettings, value: (SettingsField) -> Int?) -> AutoSwitchPolicy? {
-        let session = value(.sessionSwitch)
-        let weekly = value(.weeklySwitch)
+    private func getAutoSwitch(
+        _ policy: AutoSwitchPolicy,
+        _ sessionField: SettingsField,
+        _ weeklyField: SettingsField,
+        value: (SettingsField) -> Int?
+    ) -> AutoSwitchPolicy? {
+        let session = value(sessionField)
+        let weekly = value(weeklyField)
         guard session != nil || weekly != nil else { return nil }
-        var next = settings.autoSwitch
+        var next = policy
         next.sessionThresholdPercent = session ?? next.sessionThresholdPercent
         next.weeklyThresholdPercent = weekly ?? next.weeklyThresholdPercent
 

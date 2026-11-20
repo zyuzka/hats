@@ -16,9 +16,17 @@ enum ChromeChannel: String, Codable, Equatable, CaseIterable {
             .appendingPathComponent(rawValue)
     }
 
-    var profiles: [String] {
-        guard let entries = try? FileManager.default
-            .contentsOfDirectory(atPath: supportDirectory.path) else { return [] }
+    var profiles: [String] { readableProfiles ?? [] }
+
+    var readableProfiles: [String]? {
+        let entries: [String]
+        do {
+            entries = try FileManager.default.contentsOfDirectory(atPath: supportDirectory.path)
+        } catch {
+            guard FileManager.default.fileExists(atPath: supportDirectory.path) else { return [] }
+            Journal.log("browser.profilesUnreadable", ["channel": rawValue, "error": error.localizedDescription])
+            return nil
+        }
 
         return entries
             .filter { $0 == "Default" || $0.hasPrefix("Profile ") }

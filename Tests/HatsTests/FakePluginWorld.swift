@@ -23,6 +23,8 @@ final class FakePluginWorld {
     var queued: [String: [PluginCommandOutcome]] = [:]
     var runs: [PluginCommandLine] = []
     var whenRunning: ((PluginCommandLine) -> Void)?
+    var copies: [String: CodexCopyState] = [:]
+    var compared: [String] = []
 
     static func key(_ executable: String, _ arguments: [String]) -> String {
         ([executable] + arguments).joined(separator: " ")
@@ -60,6 +62,9 @@ final class FakePluginWorld {
                 || line.arguments.starts(with: ["plugin", "marketplace", "remove"])
                 || line.arguments.starts(with: ["plugin", "update"]) && !line.arguments.contains("--help")
                 || line.arguments.starts(with: ["plugin", "marketplace", "update"]) && !line.arguments.contains("--help")
+                || line.arguments.starts(with: ["plugin", "add"])
+                || line.arguments.starts(with: ["plugin", "remove"])
+                || line.arguments.starts(with: ["plugin", "marketplace", "upgrade"])
         }
     }
 
@@ -87,7 +92,11 @@ final class FakePluginWorld {
                 first == second || self.sameFiles.contains(first + "=" + second)
             },
             ownEnvironment: { [self] in self.environment },
-            home: { Self.home }
+            home: { Self.home },
+            compareCopy: { [self] copy, folder in
+                self.compared.append(copy + "=" + folder)
+                return self.copies[copy + "=" + folder] ?? .unreadable("the fake has no comparison for \(copy)")
+            }
         )
     }
 }

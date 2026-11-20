@@ -11,6 +11,9 @@ extension SettingsDrafts {
         case .weeklySwitch: return settings.autoSwitch.weeklyThresholdPercent
         case .port: return settings.gatewayPort
         case .settle: return settings.gatewaySettleSeconds
+        case .codexSessionSwitch: return settings.codexAutoSwitch.sessionThresholdPercent
+        case .codexWeeklySwitch: return settings.codexAutoSwitch.weeklyThresholdPercent
+        case .codexPort: return settings.codexGatewayPort
         }
     }
 
@@ -57,9 +60,9 @@ extension SettingsDrafts {
         case .limitSave:
             limits.warnPercent = getFinal(.limitWarn, in: settings, within: LimitThresholds.range, isTyped)
             return limits.getSaveBounds()
-        case .sessionSwitch, .weeklySwitch:
+        case .sessionSwitch, .weeklySwitch, .codexSessionSwitch, .codexWeeklySwitch:
             return PercentBounds(AutoSwitchPolicy.thresholdRange)
-        case .port:
+        case .port, .codexPort:
             return PercentBounds(Self.getRange(.port))
         case .settle:
             return PercentBounds(Self.getRange(.settle))
@@ -68,8 +71,9 @@ extension SettingsDrafts {
 
     static func getPlainField(_ field: SettingsField) -> PlainSettingsField? {
         switch field {
-        case .contextWarn, .contextSave, .limitWarn, .limitSave, .sessionSwitch, .weeklySwitch: return nil
-        case .port: return .port
+        case .contextWarn, .contextSave, .limitWarn, .limitSave, .sessionSwitch, .weeklySwitch,
+             .codexSessionSwitch, .codexWeeklySwitch: return nil
+        case .port, .codexPort: return .port
         case .settle: return .settle
         }
     }

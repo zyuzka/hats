@@ -8,6 +8,8 @@ final class SettingsDraftsTests: XCTestCase {
         made.contextThresholds.savePercent = save
         made.autoSwitch.sessionThresholdPercent = 90
         made.gatewaySettleSeconds = 35
+        made.codexAutoSwitch.sessionThresholdPercent = 90
+        made.codexAutoSwitch.weeklyThresholdPercent = 95
 
         return made
     }
@@ -262,6 +264,67 @@ final class SettingsDraftsTests: XCTestCase {
         XCTAssertTrue(drafts.hasPending(in: model.snapshot.settings), "the window stays open over the refusal")
     }
 
+    func testCodexDraftsGoToTheCodexActionsAndLeaveTheClaudeOnesAlone() {
+        // Arrange
+        let model = HatsModel()
+        model.snapshot.settings = settings()
+        let actions = RecordingActions(model: model, isPortMoved: true)
+        model.actions = actions
+        let drafts = SettingsDrafts()
+        let stored = model.snapshot.settings
+        drafts.setText("1460", of: .codexPort, in: stored)
+        drafts.setText("80", of: .codexSessionSwitch, in: stored)
+        drafts.setText("85", of: .weeklySwitch, in: stored)
+
+        // Act
+        drafts.apply(model)
+
+        // Assert
+        XCTAssertEqual(actions.calls, [
+            "codexPort 1460",
+            "autoSwitch 90 85",
+            "codexAutoSwitch 80 95",
+        ])
+        XCTAssertEqual(model.snapshot.settings.codexGatewayPort, 1460)
+        XCTAssertEqual(model.snapshot.settings.autoSwitch.sessionThresholdPercent, 90)
+        XCTAssertEqual(drafts.drafts, [:])
+    }
+
+    func testARefusedCodexPortMoveKeepsOnlyTheCodexPortDraft() {
+        // Arrange
+        let model = HatsModel()
+        model.snapshot.settings = settings()
+        let actions = RecordingActions(model: model, isPortMoved: false)
+        model.actions = actions
+        let drafts = SettingsDrafts()
+        let stored = model.snapshot.settings
+        drafts.setText("1460", of: .codexPort, in: stored)
+        drafts.setText("85", of: .codexWeeklySwitch, in: stored)
+
+        // Act
+        drafts.apply(model)
+
+        // Assert
+        XCTAssertEqual(Array(drafts.drafts.keys), [.codexPort])
+        XCTAssertEqual(drafts.getText(.codexPort, in: model.snapshot.settings), "1460")
+        XCTAssertEqual(model.snapshot.settings.codexAutoSwitch.weeklyThresholdPercent, 85)
+    }
+
+    func testCodexFieldsAreRefusedOutsideTheirRanges() {
+        // Arrange
+        let stored = settings()
+        let drafts = SettingsDrafts()
+
+        // Act
+        drafts.setText("40", of: .codexSessionSwitch, in: stored)
+        drafts.setText("80", of: .codexPort, in: stored)
+
+        // Assert
+        XCTAssertEqual(drafts.getState(.codexSessionSwitch, in: stored).reason, "from 50% to 100%")
+        XCTAssertTrue(drafts.getState(.codexPort, in: stored).isRefusedDraft)
+        XCTAssertFalse(drafts.canApply(in: stored))
+    }
+
     func testTheLimitPairIsAppliedTogether() throws {
         // Arrange
         let stored = settings()
@@ -352,7 +415,9 @@ final class SettingsDraftsTests: XCTestCase {
 
         // Act
         let window = try read("Sources/Hats/SettingsWindow.swift")
-        let fields = try ["PercentField", "GatewaySettleRow", "GatewayPanel"].map { try read("Sources/Hats/\($0).swift") }
+        let fields = try ["PercentField", "GatewaySettleRow", "GatewayPanel", "CodexGatewayPanel"]
+            .map { try read("Sources/Hats/\($0).swift") }
+        let block = try read("Sources/Hats/AutoSwitchBlock.swift")
 
         // Assert
         XCTAssertTrue(window.contains("""
@@ -368,5 +433,7 @@ final class SettingsDraftsTests: XCTestCase {
             XCTAssertFalse(source.contains("Button(\"Apply\")"), "a field has no Apply of its own")
             XCTAssertTrue(source.contains("submit: { drafts.apply(model) }"), "Enter presses the shared Apply")
         }
+        XCTAssertTrue(block.contains("PercentField("), "both auto-switch blocks take typed percents")
+        XCTAssertFalse(block.contains("Stepper("), "the steppers live in PercentField only")
     }
 }

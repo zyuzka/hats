@@ -3,16 +3,23 @@ import SwiftUI
 struct HatListView: View {
     @ObservedObject var model: HatsModel
 
-    private var snapshot: HatsSnapshot { model.snapshot }
+    var snapshot: HatsSnapshot { model.snapshot }
+
+    private var tab: Tool { snapshot.settings.popoverTab }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider().padding(.vertical, 4)
-            if let banner = snapshot.banner { bannerView(banner) }
-            if let stranded = snapshot.deadEndBanner(now: Date()) { strandedView(stranded) }
-            if snapshot.rows.isEmpty { empty } else { list }
-            if !snapshot.contextRows.isEmpty { context }
+            if !snapshot.hasFullDiskAccess { fullDiskAccessView }
+            if let banner = snapshot.banner(on: tab) {
+                bannerView(banner.record, fromTitle: banner.fromTitle, of: banner.tool)
+            }
+            if let stranded = snapshot.deadEndBanner(on: tab, now: Date()) { strandedView(stranded) }
+            tabPicker
+            let rows = snapshot.rows(of: tab)
+            if rows.isEmpty { noHats } else { list(rows) }
+            if tab == .claudeCode, !snapshot.contextRows.isEmpty { context }
             Divider().padding(.vertical, 4)
             footer
         }
@@ -24,8 +31,8 @@ struct HatListView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text("Wearing now").font(.system(size: 11)).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(snapshot.wearing?.title ?? snapshot.header).font(.system(size: 17, weight: .semibold))
-                if let wearing = snapshot.wearing, wearing.title != wearing.address {
+                Text(snapshot.headerTitle(on: tab)).font(.system(size: 17, weight: .semibold))
+                if let wearing = snapshot.wearing(on: tab), wearing.title != wearing.address {
                     Text(wearing.address).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             }
@@ -33,15 +40,34 @@ struct HatListView: View {
         .padding(.horizontal, 14)
     }
 
-    private var list: some View {
+    private var tabPicker: some View {
+        Picker("Provider", selection: Binding(
+            get: { tab },
+            set: { model.actions?.setPopoverTab($0) }
+        )) {
+            ForEach(Tool.allCases, id: \.self) { tool in
+                Text(HatsCopy.tab(tool, averages: ProviderSummary.of(snapshot.rows(of: tool), now: Date())))
+                    .monospacedDigit()
+                    .tag(tool)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 14).padding(.bottom, 6)
+    }
+
+    private func list(_ rows: [HatRowState]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(snapshot.tool.displayName).font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 2)
-            ForEach(snapshot.rows) { row in
+            Text(HatsCopy.providerAverage(ProviderSummary.of(rows, now: Date())))
+                .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                .foregroundStyle(.secondary).padding(.horizontal, 14).padding(.bottom, 2).padding(.top, 2)
+            ForEach(rows) { row in
                 HatRowView(
                     row: row,
                     isChanging: snapshot.changing == row.id,
                     handover: snapshot.getHandover(for: row),
+                    display: snapshot.settings.usageDisplay,
+                    tool: row.tool,
                     onWear: { model.actions?.wear(row.id) },
                     onRelogin: { model.actions?.relogin(row.id) }
                 )
@@ -65,10 +91,10 @@ struct HatListView: View {
         .padding(.horizontal, 14).padding(.top, 6)
     }
 
-    private var empty: some View {
+    private var noHats: some View {
         VStack(spacing: 6) {
-            Text("No hats yet").font(.system(size: 13, weight: .semibold))
-            Text("Name an account — Work, Personal, Team — and Hats keeps its login ready to put on.")
+            Text(HatsCopy.noHats(on: tab)).font(.system(size: 13, weight: .semibold))
+            Text(HatsCopy.noHatsHint(on: tab))
                 .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 20)
@@ -109,7 +135,7 @@ struct HatListView: View {
                 Text(HatsCopy.gateway(snapshot.gateway)).font(.system(size: 11))
                     .foregroundStyle(snapshot.gateway.isServing ? .secondary : Color.orange)
                 Spacer()
-                footerButton("plus", help: "Add hat…") { model.actions?.addHat() }
+                footerButton("plus", help: "Add hat…") { model.actions?.addHat(for: tab) }
                     .keyboardShortcut("n", modifiers: .command)
                 footerButton("gearshape.fill", help: "Settings…") { model.actions?.showSettings() }
                 footerButton("power", help: "Quit Hats") { model.actions?.quit() }
@@ -117,28 +143,5 @@ struct HatListView: View {
             }
         }
         .padding(.horizontal, 14)
-    }
-
-    private func strandedView(_ banner: DeadEndBanner) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(banner.line).font(.system(size: 11))
-            if let hat = banner.signInTo {
-                Button(hat.loginAction) { model.actions?.relogin(hat.id) }
-                    .controlSize(.small)
-            }
-        }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
-        .padding(.horizontal, 10).padding(.bottom, 6)
-    }
-
-    private func bannerView(_ record: AutoSwitchRecord) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(HatsCopy.banner(record, fromTitle: snapshot.bannerFromTitle)).font(.system(size: 11))
-            Button("Switch back now") { model.actions?.switchBack() }.controlSize(.small)
-        }
-        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.12)))
-        .padding(.horizontal, 10).padding(.bottom, 6)
     }
 }

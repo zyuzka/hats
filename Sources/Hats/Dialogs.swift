@@ -4,6 +4,7 @@ struct NewHat {
     let name: String?
     let email: String
     let browser: BrowserChoice
+    var tool: Tool = .claudeCode
 }
 
 enum HatDialogs {
@@ -17,9 +18,9 @@ enum HatDialogs {
 
     static func hasConfirmedLoginAnyway(for hat: Account) -> Bool {
         PromptWindow.ask(HatPrompt(
-            title: "\(hat.title) does not need a login",
-            text: HatsCopy.getLoginAnywayText(for: hat),
-            buttons: ["Log in anyway", "Cancel"]
+            title: HatsCopy.loginAnywayTitle(for: hat),
+            text: HatsCopy.loginAnywayText(for: hat),
+            buttons: [HatsCopy.loginAnywayButton(for: hat), "Cancel"]
         )) == 0
     }
 

@@ -37,6 +37,7 @@ struct ContextThresholdsPanel: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HatLimitSection(model: model, drafts: drafts)
+            codexContinue
             Spacer()
         }
         .padding(.horizontal, 14)
@@ -100,6 +101,26 @@ struct ContextThresholdsPanel: View {
             }
             .disabled(!thresholds.canDrain(limits: model.snapshot.settings.limitThresholds))
             Text(HatsCopy.drainNote)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var codexContinue: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(HatsCopy.continueCodex, isOn: Binding(
+                get: { model.snapshot.settings.continuesCodexAfterCompaction },
+                set: { isOn in model.actions?.setCodexContinue(isOn) }
+            ))
+            .font(.system(size: 13))
+            .disabled(thresholds.savePercent == nil || thresholds.warnPercent == nil)
+            if thresholds.savePercent == nil || thresholds.warnPercent == nil {
+                Text(HatsCopy.continueCodexNeedsThresholds)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Text(HatsCopy.continueCodexNote)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

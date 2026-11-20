@@ -44,19 +44,24 @@ final class SpokenUsageLinesTests: XCTestCase {
     }
 
     func testEveryUsageLineOfTheRowCarriesItsSpokenForm() throws {
-        let source = URL(fileURLWithPath: #filePath)
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/Hats/HatRowView.swift")
-        let text = try String(contentsOf: source, encoding: .utf8)
+        let read = { (name: String) in
+            try String(contentsOf: root.appendingPathComponent("Sources/Hats/\(name)"), encoding: .utf8)
+        }
+        let view = try read("HatRowView.swift")
+        let lines = try read("UsageBars.swift")
 
-        for (shown, spoken) in [
-            ("Text(line)", ".accessibilityLabel(HatsCopy.getUsageSpoken(usage) ?? line)"),
-            ("Text(parked)", ".accessibilityLabel(HatsCopy.getParkedSpoken(usage, rose: row.roseWhileParked) ?? parked)"),
-            ("Text(week)", ".accessibilityLabel(row.weekSpoken ?? week)"),
+        XCTAssertTrue(view.contains("case .text(let text, let spoken):\n"
+                                        + "                Text(text).font(.system(size: 11)).foregroundStyle(secondary)\n"
+                                        + "                    .accessibilityLabel(spoken ?? text)"),
+                      "every text line of the row is drawn with its spoken label")
+        for spoken in [
+            "HatsCopy.getUsageSpoken(usage, timeZone: timeZone, now: now)",
+            "HatsCopy.getParkedSpoken(usage, rose: rose, timeZone: timeZone, now: now)",
+            "row.week.map { [.text($0, spoken: row.weekSpoken)] }",
         ] {
-            let at = try XCTUnwrap(text.range(of: shown), "\(shown) is drawn")
-            let next = text[at.upperBound...].split(separator: "\n").prefix(2).joined(separator: "\n")
-            XCTAssertTrue(next.contains(spoken), "\(shown) is followed by its spoken label")
+            XCTAssertTrue(lines.contains(spoken), "the percent lines carry \(spoken)")
         }
     }
 }
