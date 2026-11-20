@@ -3,7 +3,11 @@
 
 Runs on UserPromptSubmit, PostToolUse, Stop, SessionStart after a compaction and SessionEnd, in the
 background ("async": true) through `py.sh --quiet`. It never blocks, never prints, and on any failure
-exits 0 without writing. It does not run for an idle agent: none of these events fires without a
+exits 0 without writing its file. A failure nobody expected — an exception that is not one of the
+skips listed below — leaves one JSON line {"at", "script", "event", "error" (the exception's type)}
+in <root>/session-windows/failures.log (record_failure of hats_common.py: mode 600, not through a
+link, over 64 KiB moved to failures.log.1), when that folder already exists and is not a link; bad
+input is a skip and writes nothing. It does not run for an idle agent: none of these events fires without a
 turn, a compaction or the session's end.
 
 Why a hook reads the transcript: Claude Code 2.1.322 gives a hook neither the model nor the window
@@ -45,7 +49,9 @@ and reads. Other events read at once.
 `window-fill.py where` prints the folder and writes nothing (for the test that holds this path equal
 to the one Hats computes). WINDOW_FILL_TEST=1 with WINDOW_FILL_TEST_PAUSE=<seconds> and
 WINDOW_FILL_TEST_READ=<file> pauses between reading and writing and marks that the read is done; tests
-use it to race two hooks. Without WINDOW_FILL_TEST both are ignored.
+use it to race two hooks. WINDOW_FILL_TEST=1 with WINDOW_FILL_TEST_FAIL=1 raises inside record_window
+once the folder is ready, for the test of failures.log. Without WINDOW_FILL_TEST all three are
+ignored.
 """
 import fcntl
 import json
@@ -60,7 +66,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import window_fill_count as count
-from hats_common import unattended, write_whole
+from hats_common import record_failure, unattended, write_whole
 
 FOLDER = "session-windows"
 LOCK_NAME = ".lock"
@@ -239,7 +245,10 @@ def measure(
 ):
     session = data["session_id"]
     old = get_own_record(os.path.join(folder, name), session)
-    found = count.find_in_transcript(data["transcript_path"])
+    try:
+        found = count.find_in_transcript(data["transcript_path"])
+    except OSError:
+        return
     if is_testing() and os.environ.get("WINDOW_FILL_TEST_PAUSE"):
         with open(
             os.environ["WINDOW_FILL_TEST_READ"],
@@ -293,6 +302,8 @@ def record_window(data):
     folder = get_prepared_folder(get_state_root())
     if folder is None:
         return
+    if is_testing() and os.environ.get("WINDOW_FILL_TEST_FAIL") == "1":
+        raise RuntimeError("WINDOW_FILL_TEST_FAIL")
     if event == "Stop":
         wait_for_the_turn(transcript)
     lock = get_lock(folder)
@@ -314,6 +325,22 @@ def stop_on_term(signum, frame):
     raise SystemExit(0)
 
 
+def record_hook_failure(data, error):
+    try:
+        folder = os.path.join(get_state_root(), FOLDER)
+        if not stat.S_ISDIR(os.lstat(folder).st_mode):
+            return
+    except Exception:
+        return
+    event = data.get("hook_event_name")
+    record_failure(
+        folder,
+        "window-fill.py",
+        event,
+        error,
+    )
+
+
 def main(argv):
     if argv[1:] == ["where"]:
         print(os.path.join(get_state_root(), FOLDER))
@@ -323,10 +350,17 @@ def main(argv):
     signal.signal(signal.SIGTERM, stop_on_term)
     try:
         data = json.loads(sys.stdin.read() or "{}")
-        if isinstance(data, dict):
-            record_window(data)
-    except Exception:
-        pass
+    except (ValueError, RecursionError):
+        return 0
+    except Exception as error:
+        record_hook_failure({}, error)
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    try:
+        record_window(data)
+    except Exception as error:
+        record_hook_failure(data, error)
     return 0
 
 

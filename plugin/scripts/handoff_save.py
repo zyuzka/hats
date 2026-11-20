@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime, timezone
 
-from handoff_check import checked, problem_lines
+from handoff_check import checked_counted, get_verdict_line, problem_lines
 from handoff_clock import test_pause
 from handoff_consts import MAX_AGE, NAME_TRIES, SLUG, SLUG_LIMIT, SOURCE_SIZE_LIMIT, TOPIC_LIMIT
 from handoff_files import read_regular, same_path, usable
@@ -13,6 +13,7 @@ from handoff_index import set_index
 from handoff_markers import enabled, handed_file, load_markers, marker_file, saved_time
 from handoff_paths import allowed_note, get_notes_root, get_project_folder, is_memory_folder, memory_root, state_dir
 from handoff_proc import claude_process, find_work_folder, liveness
+from hats_common import write_text_whole
 
 
 def cmd_save(args):
@@ -45,18 +46,15 @@ def cmd_save(args):
         "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     path = os.path.join(state_dir(), marker_file(pid, started))
-    tmp = f"{path}.{os.getpid()}.tmp"
     try:
         os.makedirs(state_dir(), exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(marker, f, ensure_ascii=False, indent=1)
-        test_pause()
-        os.replace(tmp, path)
+        write_text_whole(
+            state_dir(),
+            os.path.basename(path),
+            json.dumps(marker, ensure_ascii=False, indent=1),
+            before_replace=test_pause,
+        )
     except (OSError, ValueError) as error:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
         print(f"handoff: marker not written: {error}")
         return 1
     retired = 0
@@ -88,12 +86,12 @@ def cmd_save(args):
         print(f"removed markers of closed sessions saved more than {MAX_AGE.days} days ago "
               f"or at an unreadable time: {expired}")
     print("\n".join(set_index(note, marker)))
-    problems = checked(text, cwd, os.path.realpath(note))
+    problems, claims = checked_counted(text, cwd, os.path.realpath(note))
     if problems:
         print("not verified in the note:")
         print("\n".join(problem_lines(problems)))
     else:
-        print("quotes and numbers: all verified")
+        print(get_verdict_line(claims))
     return 0
 
 
@@ -199,9 +197,9 @@ def cmd_check(args):
     if text is None:
         print(f"handoff: could not read {args.note}")
         return 1
-    problems = checked(text, os.path.realpath(os.path.expanduser(args.cwd or os.getcwd())), note)
+    problems, claims = checked_counted(text, os.path.realpath(os.path.expanduser(args.cwd or os.getcwd())), note)
     if not problems:
-        print("quotes and numbers: all verified")
+        print(get_verdict_line(claims))
         return 0
     print("\n".join(problem_lines(problems)))
     return 1

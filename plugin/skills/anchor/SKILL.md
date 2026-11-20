@@ -132,7 +132,9 @@ let one of them write the resume note instead of this skill.
    if the line could not be inserted, say so in the summary. Never write `MEMORY.md` with Write, and
    never edit `resume-index.md`: the plugin alone writes it. Fix every line it lists as not verified
    and run
-   it again, or leave them — the next session gets them marked "not verified". In a note own steps
+   it again, or leave them — the next session gets them marked "not verified". When it prints
+   `quotes and numbers: none outside code and the header — nothing checked`, the summary says
+   `nothing checked`, not `unverified lines: 0`. In a note own steps
    wrote, leave them: that note is not this skill's to fix. If it says the handoff
    is off, nothing was written. If it says `python3` is required, nothing ran: tell the user the
    handoff needs `python3` — on a Mac, the Xcode Command Line Tools (`xcode-select --install`) or
@@ -170,7 +172,7 @@ Saved:
 - <repo>: clean | uncommitted: <files> | unpushed: <n> (<why>) | no upstream: <n> not on <base> | detached HEAD
 - background: none | <task> — <what it is for>, waits for <what>
 - resume note: <path> (read back)[; not in memory: <first line of the refusal> | no memory folder][; owner unknown: …] | <path> (written by own steps) | none
-- handoff: <marker path>, unverified lines: <n> | off | needs python3 | failed: <first line of its output> | not run
+- handoff: <marker path>, unverified lines: <n> | <marker path>, nothing checked: no quotes or numbers outside code and the header | off | needs python3 | failed: <first line of its output> | not run
 - index: updated | not updated: <reason> | none (<reason as printed>) | not run
 - MEMORY.md: <as save printed it> | index line added first, checked | index line not added: <reason> | none | not run
 - own steps: not run | none | before <n>, after <n>[; failed: <step> — <first line>]…[; <line of step 0>]…

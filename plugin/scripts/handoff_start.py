@@ -21,7 +21,7 @@ from handoff_consts import (
 )
 from handoff_facts import find_marked_list, get_clear_output, get_reader_states
 from handoff_files import read_regular, same_path, usable
-from handoff_markers import checked_markers, handed_session, record_handed, saved_time, session_id
+from handoff_markers import checked_markers, handed_session, load_markers, record_handed, saved_time, session_id
 from handoff_marks import find_group_reals, get_others
 from handoff_output import say, say_within
 from handoff_proc import claude_process, liveness
@@ -86,6 +86,11 @@ def cmd_start(seen):
                 seen,
             )
         if not own:
+            gone = find_gone_marker(proc)
+            if gone is not None:
+                seen["outcome"] = "note-gone"
+                say(f"{USER_LINE_START} anchor \"{get_topic(gone)}\" not given — its note is gone: {get_shown(gone['note'])}", None)
+                return 0
             seen["outcome"] = "no-own-marker"
             say(f"{USER_LINE_START} no anchor saved in this Claude process", None)
             return 0
@@ -159,6 +164,14 @@ def cmd_start(seen):
     say(user, model)
     seen.update(outcome="listed", listed=len(shown))
     return 0
+
+
+def find_gone_marker(proc):
+    for marker in load_markers():
+        if marker["pid"] == proc[0] and marker["started"] == proc[1] and not os.path.lexists(marker["note"]):
+            return marker
+
+    return None
 
 
 def is_handed_elsewhere(given, session):

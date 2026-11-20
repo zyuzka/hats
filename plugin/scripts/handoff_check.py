@@ -6,6 +6,7 @@ import os
 import handoff_state
 from handoff_clock import out_of_time, time_left
 from handoff_consts import (
+    ALL_VERIFIED,
     CITE,
     CITE_START,
     CLAUSE_BREAK,
@@ -13,6 +14,7 @@ from handoff_consts import (
     GIT_FACT,
     INLINE_CODE,
     LINE_LENGTH_LIMIT,
+    NOTHING_CHECKED,
     NUMBER_CLAIM,
     PROBLEM_LIMIT,
     RATIO_PERCENT,
@@ -63,6 +65,7 @@ def verify_cite(match, base_dir, note_real, cache):
 
 def check_text(text, base_dir, note_real):
     problems = []
+    claims = 0
     cache = {}
     lines = text.split("\n")
     fence = None
@@ -88,7 +91,9 @@ def check_text(text, base_dir, note_real):
             continue
         for match in CITE.finditer(line):
             if out_of_time():
+                problems.append((number, "check ran out of time before the end of the note"))
                 break
+            claims += 1
             reason = verify_cite(match, base_dir, note_real, cache)
             if reason:
                 problems.append((number, reason))
@@ -96,26 +101,38 @@ def check_text(text, base_dir, note_real):
         if CITE_START.search(INLINE_CODE.sub(" ", rest)):
             problems.append((number, "quote not parsed — write (cite: <path>:<line> \"<exact text>\")"))
         for match in RATIO_PERCENT.finditer(rest):
+            claims += 1
             n, m = int(match.group("n")), int(match.group("m"))
             p = float(match.group("p").replace(",", "."))
             if m == 0 or abs(n * 100 / m - p) > 1:
                 share = "—" if m == 0 else f"{n * 100 / m:.1f}%"
                 problems.append((number, f"arithmetic: {n} of {m} is {share}, written {match.group('p')}%"))
         for clause in CLAUSE_BREAK.split(SYSTEM_SOURCE.sub("(cmd: -)", RATIO_PERCENT.sub(" ", rest))):
-            if NUMBER_CLAIM.search(clause) and not SYSTEM_SOURCE.search(clause):
+            if not NUMBER_CLAIM.search(clause):
+                continue
+            claims += 1
+            if not SYSTEM_SOURCE.search(clause):
                 problems.append((number, "number with no quote and no source"))
                 break
     if fence is not None:
         problems.insert(0, (fence_line, "code block not closed — the lines after it were not checked"))
-    return problems
+    return problems, claims
 
 
-def checked(text, base_dir, note_real):
+def checked_counted(text, base_dir, note_real):
     try:
         return check_text(text, base_dir, note_real)
     except Exception as error:
         handoff_state.check_errors.append(type(error).__name__)
-        return [(None, f"note check failed ({type(error).__name__}) — check the note yourself")]
+        return [(None, f"note check failed ({type(error).__name__}) — check the note yourself")], 0
+
+
+def checked(text, base_dir, note_real):
+    return checked_counted(text, base_dir, note_real)[0]
+
+
+def get_verdict_line(claims):
+    return NOTHING_CHECKED if claims == 0 else ALL_VERIFIED
 
 
 def problem_lines(problems):

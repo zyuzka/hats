@@ -3,7 +3,12 @@
 
 Runs on Stop through `py.sh --quiet`, synchronously (no "async"): Claude Code waits for it before
 the turn goes on or ends, so the snapshot of an early Stop is written before any work the model
-starts after it. It never prints and exits 0 on any failure without writing. The whole run is cut
+starts after it. It never prints and exits 0 on any failure without writing its snapshot. A failure
+nobody expected — an exception that is not one of the skips listed below — leaves one JSON line
+{"at", "script", "event", "error" (the exception's type)} in <root>/stop-snapshots/failures.log
+(record_failure of hats_common.py: mode 600, not through a link, over 64 KiB moved to
+failures.log.1), when that folder already exists and is not a link; bad input is a skip and writes
+nothing. The whole run is cut
 at 3.5 s, inside the 5-second timeout of the hook.
 
 Why a hook: `background_tasks` and `session_crons` reach only the input of a settings Stop hook; the
@@ -28,7 +33,8 @@ temporary files left by a killed run alike.
 
 STOP_SNAPSHOT_TEST=1 with STOP_SNAPSHOT_TEST_PAUSE=<seconds> and STOP_SNAPSHOT_TEST_MARK=<file>
 marks that the temporary file is written and pauses before os.replace; tests use it to stop the hook
-there. Without STOP_SNAPSHOT_TEST both are ignored.
+there. STOP_SNAPSHOT_TEST=1 with STOP_SNAPSHOT_TEST_FAIL=1 raises inside record_snapshot once the
+folder is ready, for the test of failures.log. Without STOP_SNAPSHOT_TEST all three are ignored.
 """
 import json
 import os
@@ -41,7 +47,7 @@ import time
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
-from hats_common import unattended, write_whole
+from hats_common import record_failure, unattended, write_whole
 
 FOLDER = "stop-snapshots"
 SESSION = re.compile(r"[A-Za-z0-9-]{1,80}")
@@ -177,6 +183,8 @@ def record_snapshot(data, started_ms):
     folder = get_prepared_folder(get_state_root())
     if folder is None:
         return
+    if is_testing() and os.environ.get("STOP_SNAPSHOT_TEST_FAIL") == "1":
+        raise RuntimeError("STOP_SNAPSHOT_TEST_FAIL")
     write_whole(
         folder,
         session + ".json",
@@ -194,6 +202,22 @@ def stop_now(signum, frame):
     raise SystemExit(0)
 
 
+def record_hook_failure(data, error):
+    try:
+        folder = os.path.join(get_state_root(), FOLDER)
+        if not stat.S_ISDIR(os.lstat(folder).st_mode):
+            return
+    except Exception:
+        return
+    event = data.get("hook_event_name")
+    record_failure(
+        folder,
+        "stop-snapshot.py",
+        event,
+        error,
+    )
+
+
 def main(argv):
     started_ms = int(time.time() * 1000)
     if len(argv) > 1:
@@ -203,10 +227,17 @@ def main(argv):
     signal.setitimer(signal.ITIMER_REAL, RUN_LIMIT_S)
     try:
         data = json.loads(sys.stdin.read() or "{}")
-        if isinstance(data, dict):
-            record_snapshot(data, started_ms)
-    except Exception:
-        pass
+    except (ValueError, RecursionError):
+        return 0
+    except Exception as error:
+        record_hook_failure({}, error)
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    try:
+        record_snapshot(data, started_ms)
+    except Exception as error:
+        record_hook_failure(data, error)
     return 0
 
 

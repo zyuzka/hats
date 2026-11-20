@@ -424,15 +424,25 @@ has "своя арифметика не сходится" "arithmetic" "$(checkl
 has "число с командой-источником" "all verified" "$(checkline 'неделя 98% (система: cat weekly.json)')"
 has "команда-источник освобождает только свою часть" "no source" "$(checkline 'правила 73%; неделя 98% (система: cat x)')"
 has "команда-источник не отменяет арифметику" "arithmetic" "$(checkline 'правила — 22 из 30 (43%) (система: wc -l x)')"
-has "числа в блоке кода не проверяются" "all verified" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
+has "числа в блоке кода не проверяются" "none outside code and the header — nothing checked" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
 has "незакрытый блок кода — замечание, а не тишина" "line 1: code block not closed" "$(printf '```\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
 out=$({ for i in $(seq 1 12); do echo "строка $i: $i%"; done; printf '```\nправила 73%%\n'; } >"$proj/n.md"; check "$proj/n.md")
 same "незакрытый блок кода — первое замечание, даже когда замечаний больше десяти" "- line 13: code block not closed — the lines after it were not checked" "$(printf '%s\n' "$out" | grep -m1 '^- line')"
 has "незакрытый блок кода не уходит в счёт «and N more»" "and 3 more" "$out"
-has "числа в блоке ~~~ не проверяются" "all verified" "$(printf '~~~\nправила 73%%\n~~~\n' >"$proj/n.md"; check "$proj/n.md")"
-has "блок из четырёх кавычек закрывается только четырьмя" "all verified" "$(printf '````\n```\nправила 73%%\n````\n' >"$proj/n.md"; check "$proj/n.md")"
+has "числа в блоке ~~~ не проверяются" "none outside code and the header — nothing checked" "$(printf '~~~\nправила 73%%\n~~~\n' >"$proj/n.md"; check "$proj/n.md")"
+has "блок из четырёх кавычек закрывается только четырьмя" "none outside code and the header — nothing checked" "$(printf '````\n```\nправила 73%%\n````\n' >"$proj/n.md"; check "$proj/n.md")"
 has "после закрытого блока числа снова проверяются" "line 4: number with no quote" "$(printf '~~~\n41%%\n~~~\nправила 73%%\n' >"$proj/n.md"; check "$proj/n.md")"
-has "шапка записки не проверяется" "all verified" "$(printf -- '---\nname: x 50%%\n---\nтекст\n' >"$proj/n.md"; check "$proj/n.md")"
+has "шапка записки не проверяется" "none outside code and the header — nothing checked" "$(printf -- '---\nname: x 50%%\n---\nтекст\n' >"$proj/n.md"; check "$proj/n.md")"
+out=$(: >"$proj/n.md"; check "$proj/n.md"); rc=$?
+has "пустой файл: проверять нечего — так и сказано" "quotes and numbers: none outside code and the header — nothing checked" "$out"
+lacks "пустой файл: не «all verified»" "all verified" "$out"
+if [ $rc -eq 0 ]; then ok; else bad "пустой файл: check — код 0" "rc=$rc"; fi
+out=$(printf -- '---\nname: x 50%%\n---\n' >"$proj/n.md"; check "$proj/n.md"); rc=$?
+has "только шапка: проверять нечего" "none outside code and the header — nothing checked" "$out"; lacks "только шапка: не «all verified»" "all verified" "$out"
+if [ $rc -eq 0 ]; then ok; else bad "только шапка: check — код 0" "rc=$rc"; fi
+lacks "числа только в блоке кода: не «all verified»" "all verified" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
+lacks "текст без чисел: не «all verified»" "all verified" "$(checkline 'просто текст')"
+has "одна цитата — уже «all verified»" "quotes and numbers: all verified" "$(printf 'a 73%%\n' >"$proj/src5.md"; checkline "x (cite: $proj/src5.md:1 \"a 73%\")")"
 out=$(for i in $(seq 1 15); do echo "строка $i: $i%"; done >"$proj/n.md"; check "$proj/n.md")
 has "замечаний сверх десяти — счётом" "and 5 more" "$out"
 n=$(count '^- line' "$out")
@@ -593,7 +603,7 @@ has "строка «\`\`\`73%%\`\`\`» не открывает ограду" "li
 python3 -I -c 'print("\n".join("1" * 4999 for _ in range(30)))' >"$proj/n.md"
 out=$(timeout 3 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
 lacks "длинные строки цифр разбираются быстро" "rc=124" "$out"
-has "длинные строки цифр — ответ проверки, а не падение" "quotes and numbers: all verified" "$out"
+has "длинные строки цифр — ответ проверки, а не падение" "quotes and numbers: none outside code and the header — nothing checked" "$out"
 python3 -I -c 'print("1" * 1500000)' >"$proj/big.txt"
 python3 -I -c 'import sys; print(" ".join("(цит. %s:1 «1»)" % sys.argv[1] for _ in range(30)))' "$proj/big.txt" >"$proj/n.md"
 out=$(timeout 3 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1; echo "rc=$?")
@@ -643,6 +653,18 @@ case "$fields" in "$fake $real_proj | "*" 20"[0-9][0-9]) ok ;; *) bad "наст�
 trace="$markers/runs.log"
 tl() { python3 -I -c 'import json,sys; d=json.loads(open(sys.argv[1]).read().splitlines()[-1]); print(" ".join(f"{k}={d.get(k)}" for k in sys.argv[2:]))' "$trace" "$@" 2>&1; }
 tlines() { if [ -f "$trace" ]; then grep -c . "$trace"; else echo 0; fi; }
+# --- записка своей отметки пропала: свой исход и своя строка, а не «нет якоря»
+reset; mine; rm "$note"
+empty "записка удалена: модели ничего" "$(start clear)"
+same "записка удалена: пользователю — якорь не отдан, записки нет" "Hats handoff: anchor \"задача А\" not given — its note is gone: $note" "$(told)"
+has "записка удалена: журнал называет исход" "outcome=note-gone pid=4242" "$(tl outcome pid)"
+reset; mine; mv "$note" "$mem/renamed.md"
+empty "записка переименована: модели ничего" "$(start clear)"
+same "записка переименована: пользователю — якорь не отдан, записки нет" "Hats handoff: anchor \"задача А\" not given — its note is gone: $note" "$(told)"
+has "записка переименована: журнал называет исход" "outcome=note-gone" "$(tl outcome)"
+reset; marker a 4242 "Tue Nov 10 10:00:00 2026" "$proj" "$mem/nope.md" "чужой запуск"
+start clear >/dev/null; same "записки нет у отметки другого запуска — «нет якоря»" "$told_no_anchor" "$(told)"
+has "записки нет у отметки другого запуска — журнал no-own-marker" "outcome=no-own-marker" "$(tl outcome)"
 reset; mine; sid=n1; start clear >/dev/null
 has "журнал: отдал записку новой сессии" "outcome=gave-note receiver=new session=n1 source=clear pid=4242" "$(tl outcome receiver session source pid)"
 start clear >/dev/null
@@ -725,7 +747,7 @@ reset; mkdir -p "$markers/4242-Mon-Nov-9-10-00-00-2026.json/x"; out=$(save "$pro
 has "save: отметку не записать — так и сказано" "marker not written" "$out"
 lacks "save: отметку не записать — без трассировки" "Traceback" "$out"
 if [ $rc -ne 0 ]; then ok; else bad "save: отметку не записать — код не 0" "код 0"; fi
-left=$(ls "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "save: отметку не записать — временный файл убран" "$left"; fi
+left=$(ls -A "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "save: отметку не записать — временный файл убран" "$left"; fi
 reset; printf '{"session_id":"u1","cwd":"/a\\udc80b","source":"startup"}' | env HOME="$work" python3 -I "$HOOK" start >/dev/null 2>&1
 has "журнал: путь с непарным суррогатом — строка всё равно записана" "distinct=1 total=1 bad=0" "$(sessions_in)"
 reset; mkdir -p "$markers/runs.lock"; sid=w2; start startup >/dev/null
@@ -734,7 +756,7 @@ reset; for i in $(seq 1 20); do HANDOFF_TEST_PAUSE=0.2 save "$proj" "$note" "з�
 failed=$(grep -L "marker:" "$work"/save*.out | wc -l | tr -d ' ')
 if [ "$failed" -eq 0 ]; then ok; else bad "одновременно: 20 сохранений — все записали отметку" "не записали $failed: $(cat $(grep -L "marker:" "$work"/save*.out | head -1) | head -c 300)"; fi
 if python3 -I -c 'import json,sys; json.load(open(sys.argv[1]))' "$markers/4242-Mon-Nov-9-10-00-00-2026.json" 2>/dev/null; then ok; else bad "одновременно: отметка целая" "битая"; fi
-left=$(ls "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "одновременно: временных файлов не осталось" "$left"; fi
+left=$(ls -A "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "одновременно: временных файлов не осталось" "$left"; fi
 
 # --- плохая записка не роняет хук и не прячет соседние
 empty_cite() { printf '## СЕЙЧАС\n\nитог (цит. %s:1 «%s»)\n' "$proj/src.md" "$1" >"$2"; }
@@ -774,7 +796,7 @@ has "каталог состояния не создать: save говорит 
 if [ $rc -eq 1 ]; then ok; else bad "каталог состояния не создать: код 1" "rc=$rc"; fi
 reset; out=$(save "$proj" "$note" $'тема \xff'); rc=$?
 lacks "тема с байтом не из UTF-8: без трассировки" "Traceback" "$out"
-left=$(ls "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "тема с байтом не из UTF-8: временный файл убран" "$left"; fi
+left=$(ls -A "$markers" | grep -c '\.tmp$'); if [ "$left" -eq 0 ]; then ok; else bad "тема с байтом не из UTF-8: временный файл убран" "$left"; fi
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "хорошая"
 python3 -I -c 'import sys; open(sys.argv[1], "w").write("[" * 200000 + "]" * 200000)' "$markers/deep.json"
 has "отметка с глубокой вложенностью не прячет список" "\"хорошая\"" "$(start startup)"
@@ -1195,6 +1217,13 @@ if [ "$(cat "$memmd")" = "$memory_line" ]; then ok; else bad "save памяти:
 has "save памяти: MEMORY.md — строка есть" "MEMORY.md: has the index line" "$out"
 if [ -z "$(ls -A "$mem" | grep '\.tmp$')" ]; then ok; else bad "индекс: временный файл убран" "$(ls -A "$mem")"; fi
 has "индекс: права 600" "0o600" "$(mode_of "$index")"
+reset; out=$(umask 022; save "$proj" "$note" "задача А")
+has "отметка: права 600 и при umask 022" "0o600" "$(mode_of "$markers/4242-Mon-Nov-9-10-00-00-2026.json")"
+reset; mine; (umask 022; sid=n1; start clear >/dev/null)
+has "файл передачи: права 600 и при umask 022" "0o600" "$(mode_of "$markers/a.handed")"
+reset; printf 'x\n' >"$mem/resume-t.md"; (umask 022; save "$proj" "$mem/resume-t.md" t >/dev/null)
+has "индекс: права 600 и при umask 022" "0o600" "$(mode_of "$index")"
+if [ -z "$(ls -A "$markers" "$mem" | grep '\.tmp')" ]; then ok; else bad "три записи: временных файлов не осталось" "$(ls -A "$markers" "$mem")"; fi
 
 reset; printf 'x\n' >"$mem/resume-t.md"; save "$proj" "$mem/resume-t.md" $'a [b] (c) <d> `e`\x01f   g ( ) h' >/dev/null
 case "$(entry_at 5)" in "- [a b c d ef g h](<resume-t.md>) — saved "*) ok ;; *) bad "индекс: из темы убраны скобки, обратная кавычка, управляющие знаки; пробелы схлопнуты" "«$(entry_at 5)»" ;; esac
@@ -1329,7 +1358,7 @@ if [ "$(id -u)" -ne 0 ]; then
   if [ $rc -eq 0 ] && [ "$(markers_n)" -eq 1 ]; then ok; else bad "индекс не записать: код 0 и одна отметка" "rc=$rc ${out:0:300}"; fi
   has "индекс не записать: так и сказано" "index not updated: resume-index.md cannot be written" "$out"
   has "индекс не записать: MEMORY.md не проверялся" "MEMORY.md: not checked: index not updated" "$out"
-  has "индекс не записать: проверка записки на месте" "quotes and numbers: all verified" "$out"
+  has "индекс не записать: проверка записки на месте" "quotes and numbers: none outside code and the header — nothing checked" "$out"
   lacks "индекс не записать: без трассировки" "Traceback" "$out"
 fi
 reset; p=$(newnote --slug flow --memory "$mem"); printf '## NOW\n\nflow line\n' >"$p"
@@ -1433,6 +1462,14 @@ record = swap("record_handed", noted)')
 has "после /clear сначала вывод и сброс буфера" "continues the note" "$(printf '%s\n' "$out" | sed -n 1p | model_of)"
 same "после /clear «отдано» записано после вывода" "RECORDED" "$(printf '%s\n' "$out" | sed -n 2p)"
 if [ -f "$markers/a.handed" ]; then ok; else bad "после /clear «отдано» записано" "a.handed нет"; fi
+reset; printf 'share 73%%\n' >"$proj/src.md"
+printf '## NOW\n\nx (cite: %s:1 "share 73%%") (cite: %s:1 "share 73%%") (cite: %s:1 "share 73%%")\n' "$proj/src.md" "$proj/src.md" "$proj/src.md" >"$note"; mine
+out=$(harness t1 'import inspect, sys
+check = sys.modules["handoff_check"]
+lines, first = inspect.getsourcelines(check.check_text)
+target = next(first + i + 1 for i, line in enumerate(lines) if "CITE.finditer" in line)
+check.out_of_time = lambda: sys._getframe(1).f_lineno == target')
+has "срок вышел среди цитат последней строки — это сказано, а не «проверено»" "check ran out of time before the end of the note" "$(printf '%s' "$out" | model_of)"
 for cwd_json in null '""' 5; do
   reset; out=$(printf '{"session_id":"s","cwd":%s,"source":"clear"}' "$cwd_json" | env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I "$HOOK" start 2>&1)
   empty "негодная папка ($cwd_json) — тишина" "$out"; has "негодная папка ($cwd_json) — в журнале skipped" "outcome=skipped" "$(tl outcome)"
