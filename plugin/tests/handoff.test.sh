@@ -26,6 +26,9 @@
 # коммита образец; правка текста модели без замены образца красит набор. Задача 8c образец не
 # заменила: её строки модели появляются только при файлах пометки (taken/), а без них текст —
 # символ в символ прежний; вызовы с файлами пометки, где текст меняется, идут с CMP=0.
+# Запись 47 образец тоже не заменила: выдержка теперь режется, чтобы блок «Not verified» влез,
+# а нечитаемая записка не отдаётся; текст меняется только у записок за пределом вывода и у
+# нечитаемых, и эти вызовы идут с CMP=0.
 #
 # Задача 8c: хук took (после Read) гоняется помощниками took и took_raw со входом из замера
 # 2026-11-13; его вывод проверяется той же формой с hookEventName PostToolUse, без сверки.
@@ -461,7 +464,7 @@ has "непроверенная строка приходит с пометко�
 reset; python3 -I -c 'import sys; print("## СЕЙЧАС\n"); print("\n".join("слово " * 20 for _ in range(200)))' >"$note"; mine
 has "длинная «СЕЙЧАС» обрезается" "cut, the rest is in the file" "$(start clear)"
 python3 -I -c 'import sys; p=sys.argv[1]; print("## СЕЙЧАС\n"); print("\n".join("слово " * 20 for _ in range(200))); print("\n".join("x (цит. /%s/%d.md:1 «%s»)" % ("d" * 250, i, "q" * 80) for i in range(12)))' "$work" >"$note"
-out=$(start clear); len=$(printf '%s' "$out" | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
+out=$(CMP=0 start clear); len=$(printf '%s' "$out" | python3 -I -c 'import sys; print(len(sys.stdin.read()))')
 if [ "$len" -le 9501 ]; then ok; else bad "вывод не длиннее 9 500 знаков" "$len"; fi
 
 # --- сохранение
@@ -600,7 +603,7 @@ if [ -n "$child" ] && ! kill -0 "$child" 2>/dev/null; then ok; else bad "пос�
 
 # --- предел вывода в единицах UTF-16
 reset; python3 -I -c 'print("## СЕЙЧАС\n"); print("\n".join("😀" * 60 for _ in range(110)))' >"$note"; mine
-units=$(start clear | python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')
+units=$(CMP=0 start clear | python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)')
 if [ "$units" -le 9501 ]; then ok; else bad "вывод не длиннее 9 500 единиц UTF-16" "$units"; fi
 
 # --- настоящий поиск процесса claude по предкам (без подмены), глубина 2 и папка из lsof
@@ -2500,6 +2503,72 @@ if [ -e "$work/py-called" ]; then ok; else bad "allow.sh: ввод с /notes/ �
 rm -f "$work/py-called"; out=$(run_allow_sh "$(allow_in Read "$proj/notes/n.md")")
 quiet_ok "allow.sh: /notes/ вне корня — Python запущен и молчит" "$out"
 if [ -e "$work/py-called" ]; then ok; else bad "allow.sh: /notes/ вне корня — проверку делает Python" "заглушка не вызвана"; fi
+
+# --- запись 47: блок «Not verified» влезает при широких знаках (ECH2), нечитаемая записка не отдаётся (ECH6),
+# внук в своей группе не держит хук (ECH7). Текст модели здесь отличается от образца намеренно — без сверки.
+units_of() { python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)'; }
+wide_note() { python3 -I -c 'print("## СЕЙЧАС\n"); print("\n".join("😀" * 60 for _ in range(110))); print("доля 37% проверки")' >"$note"; }
+wide_problem='- line 113: number with no quote and no source'
+reset; wide_note; mine
+out=$(CMP=0 start clear)
+has "широкие знаки, с человеком: блок «Not verified» на месте" "Not verified" "$out"
+has "широкие знаки, с человеком: непроверенная строка названа" "$wide_problem" "$out"
+has "широкие знаки, с человеком: конец выдержки на месте" "--- end of excerpt ---" "$out"
+has "широкие знаки, с человеком: выдержка обрезана" "cut, the rest is in the file" "$out"
+last_kept=$(printf '%s\n' "$out" | python3 -I -c 'import sys; lines = sys.stdin.read().split("\n"); i = lines.index("[… cut, the rest is in the file]"); print(len(lines[i - 1]) if lines[i - 1].strip("😀") == "" else "не эмодзи: %r" % lines[i - 1][:40])' 2>&1)
+same "широкие знаки, с человеком: перед пометкой обрезки — целая строка записки (60 эмодзи)" "60" "$last_kept"
+units=$(printf '%s' "$out" | units_of)
+if [ "$units" -le 9500 ]; then ok; else bad "широкие знаки, с человеком: не длиннее 9500 единиц UTF-16" "$units"; fi
+out=$(CMP=0 nobody clear 0 - | model_of)
+has "широкие знаки, без человека: блок «Not verified» на месте" "Not verified" "$out"
+has "широкие знаки, без человека: непроверенная строка названа" "$wide_problem" "$out"
+has "широкие знаки, без человека: конец выдержки на месте" "--- end of excerpt ---" "$out"
+units=$(printf '%s' "$out" | units_of)
+if [ "$units" -le 9500 ]; then ok; else bad "широкие знаки, без человека: не длиннее 9500 единиц UTF-16" "$units"; fi
+reset; A=$(live); B=$(live); wide_note
+marker own "$(pid_of "$A")" "${A#*:}" "$proj" "$note" "смайлы"; mark_file "$real_note" "[$(reader_json "$B" sB)]"
+sid=w1; out=$(CMP=0 start clear "$proj" HANDOFF_PROCESS="$A")
+case "$(printf '%s\n' "$out" | sed -n 1p)" in "[handoff] 1 live session(s) reading it: session sB (pid "*". $ask_took") ok ;; *) bad "широкие знаки и читатель: пометка первой строкой" "$(printf '%s\n' "$out" | sed -n 1p | head -c 300)" ;; esac
+has "широкие знаки и читатель: блок «Not verified» на месте" "Not verified" "$out"
+has "широкие знаки и читатель: непроверенная строка названа" "$wide_problem" "$out"
+has "широкие знаки и читатель: конец выдержки на месте" "--- end of excerpt ---" "$out"
+units=$(printf '%s' "$out" | units_of)
+if [ "$units" -le 9500 ]; then ok; else bad "широкие знаки и читатель: не длиннее 9500 единиц UTF-16" "$units"; fi
+reset; mine; chmod 000 "$note"
+if cat "$note" >/dev/null 2>&1; then
+  skipped=$((skipped+6)); skips="$skips
+  пропущено 6: записка читается и после chmod 000 (прогон под root) — нечитаемая записка не проверена"
+else
+  sid=u1; out=$(CMP=0 start clear)
+  empty "нечитаемая своя записка: модели ничего" "$out"
+  same "нечитаемая своя записка: пользователю — не прочесть" "Hats handoff: could not read the note of anchor \"задача А\", not given — $real_note" "$(told)"
+  if [ ! -e "$markers/a.handed" ]; then ok; else bad "нечитаемая своя записка: «отдано» не записано" "a.handed есть"; fi
+  has "нечитаемая своя записка: журнал — note-unreadable" "outcome=note-unreadable session=u1" "$(tl outcome session)"
+  chmod 600 "$note"; sid=u2
+  has "нечитаемая записка, права вернули: другая сессия получает" "continues the note \"задача А\"" "$(CMP=0 start clear)"
+  reset; closed_note; chmod 000 "$note"; out=$(CMP=0 start startup)
+  has "нечитаемая записка в списке: строка о том, что не читается" "   could not read the note: no permission, over the size limit or not a regular file" "$out"
+  chmod 600 "$note"
+fi
+reset; : >"$note"; mine; sid=z1
+has "пустая своя записка: отдаётся" "continues the note \"задача А\"" "$(CMP=0 start clear)"
+has "пустая своя записка: журнал — gave-note" "outcome=gave-note session=z1" "$(tl outcome session)"
+reset; : >"$note"; closed_note; out=$(CMP=0 start startup)
+has "пустая записка в списке: в списке" "\"закрытая\"" "$out"
+lacks "пустая записка в списке: не «could not read the note»" "could not read the note" "$out"
+reset; closed_note; mkdir -p "$work/pgrpbin"; rm -f "$work/grandpids"
+cat >"$work/pgrpbin/ps" <<EOF
+#!/bin/bash
+python3 -I -c 'import os,sys,time; os.setpgrp(); open(sys.argv[1], "a").write("%d\n" % os.getpid()); time.sleep(30)' "$work/grandpids" &
+sleep 30
+EOF
+chmod +x "$work/pgrpbin/ps"
+CMP=0 start startup "$proj" PATH="$work/pgrpbin:$PATH" HANDOFF_TEST_BUDGET=1 >/dev/null
+same "внук ps в своей группе: пользователю «не успел проверить»" "Hats handoff: could not check 1 note in time, none listed" "$(told)"
+ms=$(tl ms | sed 's/^ms=//')
+case "$ms" in ''|*[!0-9]*) bad "внук ps в своей группе: время хука из runs.log" "ms=$ms" ;; *) if [ "$ms" -le 1700 ]; then ok; else bad "внук ps в своей группе: хук укладывается в срок (время из runs.log)" "${ms} мс при пороге 1700"; fi ;; esac
+wait_for '[ -s "$work/grandpids" ]'
+cat "$work/grandpids" >>"$work/sleepers" 2>/dev/null
 
 # --- README: как поставить плагин, как его выключить и что хук пишет на диск
 readme=$(cat "$plugin_root/../README.md" 2>/dev/null)

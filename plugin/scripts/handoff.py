@@ -25,7 +25,10 @@ so the marker itself is never rewritten under a concurrent `save`), gives the no
 same session and stays silent for a later session of the process until the next `save`. An input
 without a usable session id gets the note and records nothing. A process whose state `ps`
 cannot tell in time is treated as alive: its note is neither listed nor retired. Every external
-call in the hook shares one time budget, under the hook's 5-second timeout.
+call in the hook shares one time budget, under the hook's 5-second timeout. A call past its time
+has its process group killed and its pipe closed unread: a grandchild that left the group would
+hold the pipe open (31.3 s against a 3.5-second budget, measured 2026-11-20). Such a grandchild is
+left running after the hook returns.
 
 The note must sit in one of two folders: the notes folder, or Claude Code's memory. The hook prints
 the note's head into the model's context, and any other path would let a marker print an arbitrary
@@ -205,14 +208,23 @@ set of its own, so zero-width joiners of Persian, Devanagari and emoji stay; the
 characters, a session id shows only when it is a whole id (else "another session"), and the line stays
 within 2,000 UTF-16 units. The first line of a list counts every closed note found; notes beyond the
 five listed and notes that do not fit are counted together as "and N more", a note never cut in the
-middle. An error line points to `runs.log`, which holds the error's type and text. The object is
-written as UTF-8 bytes, so Cyrillic is not escaped into six-character sequences and the output does
+middle. A listed note that cannot be read (no permission, over the size limit or not a regular file)
+gets the line "could not read the note: no permission, over the size limit or not a regular file"
+instead of its check. After /clear the model's text stays within 9,500 UTF-16 units: the line about
+other readers keeps 600 units and its request of its own, and only the excerpt of the note is cut, in
+UTF-16 units at a line end when one fits, so "--- end of excerpt ---", the "Not
+verified" block and the state facts come whole unless they alone pass the limit. An error line points
+to `runs.log`, which holds the error's type and text. The object is written as UTF-8 bytes, so
+Cyrillic is not escaped into six-character sequences and the output does
 not depend on the encoding of stdout. After /clear it is written and flushed before the hand-over is
 recorded, as before.
 
 Every `start` run appends one JSON line to `runs.log` beside the markers: time, how long it took,
 source, session, folder, Claude process and the decision — `off`, `bad-input`, `skipped`,
-`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `gave-note` (receiver `new`, `same`
+`unattended`, `no-process`, `no-own-marker`, `handed-elsewhere`, `note-unreadable` (the own note
+could not be read: no permission, over the size limit or not a regular file; the user gets "could not
+read the note of anchor …, not given", the model nothing, and nothing is recorded, so the note is given
+once it reads again; an empty note is read and given), `gave-note` (receiver `new`, `same`
 or `none`), `not-printed` (the note could not be written to stdout under the mark lock, task 8c),
 `no-closed`, `unchecked`, `listed`, `error` (with `error`, the exception's type, and
 `message`, its text); a start in a new session also records `unchecked`, the number of notes it could
@@ -503,6 +515,9 @@ MARK_LIST_LIMIT = 600
 NOTE_KEY = re.compile(r"[0-9a-f]{64}")
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
 TOOK_ASK = "Another session may be continuing this task: continue it only if the user confirms."
+OWN_LIMIT = OUTPUT_LIMIT - MARK_LIST_LIMIT - len(f"[handoff] . {TOOK_ASK}\n")
+CUT_LINE = "[… cut, the rest is in the file]"
+UNREADABLE_NOTE = "could not read the note"
 AUTHOR_WORDS = "the session that saved this note is still open: "
 LSTART = "%a %b %d %H:%M:%S %Y"
 LIST_ASK = "If the user picks it, say so and continue only if the user confirms."
@@ -590,7 +605,8 @@ def run(cmd, timeout):
             os.killpg(proc.pid, signal.SIGKILL)
         except OSError:
             pass
-        proc.communicate()
+        proc.stdout.close()
+        proc.wait()
         return None, None
     return proc.returncode, out
 
@@ -1152,7 +1168,7 @@ def note_head(text):
             if (now is not None and i > 0) or headings == 2:
                 break
         if size + len(line) + 1 > HEAD_LIMIT:
-            kept.append("[… cut, the rest is in the file]")
+            kept.append(CUT_LINE)
             break
         kept.append(line)
         size += len(line) + 1
@@ -1167,26 +1183,37 @@ def fetch_hint(facts):
     return []
 
 
-def render_own(marker):
-    text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
-    out = [
+def get_fitted_excerpt(excerpt, limit):
+    if get_units(excerpt) <= limit:
+        return excerpt
+    kept = cap_utf16(excerpt, max(0, limit - get_units(CUT_LINE) - 1))
+    if "\n" in kept:
+        kept = kept[:kept.rfind("\n")]
+    if not kept:
+        return CUT_LINE
+
+    return f"{kept}\n{CUT_LINE}"
+
+
+def render_own(marker, text):
+    head = [
         f"[handoff] This session continues the note \"{marker['topic']}\", saved "
         f"{marker['saved_at']} by this same Claude process: {marker['note']}",
         "Below is the NOW section (or the start of the note); read the rest in the file.",
         "--- note ---",
-        note_head(text),
-        "--- end of excerpt ---",
     ]
+    tail = ["--- end of excerpt ---"]
     problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
     if problems:
-        out.append("Not verified (check against the source before relying on it):")
-        out.extend(problem_lines(problems))
+        tail.append("Not verified (check against the source before relying on it):")
+        tail.extend(problem_lines(problems))
     facts = state_lines(text)
     if facts:
-        out.append("State compared with the system:")
-        out.extend(facts)
-        out.extend(fetch_hint(facts))
-    return "\n".join(out)
+        tail.append("State compared with the system:")
+        tail.extend(facts)
+        tail.extend(fetch_hint(facts))
+    room = OWN_LIMIT - get_units("\n".join(head + tail)) - 2
+    return "\n".join(head + [get_fitted_excerpt(note_head(text), room)] + tail)
 
 
 def get_list_blocks(markers):
@@ -1198,8 +1225,12 @@ def get_list_blocks(markers):
     ]]
     all_facts = []
     for index, marker in enumerate(markers, 1):
-        text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
+        text = read_regular(marker["note"], SOURCE_SIZE_LIMIT)
         out = [f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}"]
+        if text is None:
+            out.append(f"   {UNREADABLE_NOTE}: no permission, over the size limit or not a regular file")
+            blocks.append(out)
+            continue
         problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
         if problems and problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
@@ -1436,13 +1467,23 @@ def cmd_start(seen):
             seen.update(outcome="handed-elsewhere", handed_to=clip(given))
             say(f"{USER_LINE_START} anchor \"{get_topic(own[0])}\" was already given to {get_receiver(given)}", None)
             return 0
+        text = read_regular(own[0]["note"], SOURCE_SIZE_LIMIT)
+        if text is None:
+            seen["outcome"] = "note-unreadable"
+            say(
+                f"{USER_LINE_START} {UNREADABLE_NOTE} of anchor \"{get_topic(own[0])}\", not given — "
+                f"{get_shown(own[0]['note'])}",
+                None,
+            )
+            return 0
         if not _tell:
             say(
                 f"{USER_LINE_START} continuing anchor \"{get_topic(own[0])}\" — {get_shown(own[0]['note'])}",
-                cap_utf16(render_own(own[0]), OUTPUT_LIMIT),
+                cap_utf16(render_own(own[0], text), OUTPUT_LIMIT),
             )
         elif not set_given_note(
             own[0],
+            text,
             proc,
             markers,
             session,
@@ -2502,6 +2543,7 @@ def set_given_locked(given, seen):
 
 def set_given_note(
     marker,
+    text,
     proc,
     markers,
     session,
@@ -2518,7 +2560,7 @@ def set_given_note(
     _deadline = deadline - CHECK_SPARE_S
     try:
         checked_ok = find_checked_snapshot(given, seen)
-        given["body"] = render_own(marker)
+        given["body"] = render_own(marker, text)
     finally:
         _deadline = deadline
     if not checked_ok:
