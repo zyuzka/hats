@@ -1,13 +1,17 @@
 """Where the notes, the state and the memory folders are, and which note paths are allowed.
 
+get_notes_root is None when there is no Hats folder (get_state_root of hats_common.py).
+get_cited_notes_roots still holds the default notes folder then, so a quote of a note there is never
+a source.
+
 Part of handoff.py, which holds the contract of the whole hook."""
 import hashlib
 import os
 
-from handoff_consts import NOTES_NAME, NOTES_ROOT, PROJECT_FOLDER_LENGTH, PROJECT_NAME, SERVICE_NAMES
+from handoff_consts import NOTES_NAME, PROJECT_FOLDER_LENGTH, PROJECT_NAME, SERVICE_NAMES
 from handoff_files import is_same_folder, is_same_place, usable
 from handoff_proc import claude_process, find_work_folder
-from hats_common import get_state_root
+from hats_common import get_default_state_root, get_state_root
 
 
 def config_root():
@@ -32,7 +36,7 @@ def get_notes_root():
 
 
 def get_cited_notes_roots():
-    roots = [get_notes_root(), os.path.expanduser(NOTES_ROOT)]
+    roots = [get_notes_root(), os.path.join(get_default_state_root(), NOTES_NAME)]
 
     return list(dict.fromkeys(root for root in roots if root is not None))
 

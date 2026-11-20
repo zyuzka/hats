@@ -2505,7 +2505,7 @@ for value in "relative/state" "~/tilde" "./x"; do
     args=(--cwd "$proj"); [ "$command" = new ] && args+=(--slug t)
     dir=$(cd "$proj" && env HOME="$work/rel-home" HATS_STATE_HOME="$value" python3 -I "$HOOK" "$command" "${args[@]}" 2>&1); rc=$?
     same "HATS_STATE_HOME «${value}»: $command отказывает одной строкой, код 1" \
-      "1 handoff: HATS_STATE_HOME='$value' is not an absolute path, so there is no notes folder" "$rc $dir"
+      "1 handoff: HATS_STATE_HOME='$value' is not an absolute path, so there is no Hats folder" "$rc $dir"
   done
   first=${value#./}; first=${first%%/*}
   if [ ! -e "$work/rel-home" ] && [ ! -e "$proj/$first" ]; then ok
@@ -2581,6 +2581,34 @@ quiet_ok "allow: другое событие — молчание" "$out"
 same "allow: без HATS_STATE_HOME — прежняя папка разрешена" "$allowed" "$(allow_in Read "$base_dir/x.md" | env -u HATS_STATE_HOME HOME="$work" python3 -I "$HOOK" allow | decision_of)"
 same "allow: относительный HATS_STATE_HOME — корня нет, молчание" "" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME=relative python3 -I "$HOOK" allow 2>&1)"
 same "allow: HATS_STATE_HOME с ~ — корня нет, молчание" "" "$(allow_in Read "$base_dir/x.md" | env HOME="$work" HATS_STATE_HOME="~/xstate" python3 -I "$HOOK" allow 2>&1)"
+# --- без корня (HATS_STATE_HOME относительный): save, check, took и start не признают прежнюю папку записок
+rel_state="relative/state"
+renv() { env HOME="$work" HATS_STATE_HOME="$rel_state" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" "$@"; }
+reset; base_dir=$(notes_of "$proj"); b_note="$base_dir/resume-b.md"
+printf '# B\n\n## NOW\n\nиз прежней папки\n' >"$b_note"
+before_markers=$(ls -A "$markers")
+out=$(renv python3 -I "$HOOK" save --cwd "$proj" --note "$b_note" --topic b 2>&1); rc=$?
+has "без корня: save записки прежней папки — отказ одной строкой, код 1" \
+  "1 handoff: HATS_STATE_HOME='$rel_state' is not an absolute path, so there is no Hats folder: the note must be a file "\
+"<Claude config>/projects/<folder>/memory/<name>.md, and " \
+  "$rc $out"
+same "без корня: save записки прежней папки — отметки нет" "$before_markers" "$(ls -A "$markers")"
+out=$(renv python3 -I "$HOOK" save --cwd "$proj" --note "$note" --topic m 2>&1); rc=$?
+has "без корня: save записки из памяти — отметка записана, код 0" "0 marker: $markers/" "$rc $out"
+reset; base_dir=$(notes_of "$proj"); printf '# B\n\n## NOW\n\nиз прежней папки\n' >"$b_note"
+printf 'share 75%%\n' >"$base_dir/q.md"; printf 'x (cite: %s:1 "share 75%%")\n' "$base_dir/q.md" >"$proj/n.md"
+has "без корня: цитата прежней папки — не источник" "quote of the notes folder is not a source" \
+  "$(renv python3 -I "$HOOK" check --cwd "$proj" "$proj/n.md" 2>&1)"
+mine a "$proj" "$b_note"
+A=$(live); out=$(took "$A" sA "$b_note" HATS_STATE_HOME="$rel_state")
+same "без корня: took записки прежней папки — читатель не записан" "нет" "$(readers_of "$(realp "$b_note")")"
+B=$(live); out=$(took "$B" sB "$b_note")
+same "с корнем по умолчанию: took той же записки — читатель записан" "$(pid_of "$B")/sB" "$(readers_of "$(realp "$b_note")")"
+lacks "без корня: start после /clear не отдаёт записку прежней папки" "из прежней папки" \
+  "$(CMP=0 start clear "$proj" HATS_STATE_HOME="$rel_state")"
+has "с корнем по умолчанию: та же отметка — записка отдаётся" "из прежней папки" "$(CMP=0 start clear "$proj")"
+if [ ! -e "$proj/relative" ] && [ ! -e "$work/relative" ]; then ok
+else bad "без корня: в папке запуска ничего не создано" "$(ls -a "$proj" "$work" | head -5)"; fi
 hooks_allow=$(python3 -I -c 'import json,sys
 d = json.load(open(sys.argv[1]))
 print([(e.get("matcher"), h["command"], h.get("timeout")) for e in d["hooks"].get("PreToolUse", []) for h in e["hooks"]])' "$plugin_root/hooks/hooks.json" 2>&1)

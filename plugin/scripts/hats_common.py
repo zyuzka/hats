@@ -22,6 +22,9 @@ HATS_STATE_HOME gives ~/Library/Application Support/Hats (following HOME, the fo
 StateDirectory.url); an absolute value without a null byte gives that value as written (no ~ is
 expanded, as Hats itself does not); any other value gives None: there is no root, and a caller writes
 nothing rather than into the folder it was started in or into the default one.
+get_default_state_root: ~/Library/Application Support/Hats, the one place this path is written.
+get_no_root_line: the one line a script prints when it needs the Hats folder and there is none —
+"<script>: HATS_STATE_HOME=<value> is not an absolute path, so there is no Hats folder".
 sweep: removes from a folder the regular files whose name fully matches one of the given patterns
 and whose time of change is older than the age paired with that pattern, at most limit files when a
 limit is given; a file that vanishes or cannot be removed is passed over.
@@ -40,19 +43,27 @@ FAILURE_FIELD_LIMIT = 80
 STATE_HOME = "HATS_STATE_HOME"
 
 
+def get_default_state_root():
+    return os.path.join(
+        os.path.expanduser("~"),
+        "Library",
+        "Application Support",
+        "Hats",
+    )
+
+
 def get_state_root():
     custom = os.environ.get(STATE_HOME, "")
     if not custom:
-        return os.path.join(
-            os.path.expanduser("~"),
-            "Library",
-            "Application Support",
-            "Hats",
-        )
+        return get_default_state_root()
     if "\x00" in custom or not os.path.isabs(custom):
         return None
 
     return custom
+
+
+def get_no_root_line(script):
+    return f"{script}: {STATE_HOME}={os.environ.get(STATE_HOME)!r} is not an absolute path, so there is no Hats folder"
 
 
 def unattended():
@@ -173,12 +184,13 @@ def record_hook_failure(
         folder = os.path.join(root, folder_name)
         if not stat.S_ISDIR(os.lstat(folder).st_mode):
             return
+        event = data.get("hook_event_name")
     except Exception:
         return
     record_failure(
         folder,
         script,
-        data.get("hook_event_name"),
+        event,
         error,
     )
 

@@ -56,7 +56,7 @@ sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 import handoff
 import handoff_files
-from hats_common import STATE_HOME
+from hats_common import get_no_root_line
 
 FILE_NAME = "anchor-steps.json"
 SIZE_LIMIT = 16 * 1024
@@ -152,8 +152,12 @@ def get_bytes(path):
         raise Skipped(f"cannot be read: {error.strerror or error}") from None
     finally:
         os.close(fd)
+    if reason == handoff_files.NOT_REGULAR:
+        raise Skipped("not a regular file")
+    if reason == handoff_files.get_too_large(SIZE_LIMIT):
+        raise Skipped(f"larger than {SIZE_LIMIT} bytes")
     if data is None:
-        raise Skipped("not a regular file" if reason == handoff_files.NOT_REGULAR else f"larger than {SIZE_LIMIT} bytes")
+        raise Skipped(f"cannot be read: {reason}")
 
     return data
 
@@ -330,8 +334,7 @@ def get_lines(
 def print_steps(given):
     notes_root = handoff.get_notes_root()
     if notes_root is None:
-        custom = os.environ.get(STATE_HOME)
-        print(get_clean(f"anchor-steps: {STATE_HOME}={custom!r} is not an absolute path, so there is no Hats folder"))
+        print(get_clean(get_no_root_line("anchor-steps")))
         return 1
     cwd = handoff.find_work_folder(given, None if given else handoff.claude_process())
     general = os.path.join(os.path.dirname(notes_root), FILE_NAME)

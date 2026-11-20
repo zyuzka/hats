@@ -893,8 +893,23 @@ describe('the notes folder of the plugin', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
   })
 
-  for (const value of ['~/hats-tilde', 'relative/state']) {
-    test(`HATS_STATE_HOME "${value}" is not absolute: the notes go to the default folder`, async ($, on) => {
+  test('HATS_STATE_HOME "" is the default: the notes go to the default folder', async ($, on) => {
+    const scene = createScene($, { on, hasStateHome: false, env: { HATS_STATE_HOME: '' } })
+    await scene.start()
+    const turnId = await scene.startTurn(10)
+    await scene.endTurn(turnId, { percent: 71 })
+
+    await scene.runAnchorTurn({ steps: getOwnNoteSave(scene, HATS_HOME) })
+
+    expect(scene.world.logs).toEqual([
+      'context 71% (anchor threshold 70%) — anchoring this session.',
+      'anchored at 71% of the context window (threshold 70%). ' +
+        'Type /clear to go on from the note in an empty context: the plugin gives it back.',
+    ])
+  })
+
+  for (const value of ['~/hats-tilde', 'relative/state', './hats-dot']) {
+    test(`HATS_STATE_HOME "${value}" is not absolute: no Hats folder, a note of the default folder is not a note`, async ($, on) => {
       const scene = createScene($, { on, hasStateHome: false, env: { HATS_STATE_HOME: value } })
       await scene.start()
       const turnId = await scene.startTurn(10)
@@ -904,9 +919,27 @@ describe('the notes folder of the plugin', () => {
 
       expect(scene.world.logs).toEqual([
         'context 71% (anchor threshold 70%) — anchoring this session.',
+        'the session was not anchored: the note was not rewritten in this anchor. Say "anchor" to try again.',
+      ])
+      const written = scene.world.writes.map((write: { path: string }) => write.path)
+      const asked = [...scene.world.existsAsked, ...scene.world.readPaths, ...written]
+      expect(asked.filter((path: string) => path.includes(value.replace(/^\.\//, '')))).toEqual([])
+    })
+
+    test(`HATS_STATE_HOME "${value}" is not absolute: a memory note is still a note`, async ($, on) => {
+      const scene = createScene($, { on, hasStateHome: false, env: { HATS_STATE_HOME: value } })
+      await scene.start()
+      const turnId = await scene.startTurn(10)
+      await scene.endTurn(turnId, { percent: 71 })
+
+      await scene.runAnchorTurn({ steps: getFullSave(scene) })
+
+      expect(scene.world.logs).toEqual([
+        'context 71% (anchor threshold 70%) — anchoring this session.',
         'anchored at 71% of the context window (threshold 70%). ' +
           'Type /clear to go on from the note in an empty context: the plugin gives it back.',
       ])
+      expect(scene.world.writes.map((write: { path: string }) => write.path)).toEqual([])
     })
   }
 })
