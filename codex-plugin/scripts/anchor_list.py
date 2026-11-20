@@ -9,16 +9,20 @@ as `↳ Hook · <text>`, and hookSpecificOutput.additionalContext, which reaches
 
 Where handoff.py is: <config>/plugins/installed_plugins.json, entry "hats@hats", the first install of scope
 user or of a project whose folder is the session's folder; <config> is $CLAUDE_CONFIG_DIR when it is an
-absolute path, else ~/.claude. The plugin counts as switched off when "hats@hats" is false in
-enabledPlugins of <config>/settings.json. The real path of <installPath>/scripts/handoff.py must lie inside
-the real <config>/plugins/cache and be a regular file of this user; anything else is refused and never run.
-It runs as `python3 -I`, stdin closed, in a process group of its own, for at most 4 seconds; past that the
-group is killed and its pipes closed unread.
+absolute path, else ~/.claude. The plugin counts as switched off by the first explicit true or false for
+"hats@hats" in enabledPlugins of <cwd>/.claude/settings.local.json, then <cwd>/.claude/settings.json, then
+<config>/settings.json, as Claude Code reads them. The real path of <installPath>/scripts/handoff.py must
+lie inside the real <config>/plugins/cache and be a regular file of this user; anything else is refused and
+never run. It runs as `python3 -I`, stdin closed, in a process group of its own, for at most 6 seconds (the
+list keeps to 3.5 seconds after its own start-up); past that the group is killed and its pipes closed
+unread. The child gets the environment without HANDOFF_PROCESS and HANDOFF_TEST*, so nothing there
+stretches its budget. HANDOFF_OFF=1 silences the hook before anything runs.
 
 It never fails a turn: whatever goes wrong, it prints nothing, exits 0 and writes one journal line
-(hats_codex.journal) — no-claude-plugin, claude-plugin-off, refused-path, no-list-command (a Claude plugin
-older than `list`), list-failed, timeout, bad-output, no-output, bad-session, bad-cwd, failed; a list
-passed on is `shown`.
+(hats_codex.journal) — bad-input, handoff-off, no-claude-plugin, claude-plugin-off, refused-path,
+no-list-command (a Claude plugin older than `list`), list-failed, timeout, bad-output, no-output,
+bad-session, bad-cwd, failed. A list passed on is `shown`, journalled after it is written. `shown` and
+`timeout` carry ms, the whole run of list.
 """
 import json
 import os
@@ -26,6 +30,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -35,7 +40,9 @@ import hats_codex as hats
 SCRIPT = "anchor_list"
 EVENT = "SessionStart"
 PLUGIN = "hats@hats"
-LIST_TIMEOUT_S = 4.0
+LIST_TIMEOUT_S = 6.0
+CHILD_DROPPED = ("HANDOFF_PROCESS",)
+CHILD_DROPPED_PREFIX = "HANDOFF_TEST"
 FILE_LIMIT = 1024 * 1024
 OUTPUT_KEYS = {"systemMessage", "hookSpecificOutput"}
 
@@ -72,11 +79,26 @@ def find_install(config, cwd):
     raise Refused("no-claude-plugin")
 
 
-def is_switched_off(config):
-    settings = hats.read_json(os.path.join(config, "settings.json"), FILE_LIMIT)
-    plugins = settings.get("enabledPlugins") if settings is not None else None
+def is_switched_off(config, cwd):
+    for path in (
+        os.path.join(cwd, ".claude", "settings.local.json"),
+        os.path.join(cwd, ".claude", "settings.json"),
+        os.path.join(config, "settings.json"),
+    ):
+        settings = hats.read_json(path, FILE_LIMIT)
+        plugins = settings.get("enabledPlugins") if settings is not None else None
+        if isinstance(plugins, dict) and isinstance(plugins.get(PLUGIN), bool):
+            return not plugins[PLUGIN]
 
-    return isinstance(plugins, dict) and plugins.get(PLUGIN) is False
+    return False
+
+
+def get_child_environment():
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name not in CHILD_DROPPED and not name.startswith(CHILD_DROPPED_PREFIX)
+    }
 
 
 def get_script(config, install):
@@ -97,13 +119,19 @@ def get_script(config, install):
     return real
 
 
+def get_ms(began):
+    return int((time.monotonic() - began) * 1000)
+
+
 def run_list(script, cwd):
+    began = time.monotonic()
     proc = subprocess.Popen(
         [sys.executable, "-I", script, "list", "--cwd", cwd],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
+        env=get_child_environment(),
     )
     try:
         out, err = proc.communicate(timeout=LIST_TIMEOUT_S)
@@ -115,12 +143,12 @@ def run_list(script, cwd):
         proc.stdout.close()
         proc.stderr.close()
         proc.wait()
-        raise Refused("timeout")
+        raise Refused("timeout", ms=get_ms(began))
     if proc.returncode == 2 and b"invalid choice" in err:
         raise Refused("no-list-command")
     if proc.returncode != 0:
         raise Refused("list-failed", code=proc.returncode, stderr=err.decode("utf-8", "replace")[-300:])
-    return out
+    return out, get_ms(began)
 
 
 def is_answer(value):
@@ -157,27 +185,29 @@ def run(data):
     cwd = data.get("cwd")
     if not isinstance(cwd, str) or "\x00" in cwd or not os.path.isabs(cwd) or not os.path.isdir(cwd):
         raise Refused("bad-cwd")
+    if os.environ.get("HANDOFF_OFF") == "1":
+        raise Refused("handoff-off")
     config = get_config_root()
     install = find_install(config, cwd)
-    if is_switched_off(config):
+    if is_switched_off(config, cwd):
         raise Refused("claude-plugin-off")
-    out = run_list(get_script(config, install), cwd)
+    out, ms = run_list(get_script(config, install), cwd)
     if not out.strip():
         raise Refused("no-output")
     value = check_output(out)
-    hats.journal(SCRIPT, EVENT, "shown", user="systemMessage" in value, model="hookSpecificOutput" in value)
-    return out
+    return out, {"user": "systemMessage" in value, "model": "hookSpecificOutput" in value, "ms": ms}
 
 
 def main():
     try:
         data = json.loads(sys.stdin.read() or "{}")
         if not isinstance(data, dict):
-            return 0
-        out = run(data)
-        if out is not None:
-            sys.stdout.buffer.write(out)
+            raise Refused("bad-input")
+        answer = run(data)
+        if answer is not None:
+            sys.stdout.buffer.write(answer[0])
             sys.stdout.buffer.flush()
+            hats.journal(SCRIPT, EVENT, "shown", **answer[1])
     except Refused as refused:
         hats.journal(SCRIPT, EVENT, refused.outcome, **refused.details)
     except Exception as error:

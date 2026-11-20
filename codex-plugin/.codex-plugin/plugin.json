@@ -1,6 +1,6 @@
 {
   "name": "hats",
-  "description": "Hats for Codex: past the warning threshold of the context window it asks the model to write a resume note and tell the user in one line, asks it to update the note at the start of every later turn until Codex compacts the window, and hands the note back to the session after the compaction. Thresholds come from window-thresholds.json in the Hats folder (60% and 70% without it); each session's model window goes to codex-windows/<session id>.json there, from which Hats sets model_auto_compact_token_limit in ~/.codex/config.toml.",
+  "description": "Hats for Codex: past the warning threshold of the context window it asks the model to write a resume note and tell the user in one line, asks it to update the note at the start of every later turn until Codex compacts the window, and hands the note back to the session after the compaction. At the start of a session it shows the anchors of closed Claude Code sessions in the folder, taken from the Hats plugin for Claude Code. Thresholds come from window-thresholds.json in the Hats folder (60% and 70% without it); each session's model window goes to codex-windows/<session id>.json there, from which Hats sets model_auto_compact_token_limit in ~/.codex/config.toml.",
   "version": "0.1.0",
   "author": { "name": "zyuzka" },
   "repository": "https://github.com/zyuzka/hats",
