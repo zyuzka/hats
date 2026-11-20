@@ -167,6 +167,20 @@ final class HatUsageLimitFieldsTests: XCTestCase {
         XCTAssertNil(snapshot(wearing: "work", hats: ["work"]).nextInLine, "the case above has nowhere to go")
     }
 
+    func testHatsCoversNoLimitWhenTheOnlyOtherHatIsOnVacation() {
+        var shown = snapshot(wearing: "work")
+        var away = hat("personal")
+        away.vacationSince = now
+        let back = SwitchCovers.create(from: shown)
+        shown.rows = [
+            HatRowState(hat: hat("work"), isWearing: true, usage: nil, usageTrouble: nil),
+            HatRowState(hat: away, isWearing: false, usage: nil, usageTrouble: nil),
+        ]
+
+        XCTAssertEqual(back, SwitchCovers(fiveHour: true, sevenDay: true), "with the other hat back the switch covers both")
+        XCTAssertEqual(SwitchCovers.create(from: shown), SwitchCovers(fiveHour: false, sevenDay: false))
+    }
+
     func testEveryPollRewritesTheFileWithItsOwnTimeEvenWhenNothingElseChanged() throws {
         var file = HatUsageFile(url: folder.appendingPathComponent(HatUsageFile.name))
         let shown = snapshot(wearing: "work")

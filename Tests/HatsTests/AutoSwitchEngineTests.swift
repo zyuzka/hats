@@ -151,7 +151,7 @@ final class AutoSwitchEngineTests: XCTestCase {
             AutoSwitchEngine.reasonForHolding(
                 policy: armed,
                 world: AutoSwitchWorld(readings: ["work": reading(89), "personal": reading(0)], wearing: "work",
-                                       eligible: ["work", "personal"], blindness: weekRead),
+                                       eligible: ["work", "personal"], onVacation: [], blindness: weekRead),
                 at: now
             ),
             .blindTargetSpent,

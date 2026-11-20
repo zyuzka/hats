@@ -42,6 +42,7 @@ final class RecordingActions: HatsActions {
     func rename(_ id: String) {}
     func chooseBrowser(_ id: String) {}
     func remove(_ id: String) {}
+    func setVacation(_ id: String, on: Bool) {}
     func setGateway(enabled: Bool) {}
     func restartGateway() {}
     func takeOverProfile() {}

@@ -140,6 +140,7 @@ final class VacationTests: XCTestCase {
             readings: readings,
             missed: createMissed(missedPolls),
             fresh: fresh ?? Set(readings.keys),
+            weeklyEverRead: [],
             from: .aPollLanded
         )
         let policy = snapshot.settings.autoSwitch
