@@ -45,7 +45,7 @@ final class CodexSignInRun {
 
     func start() throws {
         let listener = try CodexCallbackListener.open(ports: world.ports) { [weak self] target in
-            self?.answer(target) ?? .plain(404, "Not Found")
+            self?.answer(target) ?? CodexSignInRun.getAnswerWithoutTheRun(target)
         }
         self.listener = listener
         redirectURI = CodexOAuth.redirectURI(port: listener.port)
@@ -68,7 +68,7 @@ final class CodexSignInRun {
     func answer(_ target: String) -> CodexHTTPAnswer {
         switch CodexCallback.judge(target: target, state: secrets.state) {
         case .successPage:
-            return .page(200, "Signed in to Codex. Hats has the login; you can close this tab.")
+            return Self.successPage
         case .notFound:
             return .plain(404, "Not Found")
         case .stateMismatch:
@@ -129,6 +129,17 @@ final class CodexSignInRun {
         world.onMain { [weak self] in self?.ended(outcome) }
 
         return true
+    }
+
+    static let successPage = CodexHTTPAnswer.page(
+        200,
+        "Signed in to Codex. Hats has the login; you can close this tab."
+    )
+
+    static func getAnswerWithoutTheRun(_ target: String) -> CodexHTTPAnswer {
+        let path = URLComponents(string: "http://127.0.0.1" + target)?.path
+
+        return path == "/success" ? successPage : .plain(404, "Not Found")
     }
 
     static func journalName(_ ending: Ending) -> String {

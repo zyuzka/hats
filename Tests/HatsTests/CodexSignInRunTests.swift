@@ -103,6 +103,47 @@ final class CodexSignInRunTests: XCTestCase {
         XCTAssertEqual(endings.count, 1, "the deadline after the end changes nothing")
     }
 
+    func testTheSuccessPageStillAnswersAfterTheSignInIsReleased() throws {
+        let port = LocalSockets.freePorts(1)[0]
+        var signIn: CodexSignInRun? = run(ports: [port])
+        weak var released = signIn
+        defer { deadlines.forEach { $0() } }
+        let tokens: [String: String] = [
+            "id_token": CodexFixture.idToken(user: "u", account: "a", email: "work@example.com"),
+            "access_token": CodexFixture.accessToken(expiresAt: CodexFixture.now, tag: "a"),
+            "refresh_token": "r-1",
+        ]
+        answer = (200, try JSONSerialization.data(withJSONObject: tokens))
+        try signIn?.start()
+        let state = try state(of: opened.first)
+
+        let right = try LocalSockets.get("/auth/callback?code=the-code&state=\(state)", port: port)
+        XCTAssertTrue(right.contains("Location: /success\r\n"))
+        signIn = nil
+        XCTAssertNil(released, "nothing but the test holds the sign-in, as when the flow settles it")
+
+        let success = try LocalSockets.get("/success", port: port)
+        XCTAssertTrue(success.hasPrefix("HTTP/1.1 200"), success)
+        XCTAssertTrue(success.contains("Signed in to Codex"), success)
+        let other = try LocalSockets.get("/auth/callback?code=again&state=\(state)", port: port)
+        XCTAssertTrue(other.hasPrefix("HTTP/1.1 404"), other)
+        deadlines.forEach { $0() }
+        XCTAssertThrowsError(try LocalSockets.get("/success", port: port), "the listener closes after its wait")
+    }
+
+    func testWithoutTheRunOnlyTheSuccessPathAnswersWithThePage() {
+        XCTAssertEqual(CodexSignInRun.getAnswerWithoutTheRun("/success"), CodexSignInRun.successPage)
+        XCTAssertEqual(CodexSignInRun.getAnswerWithoutTheRun("/success?x=1"), CodexSignInRun.successPage)
+        let others = [
+            "/other",
+            "/auth/callback?state=&code=x",
+            "/auth/callback?error=access_denied",
+        ]
+        for target in others {
+            XCTAssertEqual(CodexSignInRun.getAnswerWithoutTheRun(target).status, 404, target)
+        }
+    }
+
     func testARefusalOfThePageEndsAndClosesTheListener() throws {
         let port = LocalSockets.freePorts(1)[0]
         let signIn = run(ports: [port])
