@@ -164,6 +164,36 @@ printf 'not json' > "$root/window-thresholds.json"
 percent_of 61 > "$tr"
 ctx=$(run_window "$(input UserPromptSubmit)" | context)
 has "broken thresholds: 60/70 at 61%" "$ctx" "do that at 70%"
+has "broken thresholds: journal names it" "$(cat "$journal")" '"thresholds-unreadable"'
+has "broken thresholds: journal says why" "$(cat "$journal")" 'not a JSON object'
+has "warn >= save: journal names both" "$(cat "$journal")" 'warn_percent=70 not below save_percent=60'
+printf '{"warn_percent": 9, "save_percent": 70}' > "$root/window-thresholds.json"
+run_window "$(input UserPromptSubmit)" >/dev/null
+has "warn out of range: journal names the value" "$(cat "$journal")" 'warn_percent=9'
+reset; percent_of 61 > "$tr"
+printf '{"warn_percent": 60, "save_percent": 70}' > "$root/window-thresholds.json"
+run_window "$(input UserPromptSubmit)" >/dev/null
+lacks "usable thresholds: no unreadable line" "$(cat "$journal")" '"thresholds-unreadable"'
+
+# 8c. A FIFO in place of a file the hooks read never hangs them: 60/70 and a journal line, at once.
+reset; percent_of 61 > "$tr"
+mkfifo "$root/window-thresholds.json"
+started=$(date +%s)
+ctx=$(printf '%s' "$(input UserPromptSubmit)" | env HATS_STATE_HOME="$root" TMPDIR="$tmp" \
+  perl -e 'alarm 5; exec @ARGV' python3 -I "$WINDOW" 2>&1 | context)
+took=$(( $(date +%s) - started ))
+has "FIFO thresholds: 60/70 at 61%" "$ctx" "do that at 70%"
+if [ "$took" -lt 4 ]; then ok; else bad "FIFO thresholds: no hang" "took ${took}s"; fi
+has "FIFO thresholds: journal" "$(cat "$journal" 2>/dev/null)" '"thresholds-unreadable"'
+rm -f "$root/window-thresholds.json"
+reset; percent_of 61 > "$tr"; run_window "$(input UserPromptSubmit)" >/dev/null
+rm -f "$note"; mkfifo "$note"
+started=$(date +%s)
+printf '%s' "$(input SessionStart ',"source":"compact"')" | env HATS_STATE_HOME="$root" TMPDIR="$tmp" \
+  perl -e 'alarm 5; exec @ARGV' python3 -I "$NOTE_BACK" >/dev/null 2>&1
+took=$(( $(date +%s) - started ))
+if [ "$took" -lt 4 ]; then ok; else bad "FIFO note: no hang" "took ${took}s"; fi
+rm -f "$note"
 
 # 9. Broken session file: no token_count, info null, garbage, no file, empty input.
 reset; message hello > "$tr"; printf '%s\n' "$NO_INFO" >> "$tr"; printf '{not json "token_count"\n' >> "$tr"

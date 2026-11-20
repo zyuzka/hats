@@ -108,19 +108,25 @@ def is_threshold(value, allowed):
 
 
 def get_thresholds():
-    """(warn, save, origin): from window-thresholds.json of the Hats folder, 60 and 70 without a usable one."""
+    """(warn, save, origin): from window-thresholds.json of the Hats folder, 60 and 70 without a usable one.
+
+    origin is "default" without the file, "file" when it was used, and "unreadable: <what>" when it was not:
+    the caller records that reason, so a fall back to 60 and 70 is never silent.
+    """
     path = os.path.join(get_hats_root(), THRESHOLDS_FILE)
     if not os.path.lexists(path):
         return DEFAULT_WARN, DEFAULT_SAVE, "default"
     data = read_json(path, THRESHOLDS_LIMIT)
     if data is None:
-        return DEFAULT_WARN, DEFAULT_SAVE, "unreadable"
+        return DEFAULT_WARN, DEFAULT_SAVE, "unreadable: not a JSON object in a regular file"
     warn = data.get("warn_percent", DEFAULT_WARN)
     save = data.get("save_percent", DEFAULT_SAVE)
-    if not is_threshold(warn, WARN_RANGE) or not is_threshold(save, SAVE_RANGE):
-        return DEFAULT_WARN, DEFAULT_SAVE, "unreadable"
+    if not is_threshold(warn, WARN_RANGE):
+        return DEFAULT_WARN, DEFAULT_SAVE, f"unreadable: warn_percent={json.dumps(warn)}"
+    if not is_threshold(save, SAVE_RANGE):
+        return DEFAULT_WARN, DEFAULT_SAVE, f"unreadable: save_percent={json.dumps(save)}"
     if warn is not None and save is not None and warn >= save:
-        return DEFAULT_WARN, DEFAULT_SAVE, "unreadable"
+        return DEFAULT_WARN, DEFAULT_SAVE, f"unreadable: warn_percent={warn} not below save_percent={save}"
     return warn, save, "file"
 
 
@@ -146,7 +152,7 @@ def write_whole(folder, name, record):
 
 def read_json(path, limit=64 * 1024):
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return None
     try:
@@ -176,7 +182,7 @@ def get_journal_path():
 
 def shorten(path):
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return
     try:
@@ -216,7 +222,7 @@ def journal(script, event, outcome, **details):
             shorten(path)
         except OSError:
             pass
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
         with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception:

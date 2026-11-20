@@ -85,7 +85,7 @@ def find_last_count(path):
     if not isinstance(path, str) or not path:
         return None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except OSError:
         return None
     with os.fdopen(fd, "rb") as f:
@@ -223,7 +223,9 @@ def run(data):
         record_window(data, session, (tokens, window, percent, end_percent))
     except OSError as error:
         hats.journal(SCRIPT, event, "window-not-recorded", error=type(error).__name__)
-    warn, save, _ = hats.get_thresholds()
+    warn, save, origin = hats.get_thresholds()
+    if origin.startswith("unreadable"):
+        hats.journal(SCRIPT, event, "thresholds-unreadable", reason=origin)
     if warn is None or save is None:
         return None
     if percent < warn:
