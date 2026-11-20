@@ -75,12 +75,13 @@ struct FirstWarned: Equatable {
         in stages: [SessionStage]
     ) -> FirstWarning? {
         guard let worn, let episode else { return nil }
-        let earliest = stages
+        let matching: [LimitEpisode] = stages
             .flatMap(\.limitEpisodes)
-            .filter {
-                $0.limit == limit
-                    && abs($0.resetsAt.timeIntervalSince(episode)) < LimitThresholdNotices.episodeSpell
+            .filter { (item: LimitEpisode) -> Bool in
+                item.limit == limit
+                    && abs(item.resetsAt.timeIntervalSince(episode)) < LimitThresholdNotices.episodeSpell
             }
+        let earliest: Date? = matching
             .flatMap(\.events)
             .filter { $0.stage == .warned && $0.worn == worn }
             .map(\.at)

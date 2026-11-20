@@ -480,7 +480,10 @@ after anchor: none
 project steps skipped: $work/a\\u000ab is not marked: there is no $general" "$out"
 calm "перевод строки в пути"
 rm -rf "$odd"
-if [ "$(uname)" = Darwin ]; then
+latin=$(env LC_ALL=en_US.ISO8859-1 python3 -I -c 'import sys; print(sys.stdout.encoding.lower())' 2>/dev/null)
+if [ "$(uname)" != Darwin ] || [ "$latin" = utf-8 ] || [ -z "$latin" ]; then
+  echo "  пропущено: «кодировка терминала без кириллицы» — при LC_ALL=en_US.ISO8859-1 вывод Python здесь «${latin:-неизвестна}», не латиница"
+else
   reset; put "$general" '{"before":["Шаг"]}'
   out=$(env LC_ALL=en_US.ISO8859-1 HOME="$work" python3 -I "$SCRIPT" --cwd "$proj" 2>&1); rc=$?
   has "кодировка терминала без кириллицы — шаг экранирован, не падает" "1. [general] \\u0428\\u0430\\u0433" "$out"
