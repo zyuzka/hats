@@ -205,6 +205,36 @@ final class CodexContinueRunTests: XCTestCase {
         XCTAssertEqual(links.count, 2, "below the warning threshold arms it again")
     }
 
+    func testASecondSessionWhoseTurnEndedAgainWhileTheFirstWasCompactedIsReadAgain() throws {
+        let other = "01a1f45d-1f8b-70d2-9802-e99966ada0d3"
+        try Data("note".utf8).write(to: notes.appendingPathComponent("\(other).md"))
+        try serviceIsUp()
+        let folder = root.appendingPathComponent(CodexCompactLimitSync.folderName)
+        let write = { [now] (id: String, percent: Int, ago: TimeInterval) in
+            let stamp = ISO8601DateFormatter().string(from: now.addingTimeInterval(-ago))
+            let text = #"{"session": "\#(id)", "window": 475000, "percent": \#(percent), "event": "Stop", "#
+                + #""written_at": "\#(stamp)"}"#
+            try Data(text.utf8).write(to: folder.appendingPathComponent("\(id).json"))
+        }
+        let first = session
+        try write(first, 72, 25)
+        try write(other, 74, 25)
+        let run = makeRun { [made] _ in
+            let link = FakeServiceLink()
+            made.mutate { $0.append(link) }
+            if made.value.count == 1 {
+                try write(first, 30, 21)
+                try write(other, 30, 21)
+            }
+            return link
+        }
+
+        settle(run, on)
+
+        XCTAssertEqual(links.count, 1,
+                       "the other session ended a new turn below the threshold while the first was compacted")
+    }
+
     func testAnEndOfTurnThatAgedPastTenMinutesWhileWaitingIsLeftAlone() throws {
         try serviceIsUp()
         try window(72, ago: CodexContinue.freshFor + 1)

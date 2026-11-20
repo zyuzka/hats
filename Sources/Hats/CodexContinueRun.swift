@@ -80,6 +80,7 @@ final class CodexContinueRun {
         let scan = CodexContinue.scan(folder, now: now())
         let due = memory.due(scan, warn: wish.warnPercent, save: wish.savePercent, now: now())
         for mark in due where CodexContinue.isFresh(mark, now: now()) {
+            guard CodexContinue.isUnchanged(mark, in: folder, now: now()) else { continue }
             act(on: mark)
         }
     }

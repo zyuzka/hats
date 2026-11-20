@@ -36,6 +36,10 @@ enum CodexContinue {
         return scan
     }
 
+    static func isUnchanged(_ mark: CodexWindowMark, in folder: URL, now: Date) -> Bool {
+        read(folder.appendingPathComponent("\(mark.session).json"), session: mark.session, now: now) == mark
+    }
+
     static func isFresh(_ mark: CodexWindowMark, now: Date) -> Bool {
         now.timeIntervalSince(mark.writtenAt) <= freshFor
     }
