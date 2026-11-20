@@ -402,7 +402,8 @@ print("no" if module.unattended() else "yes")' "$plugin_root/scripts/handoff.py"
   local snapshot=no common
   rm -rf "$work/snap"; mkdir -p "$work/snap"
   printf '{"session_id":"s1","background_tasks":[],"session_crons":[]}' |
-    env -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT HATS_STATE_HOME="$work/snap" "$@" \
+    env -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT -u STOP_SNAPSHOT_TEST -u STOP_SNAPSHOT_TEST_PAUSE \
+      -u STOP_SNAPSHOT_TEST_MARK HATS_STATE_HOME="$work/snap" "$@" \
     python3 -I "$plugin_root/scripts/stop-snapshot.py" >/dev/null 2>&1
   [ -e "$work/snap/stop-snapshots/s1.json" ] && snapshot=yes
   common=$(env -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_ENTRYPOINT "$@" python3 -I -B -c 'import sys

@@ -1,6 +1,5 @@
 """Helpers that several plugin scripts share, kept in one place so a fix reaches every script.
 
-handoff.py, window-fill.py and stop-snapshot.py import it from their own folder.
 unattended: the session has no person — CLAUDE_CODE_SESSION_ATTENDED=0, else, when that variable
 is not set, CLAUDE_CODE_ENTRYPOINT starting with sdk.
 write_whole: writes a JSON record whole — a temporary .tmp-*.json beside the target, mode 600, then
