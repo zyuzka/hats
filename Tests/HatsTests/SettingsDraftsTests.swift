@@ -197,6 +197,23 @@ final class SettingsDraftsTests: XCTestCase {
         XCTAssertEqual(SettingsCloseQuestion.getAnswer(at: -1), .cancel)
     }
 
+    func testTheCloseQuestionShortensAVeryLongPastedNumberAndKeepsItsReason() {
+        // Arrange
+        let stored = settings()
+        let drafts = SettingsDrafts()
+        drafts.setText(String(repeating: "9", count: 5000), of: .settle, in: stored)
+
+        // Act
+        let prompt = SettingsCloseQuestion.getPrompt(drafts.getLeftovers(in: stored))
+
+        // Assert
+        XCTAssertEqual(
+            prompt.text,
+            "Settle 99999999…: from 0 to 600 s\nDiscard them, or cancel and fix them.",
+            "a pasted wall of digits must not push the buttons off the screen"
+        )
+    }
+
     func testAnUntouchedFieldIsJudgedAgainstTheStoredNeighbour() {
         // Arrange
         let stored = settings()
