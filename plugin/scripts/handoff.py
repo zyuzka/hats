@@ -107,8 +107,9 @@ writes no note into the live one), and no root at all for any other value, a rel
 `where` and `new` without --memory refuse with get_no_root_line of hats_common.py and exit 1, `save`
 accepts only a memory note, and no note of the notes folder is recognised; <project> is the first 16
 hex digits of the sha256 of the real path of the working folder, so /a/b-c and /a-b/c get different
-folders. It works with Claude Code's memory switched off, survives the plugin's removal, and needs no running Hats. `where` creates it with mode 700 (a folder that
-exists is left as it is) and prints it; `where` and `save` take the working folder from one function.
+folders. It works with Claude Code's memory switched off, survives the plugin's removal, and needs no
+running Hats. `where` creates it with mode 700 (a folder that exists is left as it is) and prints it;
+`where` and `save` take the working folder from one function.
 The root is computed by one function, get_notes_root in handoff_paths.py, the same for `new`, `where`,
 `save`, `start`, `took`,
 `allow` and anchor-steps.py, and never taken from the command line or a variable of the plugin's own:
