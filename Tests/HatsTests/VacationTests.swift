@@ -1041,11 +1041,19 @@ final class VacationTests: XCTestCase {
                 + "the developer's own list of hats"
         )
 
-        return AccountStore(osAccount: "vacation-test", keychain: FakeKeychain().world())
+        return AccountStore(
+            osAccount: "vacation-test",
+            keychain: FakeKeychain().world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
     }
 
     private func getReloaded(_ id: String) throws -> Account {
-        let store = AccountStore(osAccount: "vacation-test", keychain: FakeKeychain().world())
+        let store = AccountStore(
+            osAccount: "vacation-test",
+            keychain: FakeKeychain().world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         return try XCTUnwrap(store.accounts.first { $0.id == id })
     }

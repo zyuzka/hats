@@ -14,7 +14,11 @@ final class VacationWiringTests: XCTestCase {
             "the store writes accounts.json through StateDirectory, and without HATS_STATE_HOME that is "
                 + "the developer's own list of hats"
         )
-        let store = AccountStore(osAccount: "vacation-wiring-test", keychain: keychain.world())
+        let store = AccountStore(
+            osAccount: "vacation-wiring-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
         store.journaling = { [unowned self] operation, line in
             operations.append(operation)
             lines.append(line)

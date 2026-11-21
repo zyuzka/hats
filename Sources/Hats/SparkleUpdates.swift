@@ -5,12 +5,14 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
     var whenCanCheckNowChanges: (() -> Void)?
 
     private let decideTheRestart: () -> GatewayStopDecision
+    private let confirm: (String) -> Bool
+    private let notify: (_ title: String, _ body: String) -> Void
     private var controller: SPUStandardUpdaterController?
     private var canCheckWatch: NSKeyValueObservation?
     private lazy var gate = UpdateInstallGate(
         decideTheRestart: decideTheRestart,
-        confirm: { HatDialogs.hasConfirmedInstallingTheUpdate(cost: $0) },
-        notify: { Notifier.post(title: $0, body: $1) },
+        confirm: confirm,
+        notify: notify,
         beforeAsking: { [weak self] ask in
             DispatchQueue.main.async {
                 self?.controller?.userDriver.dismissUpdateInstallation()
@@ -20,8 +22,14 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
         waitingChanged: { [weak self] in self?.whenCanCheckNowChanges?() }
     )
 
-    private init(decideTheRestart: @escaping () -> GatewayStopDecision) {
+    init(
+        decideTheRestart: @escaping () -> GatewayStopDecision,
+        confirm: @escaping (String) -> Bool,
+        notify: @escaping (_ title: String, _ body: String) -> Void
+    ) {
         self.decideTheRestart = decideTheRestart
+        self.confirm = confirm
+        self.notify = notify
     }
 
     static func createIfConfigured(
@@ -33,7 +41,11 @@ final class SparkleUpdates: NSObject, AppUpdater, SPUUpdaterDelegate, SPUStandar
             return nil
         }
 
-        return SparkleUpdates(decideTheRestart: decideTheRestart)
+        return SparkleUpdates(
+            decideTheRestart: decideTheRestart,
+            confirm: { HatDialogs.hasConfirmedInstallingTheUpdate(cost: $0) },
+            notify: { Notifier.post(title: $0, body: $1) }
+        )
     }
 
     var canCheckNow: Bool { controller?.updater.canCheckForUpdates ?? false }

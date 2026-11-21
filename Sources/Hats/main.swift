@@ -1,7 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = AccountStore()
+    let store = AccountStore.createLive()
     let popover = HatsPopover()
     let sessions = LiveSessionsWindow()
     let releases = ReleasesWindow()

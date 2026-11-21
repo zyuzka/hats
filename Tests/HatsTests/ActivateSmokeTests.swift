@@ -52,8 +52,8 @@ final class ActivateSmokeTests: XCTestCase {
         system.status = loggedIn(as: outgoingEmail)
         let store = AccountStore(osAccount: "activate-smoke-test",
                                  keychain: keychain.world(),
-                                 system: system.world())
-        store.fetchingTokenIdentity = { _ in .unreachable }
+                                 system: system.world(),
+                                 fetchingTokenIdentity: OfflineProfile.fetch)
 
         let leaving = try store.add(email: outgoingEmail, browser: nil)
         let arriving = try store.add(email: incomingEmail, browser: nil)
@@ -93,8 +93,8 @@ final class ActivateSmokeTests: XCTestCase {
         system.environmentOf = { _ in .read([:]) }
         let store = AccountStore(osAccount: "activate-smoke-seams",
                                  keychain: keychain.world(),
-                                 system: system.world())
-        store.fetchingTokenIdentity = { _ in .unreachable }
+                                 system: system.world(),
+                                 fetchingTokenIdentity: OfflineProfile.fetch)
 
         let leaving = try store.add(email: outgoingEmail, browser: nil)
         let arriving = try store.add(email: incomingEmail, browser: nil)

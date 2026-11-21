@@ -12,7 +12,11 @@ final class SignInGateTests: XCTestCase {
             loginInFlight: { inFlight }
         )
 
-        let store = AccountStore(osAccount: "gate-test", keychain: FakeKeychain().world())
+        let store = AccountStore(
+            osAccount: "gate-test",
+            keychain: FakeKeychain().world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         return LoginFlow(store: store, world: world)
     }

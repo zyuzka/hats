@@ -36,7 +36,11 @@ final class AbandoningASignInTests: XCTestCase {
             loginInFlight: { inFlight }
         )
 
-        let store = AccountStore(osAccount: "abandon-test", keychain: FakeKeychain().world())
+        let store = AccountStore(
+            osAccount: "abandon-test",
+            keychain: FakeKeychain().world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         return LoginFlow(store: store, world: world)
     }

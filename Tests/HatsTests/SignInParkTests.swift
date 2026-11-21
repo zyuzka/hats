@@ -39,8 +39,8 @@ final class SignInParkTests: XCTestCase {
         system.status = status
         let store = AccountStore(osAccount: "signin-park-test",
                                  keychain: keychain.world(),
-                                 system: system.world())
-        store.fetchingTokenIdentity = { _ in .unreachable }
+                                 system: system.world(),
+                                 fetchingTokenIdentity: OfflineProfile.fetch)
 
         return (store, keychain, liveSlot)
     }
@@ -129,8 +129,12 @@ final class SignInParkTests: XCTestCase {
         }
         system.trusts = { _ in true }
         system.environmentOf = { _ in .read([CLIState.configDirVariable: otherDir]) }
-        let store = AccountStore(osAccount: "signin-park-test", keychain: keychain.world(), system: system.world())
-        store.fetchingTokenIdentity = { _ in .unreachable }
+        let store = AccountStore(
+            osAccount: "signin-park-test",
+            keychain: keychain.world(),
+            system: system.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
         let worn = try store.add(email: wornEmail, browser: nil)
         let target = try store.add(email: targetEmail, browser: nil)
         keychain.contents[Slot.parked(worn.id)] = staleCopy

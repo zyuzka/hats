@@ -6,7 +6,11 @@ final class WriteVerifiedTests: XCTestCase {
     private let blob = credential(expiresAt: 1_700_000_000_000)
 
     private func store(_ keychain: FakeKeychain) -> AccountStore {
-        AccountStore(osAccount: "write-verified-test", keychain: keychain.world())
+        AccountStore(
+            osAccount: "write-verified-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
     }
 
     func testAWriteThatTookComesBackAsWhatWasWritten() throws {
