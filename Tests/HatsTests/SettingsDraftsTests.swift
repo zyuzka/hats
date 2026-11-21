@@ -564,7 +564,7 @@ final class SettingsDraftsTests: XCTestCase {
 
         // Assert
         XCTAssertFalse(window.contains("Button(\"Apply\")"), "the window has no Apply")
-        XCTAssertTrue(window.contains(".frame(width: 460, height: 420)"))
+        XCTAssertTrue(window.contains(".frame(width: 460, height: 456)"))
         XCTAssertTrue(window.contains("""
             func windowShouldClose(_ sender: NSWindow) -> Bool {
                 sender.makeFirstResponder(nil)
