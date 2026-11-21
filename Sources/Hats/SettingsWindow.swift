@@ -19,7 +19,7 @@ struct SettingsTabs: View {
                 .tabItem { Text("Gateway") }
         }
         .padding(14)
-        .frame(width: 460, height: 420)
+        .frame(width: 460, height: 456)
         .onChange(of: model.snapshot.settings) { now in drafts.prune(in: now) }
     }
 }
