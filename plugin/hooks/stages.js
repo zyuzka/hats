@@ -57,6 +57,7 @@ export const getRequestFailedLine = (state, reason) => (isRetryDue(state, reason
 export const setRequestFailed = (state, reason) => {
   const isWindow = isWindowRequest(state)
   const isRetry = isRetryDue(state, reason)
+  const round = state.request?.round ?? null
   setAskFailed(state.request?.limits ?? [])
   state.request = null
   if (!isWindow) return
@@ -64,6 +65,8 @@ export const setRequestFailed = (state, reason) => {
   if (!isRetry) return
   state.arm.save = true
   state.arm.failures += 1
+  if (round !== null) round.isWaiting = false
+  state.drain = round
 }
 
 export async function failRequest($, job) {

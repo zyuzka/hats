@@ -570,6 +570,25 @@ describe('the check of the anchor turn', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
   })
 
+  test('takes no snapshot of an earlier note over the size limit: unknown, not absent, and the save still runs', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    await scene.runAnchorTurn({ steps: getFullSave(scene) })
+    scene.world.setFile(NOTE, `${NOTE_TEXT}${'x'.repeat(2_000_001)}`)
+    const turnId = await scene.startTurn(40)
+    await scene.endTurn(turnId, { percent: 56 })
+
+    await scene.runAnchorTurn({
+      steps: [
+        () => writeByShell(scene, `${NOTE_TEXT}\nsecond\n`),
+        scene.runSave,
+      ],
+    })
+
+    expect(scene.world.runs).toEqual(TWO_RUNS)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
+  })
+
   test('fails for a note the marker of this process named, only touched after the request', async ($, on) => {
     const scene = createScene($, { on })
     await anchorOnceMore(scene)

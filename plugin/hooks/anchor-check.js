@@ -25,6 +25,8 @@ import {
   getNotesRoot,
 } from './files.js'
 
+const NOTE_LIMIT = 2_000_000
+
 let processMarker = null
 
 export const createTurn = (id, startedAt) => ({
@@ -142,6 +144,8 @@ export async function findAskedNote($) {
   if (config === null || !isMarkerPlace(processMarker, `${config}/state/handoff`)) return null
   const marker = await findMarker($, processMarker)
   const target = marker === null ? null : await findNoteTarget($, marker.note)
+  const stat = target === null ? null : await $.fs.stat(target).catch(() => null)
+  if (stat !== null && stat.size > NOTE_LIMIT) return null
   const before = target === null ? null : await findTextState($, target)
 
   return before === null ? null : { key: target, before }
@@ -176,6 +180,7 @@ export async function findVerdict($, check) {
     before: turn.snapshots.get(key) ?? (asked?.key === key ? asked.before : undefined),
     own,
     sha,
+    saved: marker.sha256,
   })
   if (verdict === null && own === undefined) turn.ownWrites.set(key, sha)
 

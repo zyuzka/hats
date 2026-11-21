@@ -1,6 +1,7 @@
 """The save, check, where and new commands.
 
 Part of handoff.py, which holds the contract of the whole hook."""
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -14,6 +15,15 @@ from handoff_markers import enabled, handed_file, load_markers, marker_file, sav
 from handoff_paths import allowed_note, get_notes_root, get_project_folder, is_memory_folder, memory_root, state_dir
 from handoff_proc import claude_process, find_work_folder, liveness
 from hats_common import write_text_whole
+
+
+def read_sha256(path, limit):
+    try:
+        with open(path, "rb") as f:
+            data = f.read(limit + 1)
+    except (OSError, ValueError):
+        return None
+    return None if len(data) > limit else hashlib.sha256(data).hexdigest()
 
 
 def cmd_save(args):
@@ -34,7 +44,8 @@ def cmd_save(args):
               f"<Claude config>/projects/<folder>/memory/<name>.md, and {given} is not; marker not written")
         return 1
     text = read_regular(note, SOURCE_SIZE_LIMIT)
-    if text is None:
+    sha = read_sha256(note, SOURCE_SIZE_LIMIT)
+    if text is None or sha is None:
         print(f"handoff: could not read the note {note}")
         return 1
     marker = {
@@ -44,6 +55,7 @@ def cmd_save(args):
         "note": note,
         "topic": " ".join(args.topic.split())[:TOPIC_LIMIT],
         "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "sha256": sha,
     }
     path = os.path.join(state_dir(), marker_file(pid, started))
     try:

@@ -1,4 +1,5 @@
 import { mock } from 'claude-code/testing'
+import { getSha256 } from '../../hooks/thresholds.js'
 
 export const HOME = '/home/u'
 export const CONFIG = `${HOME}/.claude`
@@ -132,6 +133,7 @@ const createWorld = (options: SceneOptions) => {
     onClear: null as null | (() => Promise<unknown>),
     endSession: async (_reason: string) => {},
     savedAt: null as string | null,
+    isMarkerShaless: false,
     setFile: (path: string, text: string, extra: Partial<Entry> = {}) => {
       files.set(resolve(path), { text, mtimeMs: clock.now(), kind: 'file', ...extra })
     },
@@ -203,7 +205,7 @@ const answerFiles = (world: World, on: any) => {
   })
 }
 
-const answerBash = (world: World, command: string) => {
+const answerBash = async (world: World, command: string) => {
   const { paths } = world
   if (command === paths.newCommand) {
     if (!world.files.has(world.resolve(paths.note))) world.setFile(paths.note, '')
@@ -218,7 +220,9 @@ const answerBash = (world: World, command: string) => {
     topic: 'task',
     saved_at: world.savedAt ?? getStamp(world.clock.now()),
   }
-  world.setFile(paths.marker, JSON.stringify(marker, null, 1))
+  const note = world.files.get(world.resolve(paths.note))
+  const sha = note === undefined || world.isMarkerShaless ? {} : { sha256: await getSha256(note.text) }
+  world.setFile(paths.marker, JSON.stringify({ ...marker, ...sha }, null, 1))
 
   return createBashResult(`marker: ${paths.marker}\nindex: updated\nMEMORY.md: has the index line\nquotes and numbers: all verified`)
 }
