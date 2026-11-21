@@ -8,10 +8,29 @@ final class AccountStoreOfflineTests: XCTestCase {
         .deletingLastPathComponent()
         .appendingPathComponent("Sources/Hats")
 
-    func testTheFetchEveryTestStoreIsGivenAnswersWithoutTheNetwork() {
-        let answer = OfflineProfile.fetch("live-token")
+    func testTheStoreAsksWhoseTokenItIsThroughTheFetchItWasGiven() {
+        var asked: [String] = []
+        let fetched = expectation(description: "the store asked through the fetch it was given")
+        let store = AccountStore(
+            osAccount: "offline-test",
+            keychain: FakeKeychain().world(),
+            fetchingTokenIdentity: { token in
+                asked.append(token)
+                fetched.fulfill()
+                return OfflineProfile.fetch(token)
+            }
+        )
+        let live = Data(#"{"claudeAiOauth":{"accessToken":"live-token"}}"#.utf8)
 
-        XCTAssertEqual(answer, .unreachable)
+        store.askWhoseTokenIsInTheSlot(expecting: "someone@example.co", credential: live, at: "test")
+        wait(for: [fetched], timeout: 1.0)
+
+        XCTAssertEqual(
+            asked,
+            [
+                "live-token",
+            ]
+        )
     }
 
     func testTheAppBuildsItsStoreOnlyThroughTheLiveFactory() throws {
