@@ -88,13 +88,19 @@ enum SettingsCloseQuestion {
     }
 
     static func getPrompt(_ leftovers: [SettingsLeftover]) -> HatPrompt {
-        let lines = leftovers.map { "\($0.name) \($0.text): \($0.reason)" }
+        let lines = leftovers.map { "\($0.name) \(getShown($0.text)): \($0.reason)" }
 
         return HatPrompt(
             title: "Some typed numbers were not applied",
             text: (lines + ["Discard them, or cancel and fix them."]).joined(separator: "\n"),
             buttons: answers.map(getTitle)
         )
+    }
+
+    static let shownDigits = 8
+
+    static func getShown(_ text: String) -> String {
+        text.count > shownDigits ? text.prefix(shownDigits) + "…" : text
     }
 
     static func getAnswer(at index: Int) -> SettingsCloseQuestion {
