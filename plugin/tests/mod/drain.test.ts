@@ -438,6 +438,23 @@ describe('waiting at the anchor threshold', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'requested', save_round: 1, drain_minutes: 5 })
   })
 
+  test('a save that failed for a reason the next turn can fix runs again past the deadline, without a new wait', async ($, on) => {
+    const scene = createScene($, { on })
+    useFile(scene)
+    await startWaiting(scene)
+    await endTurnWith(scene, { percent: 57, tasks: HOLDERS, waitMs: 6 * MINUTE })
+    await scene.runAnchorTurn({ steps: [] })
+
+    await endTurnWith(scene, { percent: 57, tasks: HOLDERS })
+
+    expect(scene.world.runs).toEqual([
+      'hats:anchor',
+      'hats:anchor',
+    ])
+    expect(scene.world.logs.filter((line: string) => line.startsWith('anchoring waits'))).toEqual([getWaitLine(2, 5)])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'requested', save_round: 2 })
+  })
+
   test('gives the list in the first result of the anchor turn that is not refused, and only there', async ($, on) => {
     const scene = createScene($, { on })
     useFile(scene)

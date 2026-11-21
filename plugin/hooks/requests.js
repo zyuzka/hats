@@ -249,6 +249,7 @@ async function askToAnchor($, job) {
     state.pending = null
     if (!isWaiting(state)) state.saveRound += 1
     setReading(state, reading)
+    request.round = state.drain
     state.drain = null
     setStage(state, { stage: 'requested' })
   }

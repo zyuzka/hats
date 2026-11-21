@@ -510,6 +510,10 @@ if python3 -I -c 'import json,re,sys; m=json.load(open(sys.argv[1], encoding="ut
 sys.exit(0 if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", m["saved_at"]) else 1)' \
   "$markers/4242-Mon-Nov-9-10-00-00-2026.json" 2>/dev/null; then ok
 else bad "save: saved_at отметки — YYYY-MM-DDTHH:MM:SSZ, его читает мод" "$(cat "$markers"/*.json 2>&1 | head -5)"; fi
+if python3 -I -c 'import hashlib,json,sys; m=json.load(open(sys.argv[1], encoding="utf-8"))
+sys.exit(0 if m.get("sha256") == hashlib.sha256(open(sys.argv[2], "rb").read()).hexdigest() else 1)' \
+  "$markers/4242-Mon-Nov-9-10-00-00-2026.json" "$note" 2>/dev/null; then ok
+else bad "save: sha256 отметки — sha256 байтов записки, его сверяет мод" "$(cat "$markers"/*.json 2>&1 | head -8)"; fi
 out=$(python3 -I - "$HOOK_SOURCE" "$plugin_root/tests/mod/thresholds.test.ts" <<'PYEOF' 2>&1
 import importlib.util
 import re

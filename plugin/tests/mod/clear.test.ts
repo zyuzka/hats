@@ -511,6 +511,49 @@ describe('the note and the plugin', () => {
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
   })
 
+  test('a note the shell wrote and another writer changed after save, before the turn ended: no /clear', async ($, on) => {
+    const scene = createScene($, { on })
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+
+    await clearWith(scene, [
+      () => scene.runSteps(),
+      scene.createNote,
+      byShell,
+      scene.runSave,
+      async () => scene.world.setFile(NOTE, `${NOTE_TEXT}\nanother writer\n`),
+      () => scene.runSteps(),
+      async () => scene.setSnapshot(),
+    ])
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note changed after this session wrote it' })
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
+
+  test('a marker without the sha of the note, from an older save, keeps the rule without it', async ($, on) => {
+    const scene = createScene($, { on })
+    scene.world.isMarkerShaless = true
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+
+    await clearWith(scene, [
+      () => scene.runSteps(),
+      scene.createNote,
+      byShell,
+      scene.runSave,
+      async () => scene.world.setFile(NOTE, `${NOTE_TEXT}\nanother writer\n`),
+      () => scene.runSteps(),
+      async () => scene.setSnapshot(),
+    ])
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'cleared' })
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+  })
+
   test('the plugin files are asked for under the plugin root the engine names', async ($, on) => {
     const scene = createScene($, { on })
 

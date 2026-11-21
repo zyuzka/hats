@@ -467,7 +467,11 @@ export const getSha256 = async text => {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
-const findUnownedVerdict = note => (note.before === undefined || note.before === note.sha ? REASONS.notRewritten : null)
+const findUnownedVerdict = note => {
+  if (note.before === undefined || note.before === note.sha) return REASONS.notRewritten
+
+  return typeof note.saved === 'string' && note.saved !== note.sha ? REASONS.changed : null
+}
 
 export const findNoteVerdict = note => {
   const isWritten = note.kind === 'file' && note.size > 0 && note.mtimeMs >= note.askedAtMs
