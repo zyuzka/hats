@@ -154,8 +154,8 @@ final class ContextThresholdsTests: XCTestCase {
         let panel = try String(contentsOf: root.appendingPathComponent("Sources/Hats/ContextThresholdsPanel.swift"),
                                encoding: .utf8)
 
-        XCTAssertTrue(tabs.contains("                ContextThresholdsPanel(model: model, drafts: drafts)\n"
-                                        + "                    .tabItem { Text(\"Context\") }"))
+        XCTAssertTrue(tabs.contains("            ContextThresholdsPanel(model: model, drafts: drafts)\n"
+                                        + "                .tabItem { Text(\"Context\") }"))
         let rows = [
             """
                         threshold(

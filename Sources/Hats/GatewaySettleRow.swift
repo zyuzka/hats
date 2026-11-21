@@ -13,7 +13,7 @@ struct GatewaySettleRow: View {
                     placeholder: "35",
                     label: "Settle",
                     change: { drafts.setText($0, of: .settle, in: model.snapshot.settings) },
-                    submit: { drafts.apply(model) },
+                    submit: { drafts.apply(.settle, model) },
                     cancel: { drafts.reset(.settle) }
                 )
                 .frame(width: 50)

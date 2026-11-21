@@ -10,8 +10,8 @@ final class GatewaysPanelTests: XCTestCase {
     func testBothGatewaysLiveOnTheOneGatewayTab() throws {
         let tabs = try source("SettingsWindow.swift")
 
-        XCTAssertTrue(tabs.contains("                GatewaysPanel(model: model, drafts: drafts)\n"
-                                        + "                    .tabItem { Text(\"Gateway\") }"))
+        XCTAssertTrue(tabs.contains("            GatewaysPanel(model: model, drafts: drafts)\n"
+                                        + "                .tabItem { Text(\"Gateway\") }"))
         XCTAssertFalse(tabs.contains("Codex gateway"), "no tab of its own for the Codex gateway")
         XCTAssertFalse(tabs.contains("CodexGatewayPanel"), "the Codex panel is reached through the Gateway tab")
     }

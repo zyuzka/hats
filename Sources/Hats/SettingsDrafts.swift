@@ -68,20 +68,9 @@ final class SettingsDrafts: ObservableObject {
         drafts = fresh
     }
 
-    func canApply(in settings: AppSettings) -> Bool {
-        let states = SettingsField.allCases.map { getState($0, in: settings) }
-
-        return !states.contains(where: \.isRefusedDraft) && states.contains { $0.applicable != nil }
-    }
-
-    func hasPending(in settings: AppSettings) -> Bool {
-        SettingsField.allCases.map { getState($0, in: settings) }
-            .contains { $0.isRefusedDraft || $0.applicable != nil }
-    }
-
-    func getChanges(in settings: AppSettings) -> SettingsChanges? {
-        guard canApply(in: settings) else { return nil }
-        let value = { (field: SettingsField) in self.getState(field, in: settings).applicable }
+    func getChanges(_ field: SettingsField, in settings: AppSettings) -> SettingsChanges? {
+        guard let applicable = getState(field, in: settings).applicable else { return nil }
+        let value = { (other: SettingsField) in other == field ? applicable : nil }
         var changes = SettingsChanges()
         changes.contextThresholds = getContext(in: settings, value: value)
         changes.limitThresholds = getLimits(in: settings, value: value)
@@ -96,19 +85,45 @@ final class SettingsDrafts: ObservableObject {
         changes.codexGatewayPort = value(.codexPort)
         changes.gatewaySettleSeconds = value(.settle)
 
-        return changes
+        return changes == SettingsChanges() ? nil : changes
     }
 
-    func apply(_ model: HatsModel) {
-        guard let changes = getChanges(in: model.snapshot.settings) else { return }
+    func apply(_ field: SettingsField, _ model: HatsModel) {
+        if drafts[field]?.text.isEmpty == true {
+            drafts[field] = nil
+            return
+        }
+        guard hasWritten(field, model) else { return }
+        applyPartner(of: field, model)
+    }
+
+    func applyPartner(of field: SettingsField, _ model: HatsModel) {
+        guard let partner = Self.getPartner(field) else { return }
+        hasWritten(partner, model)
+    }
+
+    static func getPartner(_ field: SettingsField) -> SettingsField? {
+        switch field {
+        case .contextWarn: return .contextSave
+        case .contextSave: return .contextWarn
+        case .limitWarn: return .limitSave
+        case .limitSave: return .limitWarn
+        case .sessionSwitch, .weeklySwitch, .port, .settle, .codexSessionSwitch, .codexWeeklySwitch,
+             .codexPort: return nil
+        }
+    }
+
+    @discardableResult
+    private func hasWritten(_ field: SettingsField, _ model: HatsModel) -> Bool {
+        guard let changes = getChanges(field, in: model.snapshot.settings) else { return false }
         Self.send(changes, to: model.actions)
         let settings = model.snapshot.settings
-        drafts = drafts.filter { field, _ in
-            switch field {
-            case .port: return changes.gatewayPort.map { $0 != settings.gatewayPort } == true
-            case .codexPort: return changes.codexGatewayPort.map { $0 != settings.codexGatewayPort } == true
-            default: return false
-            }
+        switch field {
+        case .port where changes.gatewayPort != settings.gatewayPort: return false
+        case .codexPort where changes.codexGatewayPort != settings.codexGatewayPort: return false
+        default:
+            drafts[field] = nil
+            return true
         }
     }
 

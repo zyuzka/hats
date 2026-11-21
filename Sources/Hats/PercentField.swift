@@ -33,7 +33,7 @@ struct PercentField<Leading: View>: View {
                 placeholder: String(percent),
                 label: label,
                 change: { drafts.setText($0, of: field, in: model.snapshot.settings) },
-                submit: { drafts.apply(model) },
+                submit: { drafts.apply(field, model) },
                 cancel: { drafts.reset(field) }
             )
             .frame(width: 44)
@@ -42,7 +42,10 @@ struct PercentField<Leading: View>: View {
                 "",
                 value: Binding(
                     get: { percent },
-                    set: { value in step(stepRange.getClamped(value)) }
+                    set: { value in
+                        step(stepRange.getClamped(value))
+                        drafts.applyPartner(of: field, model)
+                    }
                 ),
                 in: stepRange,
                 step: 1

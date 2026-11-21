@@ -44,22 +44,11 @@ extension SettingsDrafts {
     }
 
     func getBounds(_ field: SettingsField, in settings: AppSettings) -> PercentBounds {
-        var context = settings.contextThresholds
-        var limits = settings.limitThresholds
-        let isTyped = getDraft(field, in: settings) != nil
         switch field {
-        case .contextWarn:
-            context.savePercent = getFinal(.contextSave, in: settings, within: ContextThresholds.saveRange, isTyped)
-            return context.getWarnBounds()
-        case .contextSave:
-            context.warnPercent = getFinal(.contextWarn, in: settings, within: ContextThresholds.warnRange, isTyped)
-            return context.getSaveBounds()
-        case .limitWarn:
-            limits.savePercent = getFinal(.limitSave, in: settings, within: LimitThresholds.range, isTyped)
-            return limits.getWarnBounds()
-        case .limitSave:
-            limits.warnPercent = getFinal(.limitWarn, in: settings, within: LimitThresholds.range, isTyped)
-            return limits.getSaveBounds()
+        case .contextWarn: return settings.contextThresholds.getWarnBounds()
+        case .contextSave: return settings.contextThresholds.getSaveBounds()
+        case .limitWarn: return settings.limitThresholds.getWarnBounds()
+        case .limitSave: return settings.limitThresholds.getSaveBounds()
         case .sessionSwitch, .weeklySwitch, .codexSessionSwitch, .codexWeeklySwitch:
             return PercentBounds(AutoSwitchPolicy.thresholdRange)
         case .port, .codexPort:
@@ -105,21 +94,5 @@ extension SettingsDrafts {
         guard let draft = drafts[field], draft.over == Self.getStored(field, in: settings) else { return nil }
 
         return draft
-    }
-
-    private func getFinal(
-        _ field: SettingsField,
-        in settings: AppSettings,
-        within range: ClosedRange<Int>,
-        _ isTyped: Bool
-    ) -> Int? {
-        guard let stored = Self.getStored(field, in: settings) else { return nil }
-        guard isTyped,
-              let draft = getDraft(field, in: settings),
-              let typed = TypedNumber.typed(draft.text),
-              range.contains(typed)
-        else { return stored }
-
-        return typed
     }
 }

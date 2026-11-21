@@ -31,7 +31,7 @@ struct CodexGatewayPanel: View {
                         placeholder: String(CodexGatewayPaths.defaultPort),
                         label: "Codex gateway port",
                         change: { drafts.setText($0, of: .codexPort, in: snapshot.settings) },
-                        submit: { drafts.apply(model) },
+                        submit: { drafts.apply(.codexPort, model) },
                         cancel: { drafts.reset(.codexPort) }
                     )
                     .frame(width: 70)

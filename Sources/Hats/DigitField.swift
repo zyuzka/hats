@@ -39,6 +39,7 @@ struct DigitField: NSViewRepresentable {
 
 final class DigitFieldCoordinator: NSObject, NSTextFieldDelegate {
     var field: DigitField
+    private(set) var isEditedSinceSubmit = false
 
     init(field: DigitField) {
         self.field = field
@@ -47,19 +48,31 @@ final class DigitFieldCoordinator: NSObject, NSTextFieldDelegate {
     func controlTextDidChange(_ notification: Notification) {
         guard let view = notification.object as? NSTextField else { return }
         let editor = notification.userInfo?["NSFieldEditor"] as? NSText
+        isEditedSinceSubmit = true
         field.change(TypedNumber.getDigits(editor?.string ?? view.stringValue))
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard isEditedSinceSubmit else { return }
+        submit()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.insertNewline(_:)) {
-            field.submit()
+            submit()
             return true
         }
         guard selector == #selector(NSResponder.cancelOperation(_:)) || selector == #selector(NSTextView.complete(_:))
         else { return false }
+        isEditedSinceSubmit = false
         field.cancel()
 
         return true
+    }
+
+    private func submit() {
+        isEditedSinceSubmit = false
+        field.submit()
     }
 }
 

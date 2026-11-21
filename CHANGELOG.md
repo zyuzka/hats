@@ -8,6 +8,17 @@ The app was written in a private repository along a line that reached 0.9.0 and 
 Nothing from that line was released anywhere, so it is not a version history a reader can act on:
 what it shipped is folded into the single entry below, and public numbering starts here.
 
+## Unreleased
+
+- **A number in Settings applies itself, like a checkbox.** The **Apply** button under the tabs is gone.
+  A number you type is written when you press Enter or leave the field: click another number field, press Tab,
+  switch tabs or close the window. A number that cannot be used stays in the field with its reason,
+  and Esc brings back the stored one. A pair of thresholds (**Warn at** and **Anchor at**, on the Context
+  tab and under **Hat limit**) is checked against the stored neighbour: to move both up, change
+  **Anchor at** first; to move both down, change **Warn at** first. If the other field of the pair already
+  holds a number that the new value makes usable, it is written too. Closing the window with a number
+  still not written asks to discard it and says which field and why.
+
 ## 0.4.1 — 2026-11-08
 
 - **Settings → General can turn off the automatic look for updates.** Hats looks for a new release about
