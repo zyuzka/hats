@@ -105,6 +105,21 @@ has "64% past the limit: update wording" "$ctx" "update the resume note"
 lacks "64% past the limit: no fourth announcement" "$ctx" "tell the user in one line"
 has "64% past the limit: journal" "$(cat "$journal")" '"note-missing"'
 
+# 3b-empty. An empty note or a folder in its place is no note: loud until the limit, then note-missing.
+for kind in empty folder; do
+  rm -rf "$note"; printf '{"announced": false, "loud": 0}' > "$notes/$sid.state.json"
+  run_window "$(input UserPromptSubmit)" >/dev/null
+  if [ "$kind" = empty ]; then : > "$note"; else mkdir "$note"; fi
+  ctx=$(run_window "$(input UserPromptSubmit)" | context)
+  has "$kind note: loud again" "$ctx" "tell the user in one line"
+  run_window "$(input UserPromptSubmit)" >/dev/null
+  missing_before=$(grep -c '"note-missing"' "$journal")
+  ctx=$(run_window "$(input UserPromptSubmit)" | context)
+  has "$kind note past the limit: update wording" "$ctx" "update the resume note"
+  equal "$kind note past the limit: note-missing journalled" "$(grep -c '"note-missing"' "$journal")" "$((missing_before + 1))"
+done
+rm -rf "$note"
+
 # 3b-old. A state from an earlier version, announced without a count, and no note: one more loud request.
 printf '{"announced": true, "percent": 64}' > "$notes/$sid.state.json"
 ctx=$(run_window "$(input UserPromptSubmit)" | context)
