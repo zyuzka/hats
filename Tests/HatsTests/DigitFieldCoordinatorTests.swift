@@ -88,6 +88,38 @@ final class DigitFieldCoordinatorTests: XCTestCase {
         XCTAssertEqual(calls.all, ["submit"], "Enter is an explicit retry")
     }
 
+    func testEnterTakesTheCursorOutOfTheFieldAndSubmitsOnce() {
+        // Arrange
+        let (coordinator, calls) = coordinator()
+        let window = NSWindow(
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: 200,
+                height: 100
+            ),
+            styleMask: [],
+            backing: .buffered,
+            defer: true
+        )
+        let view = NSTextField(string: "70")
+        window.contentView?.addSubview(view)
+        view.delegate = coordinator
+        window.makeFirstResponder(view)
+        type("75", into: coordinator)
+
+        // Act
+        let isHandled = coordinator.control(view, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+
+        // Assert
+        XCTAssertTrue(isHandled)
+        XCTAssertNil(view.currentEditor(), "after Enter the field is no longer being edited, so no cursor blinks in it")
+        XCTAssertEqual(calls.all, [
+            "change 75",
+            "submit",
+        ], "ending the edit after Enter does not send the number a second time")
+    }
+
     func testEscCancelsAndTheFocusLeavingAfterItSubmitsNothing() {
         // Arrange
         let (coordinator, calls) = coordinator()
