@@ -17,13 +17,19 @@ from handoff_proc import claude_process, find_work_folder, liveness
 from hats_common import write_text_whole
 
 
-def read_sha256(path, limit):
+def read_note(path, limit):
     try:
+        if not usable(path) or not os.path.isfile(path):
+            return None, None
         with open(path, "rb") as f:
             data = f.read(limit + 1)
     except (OSError, ValueError):
-        return None
-    return None if len(data) > limit else hashlib.sha256(data).hexdigest()
+        return None, None
+    if len(data) > limit:
+        return None, None
+    text = data.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+
+    return text, hashlib.sha256(data).hexdigest()
 
 
 def cmd_save(args):
@@ -43,9 +49,8 @@ def cmd_save(args):
         print(f"handoff: the note must be a file {own}/<name>.md (the folder `where` prints) or "
               f"<Claude config>/projects/<folder>/memory/<name>.md, and {given} is not; marker not written")
         return 1
-    text = read_regular(note, SOURCE_SIZE_LIMIT)
-    sha = read_sha256(note, SOURCE_SIZE_LIMIT)
-    if text is None or sha is None:
+    text, sha = read_note(note, SOURCE_SIZE_LIMIT)
+    if text is None:
         print(f"handoff: could not read the note {note}")
         return 1
     marker = {
