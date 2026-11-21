@@ -17,12 +17,12 @@ $TMPDIR/hats-codex-notes/<session id>.md and tell the user so in one line; while
 written in this arming — its file is missing, or unchanged since that first request, as a note left by an
 earlier arming is — the same request again on the next turns, at most LOUD_LIMIT requests in all, so a
 turn cut short before the note does not cost the user the line; on every other turn, to update the note
-without telling the user — also when the note is still missing after the limit, which goes to the journal
-as note-missing. Below the warning threshold, and after a compaction (note_back.py), the warning is armed
-again and the count starts over. The state lives beside the note, <session id>.state.json
+without telling the user — also when the note is still not written after the limit, which goes to the
+journal as note-missing. Below the warning threshold, and after a compaction (note_back.py), the warning
+is armed again and the count starts over. The state lives beside the note, <session id>.state.json
 ({"announced": bool, "loud": the loud requests given in this arming, "before": the note's st_mtime_ns at
-the first request, or null without a note}); a state without "loud" written by an earlier version counts
-one loud request when announced.
+the first request, or null without a note}); a state written by an earlier version counts one loud
+request when announced and has no "before", so the note as it is now becomes the one to change.
 With either threshold off (null) the hook asks for nothing: without a save threshold Codex does not
 compact by Hats' line, and without a warning threshold there is no point at which to ask.
 
@@ -197,7 +197,7 @@ def get_mtime(path):
 
 
 def get_before(state, loud, now):
-    if loud == 0:
+    if loud == 0 or "before" not in state:
         return now
     before = state.get("before")
 
@@ -226,7 +226,7 @@ def ask(session, percent, save):
         hats.journal(SCRIPT, "UserPromptSubmit", "asked-to-write", percent=percent, attempt=loud + 1)
         text = get_first_request(note, percent, save)
     else:
-        if not os.path.isfile(note):
+        if not is_written:
             hats.journal(SCRIPT, "UserPromptSubmit", "note-missing", percent=percent)
         hats.journal(SCRIPT, "UserPromptSubmit", "asked-to-update", percent=percent)
         text = get_update_request(note, percent, save)
