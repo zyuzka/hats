@@ -29,14 +29,27 @@ export async function endChain($, job) {
   await queueStage($, state)
 }
 
+export const SAVE_RETRIES = 2
+
+export const getRetryLine = reason =>
+  `the session was not anchored: ${reason}. It tries again at the end of the next turn; say "anchor" to save now.`
+
+export const setWindowFailed = (state, reason) => {
+  state.arm.save = state.arm.failures < SAVE_RETRIES
+  state.arm.failures += 1
+  setStage(state, { stage: 'failed', reason })
+}
+
+export const getWindowFailedLine = (arm, reason) => (arm.save ? getRetryLine(reason) : getFailedLine(reason))
+
 export async function failRequest($, job) {
   const { state, reason } = job
   const isWindow = state.request === null || state.request.isWindow
   setAskFailed(state.request?.limits ?? [])
   state.request = null
-  if (isWindow) setStage(state, { stage: 'failed', reason })
+  if (isWindow) setWindowFailed(state, reason)
   await queueStage($, state)
-  tellUser($, getFailedLine(reason))
+  tellUser($, isWindow ? getWindowFailedLine(state.arm, reason) : getFailedLine(reason))
 }
 
 export async function fireWarning($, job) {
