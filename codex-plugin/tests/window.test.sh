@@ -307,6 +307,18 @@ reset; percent_of 61 > "$tr"
 out=$(run_window "$(input UserPromptSubmit)")
 equal "one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
 
+# --- every journal line names its session; bad input leaves it out
+journal_session() { python3 -I -c 'import json,sys
+print(json.dumps(json.loads(open(sys.argv[1]).read().splitlines()[-1]).get("session")))' "$journal" 2>/dev/null || echo "<none>"; }
+reset; percent_of 61 > "$tr"; run_window "$(input UserPromptSubmit)" >/dev/null
+equal "journal: asked-to-write names the session" "$(journal_session)" "\"$sid\""
+run_back "$(input SessionStart ',"source":"compact"')" >/dev/null
+equal "journal: note_back names the session" "$(journal_session)" "\"$sid\""
+reset; percent_of 61 > "$tr"
+run_window "$(printf '{"session_id":"a/b","transcript_path":"%s","hook_event_name":"UserPromptSubmit"}' "$tr")" >/dev/null
+run_back '{"session_id":"a/b","hook_event_name":"SessionStart","source":"compact"}' >/dev/null
+equal "journal: a bad session id is left out" "$(journal_session)" "null"
+
 echo "codex hooks: $pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
   printf '%s\n' "$failures"
