@@ -239,6 +239,7 @@ def main():
         data = json.loads(sys.stdin.read() or "{}")
         if not isinstance(data, dict):
             raise Refused("bad-input")
+        hats.set_journal_session(data.get("session_id"))
         answer = run(data)
         if answer is not None:
             sys.stdout.buffer.write(answer[0])

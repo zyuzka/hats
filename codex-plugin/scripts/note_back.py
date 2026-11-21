@@ -79,6 +79,7 @@ def main():
         data = json.loads(sys.stdin.read() or "{}")
         if not isinstance(data, dict):
             return 0
+        hats.set_journal_session(data.get("session_id"))
         out = run(data)
         if out is not None:
             sys.stdout.write(json.dumps(out) + "\n")
