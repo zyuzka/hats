@@ -35,8 +35,12 @@ class ClaudeCodexPairCase: XCTestCase {
         let keychain = FakeKeychain([liveSlot: liveLogin])
         let system = FakeSystem(home: home.path)
         system.status = loggedIn(as: address)
-        let store = AccountStore(osAccount: "doors-test", keychain: keychain.world(), system: system.world())
-        store.fetchingTokenIdentity = { _ in .unreachable }
+        let store = AccountStore(
+            osAccount: "doors-test",
+            keychain: keychain.world(),
+            system: system.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
         let tag = UUID().uuidString.prefix(8).lowercased()
         let person = CodexFixture.Person(user: "user-\(tag)", account: "acct-\(tag)", email: address)
         let addCodex = {

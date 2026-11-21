@@ -8,7 +8,11 @@ final class CodexStoreTests: XCTestCase {
     override func setUpWithError() throws {
         let override = ProcessInfo.processInfo.environment[StateDirectory.overrideName] ?? ""
         try XCTSkipIf(override.isEmpty, "the store writes accounts.json through StateDirectory")
-        store = AccountStore(osAccount: "codex-store-test", keychain: keychain.world())
+        store = AccountStore(
+            osAccount: "codex-store-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
     }
 
     static func person(_ role: String = "work") -> CodexFixture.Person {
@@ -29,7 +33,11 @@ final class CodexStoreTests: XCTestCase {
         XCTAssertEqual(keychain.writes.map(\.service), [Slot.codexParked(hat.id)])
         XCTAssertEqual(keychain.contents[Slot.codexParked(hat.id)], login)
         XCTAssertFalse(Slot.codexParked(hat.id).hasPrefix(Slot.parked("")), "the prune of Claude slots never sees it")
-        let saved = try XCTUnwrap(AccountStore(osAccount: "t", keychain: keychain.world()).accounts.first { $0.id == hat.id })
+        let saved = try XCTUnwrap(AccountStore(
+            osAccount: "t",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        ).accounts.first { $0.id == hat.id })
         XCTAssertEqual(saved.wornTool, .codex)
         XCTAssertEqual(saved.codexOwner, person.owner)
         XCTAssertEqual(saved.codexPlan, "plus")

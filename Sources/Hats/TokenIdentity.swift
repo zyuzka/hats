@@ -79,7 +79,7 @@ enum IdentityCheck {
     static func of(
         _ expected: String,
         credential: CredentialPayload,
-        fetching: (String) -> ProfileFetch = { ProfileFetcher.fetch(token: $0) }
+        fetching: (String) -> ProfileFetch
     ) -> IdentityVerdict {
         guard credential.hasAUsableAccessToken(), let token = credential.accessToken else {
             return .unchecked("no usable token")

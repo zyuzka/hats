@@ -8,7 +8,11 @@ final class CodexStoreLoginTests: XCTestCase {
     override func setUpWithError() throws {
         let override = ProcessInfo.processInfo.environment[StateDirectory.overrideName] ?? ""
         try XCTSkipIf(override.isEmpty, "the store writes accounts.json through StateDirectory")
-        store = AccountStore(osAccount: "codex-store-test", keychain: keychain.world())
+        store = AccountStore(
+            osAccount: "codex-store-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
     }
 
     private func newHat(_ person: CodexFixture.Person, name: String? = "work") -> CodexNewHat {

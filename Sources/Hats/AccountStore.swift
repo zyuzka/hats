@@ -13,12 +13,18 @@ final class AccountStore {
         osAccount: String = NSUserName(),
         keychain: KeychainWorld? = nil,
         system: SystemWorld = .real,
-        index: URL? = nil
+        index: URL? = nil,
+        fetchingTokenIdentity: @escaping (String) -> ProfileFetch
     ) {
         self.keychain = keychain ?? .real(osAccount: osAccount)
         self.system = system
+        self.fetchingTokenIdentity = fetchingTokenIdentity
         file = AccountsFile(keychain: self.keychain, location: index)
         load()
+    }
+
+    static func createLive() -> AccountStore {
+        AccountStore(fetchingTokenIdentity: { ProfileFetcher.fetch(token: $0) })
     }
 
     private let file: AccountsFile
@@ -41,7 +47,7 @@ final class AccountStore {
 
     let identityQueue = DispatchQueue(label: "hats.identity-from-token")
 
-    var fetchingTokenIdentity: (String) -> ProfileFetch = { ProfileFetcher.fetch(token: $0) }
+    var fetchingTokenIdentity: (String) -> ProfileFetch
 
     var journaling: (String, [String: String]) -> Void = { Journal.log($0, $1) }
 

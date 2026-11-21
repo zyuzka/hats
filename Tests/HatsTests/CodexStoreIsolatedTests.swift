@@ -6,7 +6,12 @@ final class CodexStoreIsolatedTests: XCTestCase {
         .appendingPathComponent("hats-isolated-\(UUID().uuidString.prefix(8))")
     private let keychain = FakeKeychain()
     private lazy var index = folder.appendingPathComponent("accounts.json")
-    private lazy var store = AccountStore(osAccount: "isolated", keychain: keychain.world(), index: index)
+    private lazy var store = AccountStore(
+        osAccount: "isolated",
+        keychain: keychain.world(),
+        index: index,
+        fetchingTokenIdentity: OfflineProfile.fetch
+    )
 
     override func setUpWithError() throws {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -6,7 +6,8 @@ final class CodexStoreOutcomeTests: XCTestCase {
         .appendingPathComponent("hats-outcome-\(UUID().uuidString.prefix(8))")
     private let keychain = FakeKeychain()
     private lazy var store = AccountStore(osAccount: "outcome", keychain: keychain.world(),
-                                          index: folder.appendingPathComponent("accounts.json"))
+                                          index: folder.appendingPathComponent("accounts.json"),
+                                          fetchingTokenIdentity: OfflineProfile.fetch)
     private let now = Date()
 
     override func tearDown() {

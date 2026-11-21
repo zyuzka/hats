@@ -64,7 +64,11 @@ final class LegacySlotAdoptionTests: XCTestCase {
     func testADeletionIsReadBack() throws {
         let slot = Slot.parked(id)
         let keychain = FakeKeychain([slot: old])
-        let store = AccountStore(osAccount: "delete-verified-test", keychain: keychain.world())
+        let store = AccountStore(
+            osAccount: "delete-verified-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         try store.deleteVerified(slot, label: "a hat")
 
@@ -76,7 +80,11 @@ final class LegacySlotAdoptionTests: XCTestCase {
         let slot = Slot.parked(id)
         let keychain = FakeKeychain([slot: old])
         keychain.swallowsDeletes = true
-        let store = AccountStore(osAccount: "delete-verified-test", keychain: keychain.world())
+        let store = AccountStore(
+            osAccount: "delete-verified-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         XCTAssertThrowsError(try store.deleteVerified(slot, label: "a hat")) {
             guard case .deletionDidNotTake(let label) = $0 as? SwitchError else {
@@ -90,7 +98,11 @@ final class LegacySlotAdoptionTests: XCTestCase {
         let slot = Slot.parked(id)
         let keychain = FakeKeychain([slot: old])
         keychain.deleteFailures = [slot]
-        let store = AccountStore(osAccount: "delete-verified-test", keychain: keychain.world())
+        let store = AccountStore(
+            osAccount: "delete-verified-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
 
         XCTAssertThrowsError(try store.deleteVerified(slot, label: "a hat")) {
             XCTAssertTrue($0 is KeychainError, "got \($0)")

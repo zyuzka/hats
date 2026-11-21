@@ -44,7 +44,11 @@ final class CodexAlreadySignedInTests: XCTestCase {
         let override = ProcessInfo.processInfo.environment[StateDirectory.overrideName] ?? ""
         try XCTSkipIf(override.isEmpty, "the store writes accounts.json through StateDirectory")
         let keychain = FakeKeychain()
-        let store = AccountStore(osAccount: "codex-live-test", keychain: keychain.world())
+        let store = AccountStore(
+            osAccount: "codex-live-test",
+            keychain: keychain.world(),
+            fetchingTokenIdentity: OfflineProfile.fetch
+        )
         let person = CodexStoreTests.person()
         let pretty = CodexFixture.login(person, refresh: "live")
         let root = try XCTUnwrap(JSONSerialization.jsonObject(with: pretty) as? [String: Any])
