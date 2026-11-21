@@ -118,6 +118,31 @@ const holdWithoutSnapshot = async (scene: any) => {
 }
 
 describe('clearing after an anchor on the threshold', () => {
+  test('a note the shell wrote after new made it counts: the session is cleared as usual', async ($, on) => {
+    const scene = createScene($, { on })
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+
+    await clearWith(scene, [
+      () => scene.runSteps(),
+      scene.createNote,
+      byShell,
+      scene.runSave,
+      () => scene.runSteps(),
+      async () => scene.setSnapshot(),
+    ])
+
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      CLEARING,
+    ])
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'cleared', save_round: 1, after_save: 'clear', session: SESSION })
+    expect(getContinuations(scene).length).toBe(1)
+  })
+
   test('all checks pass: the line, cleared in the old file, /clear, then the plugin prompt as the user', async ($, on) => {
     const scene = createScene($, { on })
 
@@ -424,6 +449,34 @@ describe('the note and the plugin', () => {
   test('the note changed while the mod waited for the snapshot: kept', async ($, on) => {
     const scene = createScene($, { on })
     const held = await holdWithoutSnapshot(scene)
+
+    await scene.world.clock.advance(300)
+    scene.world.setFile(NOTE, `${NOTE_TEXT}\nanother writer\n`)
+    scene.setSnapshot()
+    await scene.world.clock.advance(300)
+    await held.done
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the note changed after this session wrote it' })
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
+
+  test('a note the shell wrote and another writer changed while the mod waited for the snapshot: kept', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+    const held = await scene.holdAnchorTurn({
+      steps: [
+        () => scene.runSteps(),
+        scene.createNote,
+        byShell,
+        scene.runSave,
+        () => scene.runSteps(),
+      ],
+    })
 
     await scene.world.clock.advance(300)
     scene.world.setFile(NOTE, `${NOTE_TEXT}\nanother writer\n`)

@@ -101,6 +101,9 @@ let one of them write the resume note instead of this skill.
         Write. If the command fails otherwise, write no note, skip step 4, and report its first line
         in the summary: `needs python3` on the handoff line when it says `python3` is required,
         otherwise under "Not saved".
+   - Write and change the note only with the Write and Edit tools — never through Bash (a shell
+     redirect, `python3`, `sed`, `tee`): the plugin checks the note against what it saw these tools
+     write.
    - Contents: what is done (with commits), what is open, the next step, every decision taken without
      the user, and every background task and subagent from step 2 with what it is for. The current
      state goes under a `## NOW` heading — the start hook prints that section.

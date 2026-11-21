@@ -53,6 +53,9 @@ const getContext = (out: any) => out.context ?? []
 
 const getFailedLine = (reason: string) => `the session was not anchored: ${reason}. Say "anchor" to try again.`
 
+const getRetryLine = (reason: string) =>
+  `the session was not anchored: ${reason}. It tries again at the end of the next turn; say "anchor" to save now.`
+
 const setThresholds = (scene: any, value: unknown) => scene.world.setFile(THRESHOLDS, JSON.stringify(value))
 
 const getFullSave = (scene: any) => [
@@ -78,7 +81,7 @@ const failsWith = async (scene: any, failure: { steps: (() => Promise<unknown>)[
   expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: failure.reason })
   expect(scene.world.logs).toEqual([
     REQUEST_56,
-    getFailedLine(failure.reason),
+    getRetryLine(failure.reason),
   ])
 }
 
@@ -266,6 +269,7 @@ describe('the save threshold', () => {
   test('asks anyway when the anchor the user said did not rewrite the note', async ($, on) => {
     const scene = createScene($, { on })
     scene.world.setFile(NOTE, NOTE_TEXT)
+    await scene.world.clock.advance(1000)
     await scene.start()
     const turnId = await scene.startTurn(10)
 
@@ -500,11 +504,64 @@ describe('the check of the anchor turn', () => {
     })
   })
 
-  test('fails for a note written by none of Write, Edit, MultiEdit and new', async ($, on) => {
+  test('passes a note from the start list rewritten by none of Write, Edit, MultiEdit and new', async ($, on) => {
     const scene = createScene($, { on })
+    scene.world.setFile(NOTE, OLD_NOTE)
+    await scene.askToAnchor()
     const byShell = async () => {
-      await scene.callTool(57, { tool: 'Bash', command: `cat > "${NOTE}"` })
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
       scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+
+    await scene.runAnchorTurn({
+      steps: [
+        byShell,
+        scene.runSave,
+      ],
+    })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'saved', marker: MARKER })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      SAVED_CLEAR,
+    ])
+  })
+
+  test('fails for a note left as it was before the request when nothing wrote it', async ($, on) => {
+    const scene = createScene($, { on })
+    scene.world.setFile(NOTE, NOTE_TEXT)
+    await scene.world.clock.advance(1000)
+    await failsWith(scene, {
+      steps: [
+        async () => scene.callTool(57, { tool: 'Bash', command: `touch "${NOTE}.other"` }),
+        scene.runSave,
+      ],
+      reason: 'the note was not rewritten in this anchor',
+    })
+  })
+
+  test('fails for a note rewritten by the shell with the text it had when new made it', async ($, on) => {
+    const scene = createScene($, { on })
+    const emptyAgain = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `: > "${NOTE}"` })
+      scene.world.setFile(NOTE, '')
+    }
+    await failsWith(scene, {
+      steps: [
+        scene.createNote,
+        emptyAgain,
+        scene.runSave,
+      ],
+      reason: 'the note was not rewritten in this anchor',
+    })
+  })
+
+  test('fails for a note the shell rewrote without a NOW section', async ($, on) => {
+    const scene = createScene($, { on })
+    scene.world.setFile(NOTE, OLD_NOTE)
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, '# Task\n\n## Later\n')
     }
     await failsWith(scene, {
       steps: [
@@ -1258,6 +1315,74 @@ describe('subagents', () => {
   })
 })
 
+const REQUEST_58 = 'context 58% (anchor threshold 55%) — anchoring this session.'
+const NO_MARKER = 'no marker this turn'
+
+const failAnchorTurn = (scene: any) => scene.runAnchorTurn({ steps: [] })
+
+const endUserTurn = async (scene: any, percent: { start: number; end: number }) => {
+  const turnId = await scene.startTurn(percent.start)
+  await scene.endTurn(turnId, { percent: percent.end })
+}
+
+describe('a failed anchor on the threshold', () => {
+  test('arms the threshold again: the next turn past it asks again', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    await failAnchorTurn(scene)
+
+    await endUserTurn(scene, { start: 58, end: 58 })
+
+    expect(scene.world.runs).toEqual(TWO_RUNS)
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      getRetryLine(NO_MARKER),
+      REQUEST_58,
+    ])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'requested', save_round: 2 })
+  })
+
+  test('a retry that saves goes on as a save', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    await failAnchorTurn(scene)
+    await endUserTurn(scene, { start: 58, end: 58 })
+
+    await scene.runAnchorTurn({ steps: getFullSave(scene) })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'saved', save_round: 2, marker: MARKER })
+  })
+
+  test('after three failures in a row stops arming until the window falls below the threshold', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    await failAnchorTurn(scene)
+    await endUserTurn(scene, { start: 58, end: 58 })
+    await failAnchorTurn(scene)
+    await endUserTurn(scene, { start: 58, end: 58 })
+    await failAnchorTurn(scene)
+
+    await endUserTurn(scene, { start: 58, end: 58 })
+
+    expect(scene.world.runs.length).toBe(3)
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      getRetryLine(NO_MARKER),
+      REQUEST_58,
+      getRetryLine(NO_MARKER),
+      REQUEST_58,
+      getFailedLine(NO_MARKER),
+    ])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: NO_MARKER, save_round: 3 })
+    await endUserTurn(scene, { start: 40, end: 56 })
+    await failAnchorTurn(scene)
+    expect(scene.world.runs.length).toBe(4)
+    expect(scene.world.logs.slice(-1)).toEqual([
+      getRetryLine(NO_MARKER),
+    ])
+  })
+})
+
 describe('the review round', () => {
   test('a throw in the anchor turn end fails the request with its line, and the next crossing asks again', async ($, on) => {
     const scene = createScene($, { on })
@@ -1272,7 +1397,7 @@ describe('the review round', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'a plugin hook failed' })
     expect(scene.world.logs).toEqual([
       REQUEST_56,
-      getFailedLine('a plugin hook failed'),
+      getRetryLine('a plugin hook failed'),
     ])
     const later = await scene.startTurn(40)
     await scene.endTurn(later, { percent: 56 })
@@ -1322,7 +1447,7 @@ describe('the review round', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the anchor command did not start a turn' })
     expect(scene.world.logs).toEqual([
       REQUEST_56,
-      getFailedLine('the anchor command did not start a turn'),
+      getRetryLine('the anchor command did not start a turn'),
     ])
   })
 
@@ -1336,8 +1461,13 @@ describe('the review round', () => {
     const userTurn = await scene.startTurn(58)
     await scene.endTurn(userTurn, { percent: 58 })
 
-    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the anchor command did not start a turn' })
-    expect(scene.world.logs.length).toBe(2)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'requested', save_round: 2 })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      getRetryLine('the anchor command did not start a turn'),
+      REQUEST_56.replace('56%', '58%'),
+    ])
+    expect(scene.world.runs).toEqual(TWO_RUNS)
   })
 
   test('the own prompt with no open request is dropped: after /clear the queued anchor does not run', async ($, on) => {

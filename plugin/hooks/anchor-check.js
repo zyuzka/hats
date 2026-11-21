@@ -134,6 +134,14 @@ export async function findAnchorFacts($, turn) {
   return { markerPath: turn.save.path, marker, notePath: marker.note, own: turn.ownWrites.get(key) }
 }
 
+export async function recordAcceptedNote($, turn) {
+  const marker = turn.save?.kind === 'marker' ? await findMarker($, turn.save.path) : null
+  const note = marker === null ? null : await findNote($, marker.note)
+  if (note === null) return
+  const key = note.stat.realPath ?? marker.note
+  if (!turn.ownWrites.has(key)) turn.ownWrites.set(key, await getSha256(note.text))
+}
+
 export async function findNoteText($, path) {
   const note = await findNote($, path)
 
@@ -152,6 +160,7 @@ export async function findVerdict($, check) {
   const note = await findNote($, marker.note)
   if (note === null) return REASONS.notRewritten
   const key = note.stat.realPath ?? marker.note
+  const own = turn.ownWrites.get(key)
 
   return findNoteVerdict({
     kind: note.stat.kind,
@@ -160,7 +169,8 @@ export async function findVerdict($, check) {
     askedAtMs: askedAt,
     text: note.text,
     before: turn.snapshots.get(key),
-    own: turn.ownWrites.get(key),
+    own,
     sha: await getSha256(note.text),
+    isNotePlace: own !== undefined || (await findNoteTarget($, marker.note)) !== null,
   })
 }

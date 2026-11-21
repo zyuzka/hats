@@ -21,7 +21,10 @@ import {
   setStage,
   tellUser,
 } from './files.js'
-import { findVerdict } from './anchor-check.js'
+import {
+  findVerdict,
+  recordAcceptedNote,
+} from './anchor-check.js'
 import {
   UNCHECKED_LINE,
   findFreshSnapshot,
@@ -173,6 +176,7 @@ export async function finishRequest($, job) {
   if (limits.length > 0) tellUser($, getLimitSavedLine(limits, now))
   if (!request.isWindow) return
   if (request.after === 'clear') {
+    await recordAcceptedNote($, turn)
     await startClear($, { state, request, turn })
     return
   }

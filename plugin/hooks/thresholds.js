@@ -123,7 +123,7 @@ export const findThresholds = text => {
 
 export const isDrainOn = thresholds => thresholds.drain === true && thresholds.save !== null
 
-export const createArm = () => ({ seenBelowLowest: false, warn: false, save: false })
+export const createArm = () => ({ seenBelowLowest: false, warn: false, save: false, failures: 0 })
 
 export const getLowest = thresholds => {
   const enabled = [
@@ -141,7 +141,9 @@ export const setArm = (arm, reading) => {
   if (percent < lowest) arm.seenBelowLowest = true
   if (!arm.seenBelowLowest) return
   if (thresholds.warn !== null && percent < thresholds.warn) arm.warn = true
-  if (thresholds.save !== null && percent < thresholds.save) arm.save = true
+  if (thresholds.save === null || percent >= thresholds.save) return
+  arm.save = true
+  arm.failures = 0
 }
 
 export const isWarnDue = (arm, reading) =>
@@ -465,10 +467,13 @@ export const getSha256 = async text => {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 
+const findUnownedVerdict = note => (note.isNotePlace !== true || note.before === note.sha ? REASONS.notRewritten : null)
+
 export const findNoteVerdict = note => {
   const isWritten = note.kind === 'file' && note.size > 0 && note.mtimeMs >= note.askedAtMs
   if (!isWritten || typeof note.text !== 'string' || !hasNowHeading(note.text)) return REASONS.notRewritten
-  if (note.before === undefined || note.own === undefined) return REASONS.notRewritten
+  if (note.own === undefined) return findUnownedVerdict(note)
+  if (note.before === undefined) return REASONS.notRewritten
   if (note.sha !== note.own) return REASONS.changed
   if (note.before !== 'absent' && note.before === note.sha) return REASONS.notRewritten
 

@@ -12,7 +12,6 @@ import {
   findReading,
   findStageFile,
   queueStage,
-  setStage,
   tellUser,
 } from './files.js'
 import {
@@ -32,7 +31,9 @@ import {
   endChain,
   failRequest,
   fireWarning,
+  getWindowFailedLine,
   restoreStage,
+  setWindowFailed,
 } from './stages.js'
 import {
   finishRequest,
@@ -240,9 +241,9 @@ const passOnFailedTurn = (
   const isWindow = state.request.isWindow
   setAskFailed(state.request.limits)
   state.request = null
-  if (isWindow) setStage(state, { stage: 'failed', reason: REASONS.hookFailed })
+  if (isWindow) setWindowFailed(state, REASONS.hookFailed)
   queueStage($, state)
-  tellUser($, getFailedLine(REASONS.hookFailed))
+  tellUser($, isWindow ? getWindowFailedLine(state.arm, REASONS.hookFailed) : getFailedLine(REASONS.hookFailed))
 
   return next(e)
 }
