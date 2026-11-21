@@ -116,6 +116,18 @@ has "old state with the note: update wording" "$ctx" "update the resume note"
 lacks "old state with the note: quiet" "$ctx" "tell the user in one line"
 equal "old state with the note: count unchanged" "$(json_field "$notes/$sid.state.json" loud)" 2
 
+# 3b-stale. A state from an earlier version beside a note left from before: the note as it is now does not
+# count, so the request stays loud; left unchanged to the limit, the silent turn journals note-missing.
+printf '{"announced": true, "percent": 64}' > "$notes/$sid.state.json"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "old state, stale note: loud" "$ctx" "tell the user in one line"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "old state, stale note unchanged: loud at the limit" "$ctx" "tell the user in one line"
+missing_before=$(grep -c '"note-missing"' "$journal")
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "stale note past the limit: update wording" "$ctx" "update the resume note"
+equal "stale note past the limit: note-missing journalled" "$(grep -c '"note-missing"' "$journal")" "$((missing_before + 1))"
+
 # 3c. Stop past the warning threshold asks nothing.
 out=$(run_window "$(input Stop)"); silent "Stop at 64%" "$out" $?
 equal "Stop at 64%: event for Hats" "$(json_field "$own" event)" '"Stop"'
