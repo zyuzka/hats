@@ -260,8 +260,11 @@ has "hooks.json: compact still runs note_back.py" "$entries" "^compact$ note_bac
 if [ ! -e "$plugin_root/scripts/__pycache__" ]; then ok; else bad "no bytecode beside the hook" "$(ls "$plugin_root/scripts/__pycache__")"; fi
 
 # 13. The journal line names the session.
-installed "$real_plugin"; marker 99990 "closed task"; run_hook "$(input)" >/dev/null
-equal "journal: shown names the session" "$(last_field session)" "\"$sid\""
+installed "$real_plugin"; marker 99990 "closed task"; rm -f "$journal"; run_hook "$(input)" >/dev/null
+equal "journal: shown names the session" "$(python3 -I -c 'import json,sys
+lines = open(sys.argv[1]).read().splitlines()
+d = json.loads(lines[0]) if len(lines) == 1 else {}
+print(d.get("outcome"), d.get("session"))' "$journal" 2>/dev/null)" "shown $sid"
 
 echo "codex anchor list: $pass passed, $fail failed"
 if [ -n "$skipped" ]; then printf 'not checked:%s\n' "$skipped"; fi

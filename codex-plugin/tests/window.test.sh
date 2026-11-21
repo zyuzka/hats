@@ -308,16 +308,20 @@ out=$(run_window "$(input UserPromptSubmit)")
 equal "one line" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
 
 # --- every journal line names its session; bad input leaves it out
-journal_session() { python3 -I -c 'import json,sys
-print(json.dumps(json.loads(open(sys.argv[1]).read().splitlines()[-1]).get("session")))' "$journal" 2>/dev/null || echo "<none>"; }
+journal_line() {  # the only line of the journal: script outcome session-or-<no session>; <none> when there is not exactly one
+  python3 -I -c 'import json,sys
+lines = open(sys.argv[1]).read().splitlines()
+if len(lines) != 1:
+    print("<none>"); raise SystemExit
+d = json.loads(lines[0])
+print(d.get("script"), d.get("outcome"), d["session"] if "session" in d else "<no session>")' "$journal" 2>/dev/null || echo "<none>"; }
 reset; percent_of 61 > "$tr"; run_window "$(input UserPromptSubmit)" >/dev/null
-equal "journal: asked-to-write names the session" "$(journal_session)" "\"$sid\""
-run_back "$(input SessionStart ',"source":"compact"')" >/dev/null
-equal "journal: note_back names the session" "$(journal_session)" "\"$sid\""
+equal "journal: asked-to-write names the session" "$(journal_line)" "window asked-to-write $sid"
+rm -f "$journal"; run_back "$(input SessionStart ',"source":"compact"')" >/dev/null
+equal "journal: note_back names the session" "$(journal_line)" "note_back no-note $sid"
 reset; percent_of 61 > "$tr"
-run_window "$(printf '{"session_id":"a/b","transcript_path":"%s","hook_event_name":"UserPromptSubmit"}' "$tr")" >/dev/null
 run_back '{"session_id":"a/b","hook_event_name":"SessionStart","source":"compact"}' >/dev/null
-equal "journal: a bad session id is left out" "$(journal_session)" "null"
+equal "journal: a bad session id is left out, not written as null" "$(journal_line)" "note_back bad-session <no session>"
 
 echo "codex hooks: $pass passed, $fail failed"
 if [ "$fail" -gt 0 ]; then
