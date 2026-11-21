@@ -242,6 +242,7 @@ def main():
         data = json.loads(sys.stdin.read() or "{}")
         if not isinstance(data, dict):
             return 0
+        hats.set_journal_session(data.get("session_id"))
         event = data.get("hook_event_name")
         out = run(data)
         if out is not None:

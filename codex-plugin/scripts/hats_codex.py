@@ -10,7 +10,9 @@ write to by default, so the model can write the note with its shell tool. Per se
 this user and has mode 700 (get_notes).
 
 The journal is one JSON line per hook outcome, in codex-hooks.log of the Hats folder, else in hooks.log of
-the notes folder; past 256 KiB it keeps its last 500 lines.
+the notes folder; past 256 KiB it keeps its last 500 lines. A line carries "session", the session id of the
+hook's input, once the hook has read an input whose session_id is a valid id (set_journal_session), so the
+lines of one session can be counted apart from another's; bad input leaves it out.
 """
 import json
 import os
@@ -27,6 +29,7 @@ JOURNAL_IN_HATS = "codex-hooks.log"
 JOURNAL_IN_NOTES = "hooks.log"
 JOURNAL_LIMIT = 256 * 1024
 JOURNAL_KEPT = 500
+JOURNAL_SESSION = {"session": None}
 THRESHOLDS_LIMIT = 64 * 1024
 DEFAULT_WARN = 60
 DEFAULT_SAVE = 70
@@ -210,12 +213,18 @@ def shorten(path):
                 pass
 
 
+def set_journal_session(value):
+    JOURNAL_SESSION["session"] = value if is_session(value) else None
+
+
 def journal(script, event, outcome, **details):
     try:
         path = get_journal_path()
         if path is None:
             return
         record = {"at": get_now_stamp(), "script": script, "event": event, "outcome": outcome}
+        if JOURNAL_SESSION["session"] is not None:
+            record["session"] = JOURNAL_SESSION["session"]
         record.update(details)
         line = json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n"
         try:
