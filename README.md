@@ -252,8 +252,9 @@ has never run):
 
 The fill the hook sees is the input of the last answer over the model's window, from Codex's own session
 file, so it lags one answer behind. One long turn can jump past both thresholds at once; Codex then compacts
-before any request reached the model, and there is no note. If the model cannot write the note, it is told
-to tell you only once; later turns ask it to write the note again, and the hook journal says `note-missing`.
+before any request reached the model, and there is no note. If a turn ends before the model wrote the note,
+the next turn asks it again to write the note and tell you, up to three times in all; after that later turns
+ask it to write the note silently, and the hook journal says `note-missing`.
 
 The save threshold reaches Codex through one line Hats writes at the top of `~/.codex/config.toml`, like
 the gateway line:

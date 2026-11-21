@@ -68,7 +68,7 @@ def run(data):
         hats.journal(SCRIPT, "SessionStart", "notes-folder-refused")
     note = read_note(os.path.join(notes, session + ".md")) if notes is not None else None
     if notes is not None:
-        hats.write_whole(notes, session + ".state.json", {"announced": False})
+        hats.write_whole(notes, session + ".state.json", {"announced": False, "loud": 0})
     hats.journal(SCRIPT, "SessionStart", "handed-back" if note is not None else "no-note",
                  characters=len(note) if note is not None else 0)
     return {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": get_text(path, note)}}
