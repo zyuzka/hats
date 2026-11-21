@@ -7,7 +7,7 @@ import subprocess
 import time
 
 from handoff_clock import testing, time_left
-from handoff_consts import ANCESTOR_LIMIT, CALL_TIMEOUT_S
+from handoff_consts import ANCESTOR_LIMIT, CALL_TIMEOUT_S, REAP_TIMEOUT_S
 
 
 def run(cmd, timeout):
@@ -28,7 +28,10 @@ def run(cmd, timeout):
         except OSError:
             pass
         proc.stdout.close()
-        proc.wait()
+        try:
+            proc.wait(timeout=REAP_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            pass
         return None, None
     return proc.returncode, out
 
