@@ -4,7 +4,6 @@ import {
   KEPT,
   REASONS,
   createArm,
-  getFailedLine,
   isWarnDue,
   setArm,
 } from './thresholds.js'
@@ -31,9 +30,9 @@ import {
   endChain,
   failRequest,
   fireWarning,
-  getWindowFailedLine,
+  getRequestFailedLine,
   restoreStage,
-  setWindowFailed,
+  setRequestFailed,
 } from './stages.js'
 import {
   finishRequest,
@@ -47,7 +46,6 @@ import {
   forgetCell,
   markWarned,
   notePace,
-  setAskFailed,
   setPacePoints,
 } from './limits.js'
 import { createLimits } from './limit-rules.js'
@@ -238,12 +236,10 @@ const passOnFailedTurn = (
   const state = session
   endClearBeforeRun($, KEPT.hookFailed).catch(() => {})
   if (state === null || state.request === null || state.request.turnId !== e.turnId) return passOnFailed($, e, next)
-  const isWindow = state.request.isWindow
-  setAskFailed(state.request.limits)
-  state.request = null
-  if (isWindow) setWindowFailed(state, REASONS.hookFailed)
+  const line = getRequestFailedLine(state, REASONS.hookFailed)
+  setRequestFailed(state, REASONS.hookFailed)
   queueStage($, state)
-  tellUser($, isWindow ? getWindowFailedLine(state.arm, REASONS.hookFailed) : getFailedLine(REASONS.hookFailed))
+  tellUser($, line)
 
   return next(e)
 }

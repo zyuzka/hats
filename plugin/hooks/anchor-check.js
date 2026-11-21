@@ -25,6 +25,8 @@ import {
   getNotesRoot,
 } from './files.js'
 
+let processMarker = null
+
 export const createTurn = (id, startedAt) => ({
   id,
   startedAt,
@@ -98,6 +100,7 @@ export async function recordHandoffOutput($, call) {
   if (kind === 'save') {
     const outcome = findSaveOutcome(stdout)
     if (outcome !== null) turn.save = outcome
+    if (outcome?.kind === 'marker') processMarker = outcome.path
     return
   }
   const created = kind === 'new' ? findNewNote(stdout) : null
@@ -134,12 +137,14 @@ export async function findAnchorFacts($, turn) {
   return { markerPath: turn.save.path, marker, notePath: marker.note, own: turn.ownWrites.get(key) }
 }
 
-export async function recordAcceptedNote($, turn) {
-  const marker = turn.save?.kind === 'marker' ? await findMarker($, turn.save.path) : null
-  const note = marker === null ? null : await findNote($, marker.note)
-  if (note === null) return
-  const key = note.stat.realPath ?? marker.note
-  if (!turn.ownWrites.has(key)) turn.ownWrites.set(key, await getSha256(note.text))
+export async function findAskedNote($) {
+  const config = processMarker === null ? null : await getConfigRoot($)
+  if (config === null || !isMarkerPlace(processMarker, `${config}/state/handoff`)) return null
+  const marker = await findMarker($, processMarker)
+  const target = marker === null ? null : await findNoteTarget($, marker.note)
+  const before = target === null ? null : await findTextState($, target)
+
+  return before === null ? null : { key: target, before }
 }
 
 export async function findNoteText($, path) {
@@ -149,7 +154,7 @@ export async function findNoteText($, path) {
 }
 
 export async function findVerdict($, check) {
-  const { turn, askedAt } = check
+  const { turn, askedAt, asked } = check
   if (turn === null || turn.save === null) return REASONS.noMarker
   if (turn.save.kind === 'off') return REASONS.off
   const config = await getConfigRoot($)
@@ -161,16 +166,18 @@ export async function findVerdict($, check) {
   if (note === null) return REASONS.notRewritten
   const key = note.stat.realPath ?? marker.note
   const own = turn.ownWrites.get(key)
-
-  return findNoteVerdict({
+  const sha = await getSha256(note.text)
+  const verdict = findNoteVerdict({
     kind: note.stat.kind,
     size: note.stat.size,
     mtimeMs: note.stat.mtimeMs,
     askedAtMs: askedAt,
     text: note.text,
-    before: turn.snapshots.get(key),
+    before: turn.snapshots.get(key) ?? (asked?.key === key ? asked.before : undefined),
     own,
-    sha: await getSha256(note.text),
-    isNotePlace: own !== undefined || (await findNoteTarget($, marker.note)) !== null,
+    sha,
   })
+  if (verdict === null && own === undefined) turn.ownWrites.set(key, sha)
+
+  return verdict
 }

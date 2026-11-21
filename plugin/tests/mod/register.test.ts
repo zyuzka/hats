@@ -58,6 +58,18 @@ const getRetryLine = (reason: string) =>
 
 const setThresholds = (scene: any, value: unknown) => scene.world.setFile(THRESHOLDS, JSON.stringify(value))
 
+const writeByShell = async (scene: any, text: string) => {
+  await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+  scene.world.setFile(NOTE, text)
+}
+
+const anchorOnceMore = async (scene: any) => {
+  await scene.askToAnchor()
+  await scene.runAnchorTurn({ steps: getFullSave(scene) })
+  const turnId = await scene.startTurn(40)
+  await scene.endTurn(turnId, { percent: 56 })
+}
+
 const getFullSave = (scene: any) => [
   scene.createNote,
   () => scene.writeNote(),
@@ -75,13 +87,20 @@ const createRefusalPlugin = () => {
   return { $, logs }
 }
 
+const FINAL_REASONS = [
+  'handoff is off',
+  'unreadable marker',
+]
+
+const getFirstFailedLine = (reason: string) => (FINAL_REASONS.includes(reason) ? getFailedLine(reason) : getRetryLine(reason))
+
 const failsWith = async (scene: any, failure: { steps: (() => Promise<unknown>)[]; reason: string }) => {
   await scene.askToAnchor()
   await scene.runAnchorTurn({ steps: failure.steps })
   expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: failure.reason })
   expect(scene.world.logs).toEqual([
     REQUEST_56,
-    getRetryLine(failure.reason),
+    getFirstFailedLine(failure.reason),
   ])
 }
 
@@ -504,18 +523,14 @@ describe('the check of the anchor turn', () => {
     })
   })
 
-  test('passes a note from the start list rewritten by none of Write, Edit, MultiEdit and new', async ($, on) => {
+  test('passes a note new made after the request and the shell wrote', async ($, on) => {
     const scene = createScene($, { on })
-    scene.world.setFile(NOTE, OLD_NOTE)
     await scene.askToAnchor()
-    const byShell = async () => {
-      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
-      scene.world.setFile(NOTE, NOTE_TEXT)
-    }
 
     await scene.runAnchorTurn({
       steps: [
-        byShell,
+        scene.createNote,
+        () => writeByShell(scene, NOTE_TEXT),
         scene.runSave,
       ],
     })
@@ -525,6 +540,64 @@ describe('the check of the anchor turn', () => {
       REQUEST_56,
       SAVED_CLEAR,
     ])
+  })
+
+  test('passes a note the marker of this process named at the request, rewritten by the shell in a later anchor', async ($, on) => {
+    const scene = createScene($, { on })
+    await anchorOnceMore(scene)
+
+    await scene.runAnchorTurn({
+      steps: [
+        () => writeByShell(scene, `${NOTE_TEXT}\nsecond\n`),
+        scene.runSave,
+      ],
+    })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'saved', save_round: 2, marker: MARKER })
+  })
+
+  test('fails for a note the marker of this process named, rewritten by the shell with the same text', async ($, on) => {
+    const scene = createScene($, { on })
+    await anchorOnceMore(scene)
+
+    await scene.runAnchorTurn({
+      steps: [
+        () => writeByShell(scene, NOTE_TEXT),
+        scene.runSave,
+      ],
+    })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
+  })
+
+  test('fails for a note the marker of this process named, only touched after the request', async ($, on) => {
+    const scene = createScene($, { on })
+    await anchorOnceMore(scene)
+    const touch = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `touch "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+
+    await scene.runAnchorTurn({
+      steps: [
+        touch,
+        scene.runSave,
+      ],
+    })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'the note was not rewritten in this anchor' })
+  })
+
+  test('fails for a note from the start list that only the shell rewrote: nothing shows its text before the request', async ($, on) => {
+    const scene = createScene($, { on })
+    scene.world.setFile(NOTE, OLD_NOTE)
+    await failsWith(scene, {
+      steps: [
+        () => writeByShell(scene, NOTE_TEXT),
+        scene.runSave,
+      ],
+      reason: 'the note was not rewritten in this anchor',
+    })
   })
 
   test('fails for a note left as it was before the request when nothing wrote it', async ($, on) => {
@@ -1340,6 +1413,25 @@ describe('a failed anchor on the threshold', () => {
       REQUEST_58,
     ])
     expect(scene.world.getStage()).toMatchObject({ stage: 'requested', save_round: 2 })
+  })
+
+  test('a reason no later turn can change does not arm it again: handoff is off', async ($, on) => {
+    const scene = createScene($, { on })
+    await scene.askToAnchor()
+    const off = () => {
+      scene.world.nextToolAnswer = createBashResult('handoff is off for /w — marker not written')
+      return scene.callTool(57, { tool: 'Bash', command: scene.world.paths.saveCommand })
+    }
+    await scene.runAnchorTurn({ steps: [off] })
+
+    await endUserTurn(scene, { start: 58, end: 58 })
+
+    expect(scene.world.runs).toEqual(ONE_RUN)
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      getFailedLine('handoff is off'),
+    ])
+    expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: 'handoff is off', save_round: 1 })
   })
 
   test('a retry that saves goes on as a save', async ($, on) => {

@@ -22,8 +22,8 @@ import {
   tellUser,
 } from './files.js'
 import {
+  findAskedNote,
   findVerdict,
-  recordAcceptedNote,
 } from './anchor-check.js'
 import {
   UNCHECKED_LINE,
@@ -109,7 +109,7 @@ async function findTurnVerdict($, job) {
   if (reason !== 'answer' && reason !== 'aborted') return getTurnFailure(reason)
   if (request.hasHookFailed) return REASONS.hookFailed
 
-  return findVerdict($, { turn, askedAt: request.askedAt })
+  return findVerdict($, { turn, askedAt: request.askedAt, asked: request.asked })
 }
 
 const UNCHECKED_VERDICTS = [
@@ -176,7 +176,6 @@ export async function finishRequest($, job) {
   if (limits.length > 0) tellUser($, getLimitSavedLine(limits, now))
   if (!request.isWindow) return
   if (request.after === 'clear') {
-    await recordAcceptedNote($, turn)
     await startClear($, { state, request, turn })
     return
   }
@@ -236,9 +235,11 @@ const getRequestItems = limits => limits.map(item => ({ kind: item.kind, percent
 async function askToAnchor($, job) {
   const { state, reading, isWindow, limits } = job
   const askedAt = await $.clock.now()
+  const asked = await findAskedNote($)
   if (!isCurrent(state) || state.request !== null) return
   const request = createRequest(state, job)
   request.askedAt = askedAt
+  request.asked = asked
   request.list = job.list ?? null
   setAsked(limits, askedAt)
   forgetReleased(state)
