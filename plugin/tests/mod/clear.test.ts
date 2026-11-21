@@ -488,6 +488,29 @@ describe('the note and the plugin', () => {
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
   })
 
+  test('a note the shell wrote and another writer changed right after the check: kept', async ($, on) => {
+    const scene = createScene($, { on })
+    const byShell = async () => {
+      await scene.callTool(57, { tool: 'Bash', command: `python3 -c 'write' "${NOTE}"` })
+      scene.world.setFile(NOTE, NOTE_TEXT)
+    }
+    scene.world.onStageWrite = async (stage: string) => {
+      if (stage === 'saved') scene.world.setFile(NOTE, `${NOTE_TEXT}\nanother writer\n`)
+    }
+
+    await clearWith(scene, [
+      () => scene.runSteps(),
+      scene.createNote,
+      byShell,
+      scene.runSave,
+      () => scene.runSteps(),
+      async () => scene.setSnapshot(),
+    ])
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the note changed after this session wrote it' })
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
+
   test('the plugin files are asked for under the plugin root the engine names', async ($, on) => {
     const scene = createScene($, { on })
 

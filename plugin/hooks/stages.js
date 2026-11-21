@@ -1,4 +1,5 @@
 import {
+  FAILED_TURN,
   REASONS,
   RELOADED_LINE,
   getFailedLine,
@@ -34,22 +35,43 @@ export const SAVE_RETRIES = 2
 export const getRetryLine = reason =>
   `the session was not anchored: ${reason}. It tries again at the end of the next turn; say "anchor" to save now.`
 
-export const setWindowFailed = (state, reason) => {
-  state.arm.save = state.arm.failures < SAVE_RETRIES
-  state.arm.failures += 1
-  setStage(state, { stage: 'failed', reason })
-}
+export const RETRY_REASONS = [
+  REASONS.noMarker,
+  REASONS.stale,
+  REASONS.notRewritten,
+  REASONS.changed,
+  REASONS.hookFailed,
+  REASONS.notStarted,
+  FAILED_TURN.error,
+]
 
-export const getWindowFailedLine = (arm, reason) => (arm.save ? getRetryLine(reason) : getFailedLine(reason))
+const isWindowRequest = state => state.request === null || state.request.isWindow
+
+const isRetryDue = (state, reason) =>
+  isWindowRequest(state) &&
+  RETRY_REASONS.includes(reason) &&
+  state.arm.failures < SAVE_RETRIES
+
+export const getRequestFailedLine = (state, reason) => (isRetryDue(state, reason) ? getRetryLine(reason) : getFailedLine(reason))
+
+export const setRequestFailed = (state, reason) => {
+  const isWindow = isWindowRequest(state)
+  const isRetry = isRetryDue(state, reason)
+  setAskFailed(state.request?.limits ?? [])
+  state.request = null
+  if (!isWindow) return
+  setStage(state, { stage: 'failed', reason })
+  if (!isRetry) return
+  state.arm.save = true
+  state.arm.failures += 1
+}
 
 export async function failRequest($, job) {
   const { state, reason } = job
-  const isWindow = state.request === null || state.request.isWindow
-  setAskFailed(state.request?.limits ?? [])
-  state.request = null
-  if (isWindow) setWindowFailed(state, reason)
+  const line = getRequestFailedLine(state, reason)
+  setRequestFailed(state, reason)
   await queueStage($, state)
-  tellUser($, isWindow ? getWindowFailedLine(state.arm, reason) : getFailedLine(reason))
+  tellUser($, line)
 }
 
 export async function fireWarning($, job) {

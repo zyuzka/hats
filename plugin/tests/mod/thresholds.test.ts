@@ -342,7 +342,7 @@ describe('the note verdict', () => {
     expect(findNoteVerdict({ ...NOTE, kind: 'other' })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...NOTE, text: '# A\n\n## Later\n' })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...NOTE, before: undefined })).toBe(REASONS.notRewritten)
-    expect(findNoteVerdict({ ...NOTE, own: undefined })).toBe(REASONS.notRewritten)
+    expect(findNoteVerdict({ ...NOTE, own: undefined, before: undefined })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...NOTE, before: 'x' })).toBe(REASONS.notRewritten)
   })
 
@@ -350,24 +350,23 @@ describe('the note verdict', () => {
     expect(findNoteVerdict({ ...NOTE, sha: 'z' })).toBe(REASONS.changed)
   })
 
-  test('passes a note in a note place rewritten after the request with no own write, by any writer', () => {
-    const unowned = { ...NOTE, own: undefined, isNotePlace: true }
+  test('passes a note with no own write that was absent or different before the request, by any writer', () => {
+    const unowned = { ...NOTE, own: undefined }
     expect(findNoteVerdict(unowned)).toBe(null)
-    expect(findNoteVerdict({ ...unowned, before: undefined })).toBe(null)
     expect(findNoteVerdict({ ...unowned, before: 'y' })).toBe(null)
   })
 
-  test('refuses a note with no own write that is not in a note place, not changed, old, or without NOW', () => {
-    const unowned = { ...NOTE, own: undefined, isNotePlace: true }
-    expect(findNoteVerdict({ ...unowned, isNotePlace: false })).toBe(REASONS.notRewritten)
+  test('refuses a note with no own write and no state before the request, or the same, old, or without NOW', () => {
+    const unowned = { ...NOTE, own: undefined }
+    expect(findNoteVerdict({ ...unowned, before: undefined })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...unowned, before: 'x' })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...unowned, mtimeMs: 999 })).toBe(REASONS.notRewritten)
     expect(findNoteVerdict({ ...unowned, text: '# A\n\n## Later\n' })).toBe(REASONS.notRewritten)
   })
 
-  test('with an own write keeps the old checks whatever the place', () => {
-    expect(findNoteVerdict({ ...NOTE, isNotePlace: true, sha: 'z' })).toBe(REASONS.changed)
-    expect(findNoteVerdict({ ...NOTE, isNotePlace: true, before: undefined })).toBe(REASONS.notRewritten)
+  test('with an own write keeps the old checks', () => {
+    expect(findNoteVerdict({ ...NOTE, sha: 'z' })).toBe(REASONS.changed)
+    expect(findNoteVerdict({ ...NOTE, before: undefined })).toBe(REASONS.notRewritten)
   })
 })
 
