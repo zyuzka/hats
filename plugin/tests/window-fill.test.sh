@@ -664,7 +664,8 @@ root_rule "~/x" none
 where=$(cd "$rr/run" && env HATS_STATE_HOME=rel python3 -I "$HOOK" where 2>&1); rc=$?
 if [ $rc -eq 1 ] && [ "$where" = "window-fill: HATS_STATE_HOME='rel' is not an absolute path, so there is no Hats folder" ]; then ok
 else bad "правило корня: window-fill.py where без корня — одна строка, код 1" "rc=$rc $where"; fi
-got=$(env HATS_STATE_HOME=rel HOME="$rr/home" python3 -I -c 'import importlib.util, sys
+record_in() {  # record_in <HATS_STATE_HOME> — record_hook_failure из папки $rr/run
+  (cd "$rr/run" && env HATS_STATE_HOME="$1" HOME="$rr/home" python3 -I -c 'import importlib.util, sys
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location("hook", sys.argv[1])
 hook = importlib.util.module_from_spec(spec)
@@ -676,8 +677,15 @@ hook.record_hook_failure(
     RuntimeError("t"),
 )
 print("ok")' "$HOOK" 2>&1)
-if [ "$got" = ok ] && [ -z "$(find "$rr_hats" -mindepth 1)" ]; then ok
-else bad "правило корня: журнал ошибок без корня не пишется" "$got $(find "$rr_hats" -mindepth 1 | head -3)"; fi
+}
+mkdir -p "$rr_hats/session-windows" "$rr/run/rel/session-windows"
+got=$(record_in rel)
+if [ "$got" = ok ] && [ ! -e "$rr_hats/session-windows/failures.log" ] && [ ! -e "$rr/run/rel/session-windows/failures.log" ]; then ok
+else bad "правило корня: журнал ошибок без корня не пишется ни в корень по умолчанию, ни по относительному пути" "$got $(find "$rr_hats" "$rr/run/rel" -name failures.log)"; fi
+got=$(record_in "$rr_hats")
+if [ "$got" = ok ] && [ -f "$rr_hats/session-windows/failures.log" ]; then ok
+else bad "правило корня: с абсолютным корнем журнал ошибок пишется (контроль)" "$got"; fi
+rm -rf "$rr_hats/session-windows" "$rr/run/rel"
 
 # --- get_field: строка обрезается до 80 знаков, не строка — null
 fields=$(python3 -I -B -c 'import sys
