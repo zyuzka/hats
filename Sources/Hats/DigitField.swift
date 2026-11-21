@@ -60,6 +60,7 @@ final class DigitFieldCoordinator: NSObject, NSTextFieldDelegate {
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         if selector == #selector(NSResponder.insertNewline(_:)) {
             submit()
+            control.window?.makeFirstResponder(nil)
             return true
         }
         guard selector == #selector(NSResponder.cancelOperation(_:)) || selector == #selector(NSTextView.complete(_:))
