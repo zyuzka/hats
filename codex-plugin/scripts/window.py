@@ -14,8 +14,8 @@ model_auto_compact_token_limit line in ~/.codex/config.toml, where it can; the t
 On UserPromptSubmit, at or past the warning threshold, the hook adds a text for the model
 (hookSpecificOutput.additionalContext): on the first turn of an arming, to write the note to
 $TMPDIR/hats-codex-notes/<session id>.md and tell the user so in one line; while the note has not been
-written in this arming — its file is missing, or unchanged since that first request, as a note left by an
-earlier arming is — the same request again on the next turns, at most LOUD_LIMIT requests in all, so a
+written in this arming — it is not a regular file with something in it, or it is unchanged since that
+first request, as a note left by an earlier arming is — the same request again on the next turns, at most LOUD_LIMIT requests in all, so a
 turn cut short before the note does not cost the user the line; on every other turn, to update the note
 without telling the user — also when the note is still not written after the limit, which goes to the
 journal as note-missing. Below the warning threshold, and after a compaction (note_back.py), the warning
@@ -191,9 +191,13 @@ def get_loud_count(state):
 
 def get_mtime(path):
     try:
-        return os.stat(path).st_mtime_ns
+        info = os.stat(path)
     except (OSError, ValueError):
         return None
+    if not stat.S_ISREG(info.st_mode) or info.st_size == 0:
+        return None
+
+    return info.st_mtime_ns
 
 
 def get_before(state, loud, now):
