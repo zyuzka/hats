@@ -29,7 +29,7 @@ def run(cmd, timeout):
             pass
         proc.stdout.close()
         try:
-            proc.wait(timeout=REAP_TIMEOUT_S)
+            proc.wait(timeout=time_left(REAP_TIMEOUT_S))
         except subprocess.TimeoutExpired:
             pass
         return None, None
