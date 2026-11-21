@@ -58,10 +58,10 @@ final class GatewaySettleTests: XCTestCase {
                            + "it here would send the reader after a cure that does not exist")
     }
 
-    func testAWarningIsNotShownForAValueApplyWouldRefuse() {
+    func testAWarningIsNotShownForAValueTheFieldWouldRefuse() {
         XCTAssertNil(HatsCopy.settleWarning(settleSeconds: -5),
                      "-5 is below 35 and also unusable; warning about the CLI cache for a value the "
-                         + "Apply button refuses tells the user about a setting that cannot exist")
+                         + "field refuses tells the user about a setting that cannot exist")
         XCTAssertNil(HatsCopy.settleWarning(settleSeconds: 700))
         XCTAssertNotNil(HatsCopy.settleWarning(settleSeconds: 0), "zero is usable and is below 35")
         XCTAssertNotNil(HatsCopy.settleWarning(settleSeconds: 34))
@@ -107,7 +107,7 @@ final class GatewaySettleTests: XCTestCase {
         XCTAssertEqual(TypedNumber.typed("  7 "), 7, "a field people type into carries whitespace")
         XCTAssertEqual(TypedNumber.typed("8787\n"), 8787,
                        "a pasted value carries the newline it was copied with, and refusing it would "
-                           + "leave Apply disabled over a number that is perfectly good")
+                           + "leave a perfectly good number unapplied")
         XCTAssertEqual(TypedNumber.typed("35"), 35)
         XCTAssertNil(TypedNumber.typed(""))
         XCTAssertNil(TypedNumber.typed("abc"))

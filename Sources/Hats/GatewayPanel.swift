@@ -50,7 +50,7 @@ struct GatewayPanel: View {
                     placeholder: "8787",
                     label: "Port",
                     change: { drafts.setText($0, of: .port, in: snapshot.settings) },
-                    submit: { drafts.apply(model) },
+                    submit: { drafts.apply(.port, model) },
                     cancel: { drafts.reset(.port) }
                 )
                 .frame(width: 70)

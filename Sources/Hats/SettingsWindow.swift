@@ -6,27 +6,20 @@ struct SettingsTabs: View {
     @ObservedObject var drafts: SettingsDrafts
 
     var body: some View {
-        VStack(spacing: 10) {
-            TabView {
-                GeneralPanel(model: model)
-                    .tabItem { Text("General") }
-                ManageHatsPanel(model: model, open: nil)
-                    .tabItem { Text("Hats") }
-                AutoSwitchPanel(model: model, drafts: drafts)
-                    .tabItem { Text("Auto-switch") }
-                ContextThresholdsPanel(model: model, drafts: drafts)
-                    .tabItem { Text("Context") }
-                GatewaysPanel(model: model, drafts: drafts)
-                    .tabItem { Text("Gateway") }
-            }
-            HStack {
-                Spacer()
-                Button("Apply") { drafts.apply(model) }
-                    .disabled(!drafts.canApply(in: model.snapshot.settings))
-            }
+        TabView {
+            GeneralPanel(model: model)
+                .tabItem { Text("General") }
+            ManageHatsPanel(model: model, open: nil)
+                .tabItem { Text("Hats") }
+            AutoSwitchPanel(model: model, drafts: drafts)
+                .tabItem { Text("Auto-switch") }
+            ContextThresholdsPanel(model: model, drafts: drafts)
+                .tabItem { Text("Context") }
+            GatewaysPanel(model: model, drafts: drafts)
+                .tabItem { Text("Gateway") }
         }
         .padding(14)
-        .frame(width: 460, height: 456)
+        .frame(width: 460, height: 420)
         .onChange(of: model.snapshot.settings) { now in drafts.prune(in: now) }
     }
 }
@@ -63,14 +56,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.makeFirstResponder(nil)
         guard let model else { return true }
-        let settings = model.snapshot.settings
-        guard drafts.hasPending(in: settings) else { return true }
-        let canApply = drafts.canApply(in: settings)
-        switch SettingsCloseQuestion.findAnswer(canApply: canApply) {
-        case .apply:
-            drafts.apply(model)
-            return !drafts.hasPending(in: model.snapshot.settings)
+        let leftovers = drafts.getLeftovers(in: model.snapshot.settings)
+        guard !leftovers.isEmpty else { return true }
+        switch SettingsCloseQuestion.findAnswer(leftovers) {
         case .discard:
             drafts.discardAll()
             return true
@@ -85,39 +75,29 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 }
 
 enum SettingsCloseQuestion {
-    case apply
     case discard
     case cancel
 
-    static func findAnswer(canApply: Bool) -> SettingsCloseQuestion {
-        let answers = getAnswers(canApply: canApply)
-        let index = PromptWindow.ask(HatPrompt(
-            title: canApply ? "Apply the typed numbers?" : "Some typed numbers cannot be applied",
-            text: canApply
-                ? "The window has numbers that were typed but not applied."
-                : "Discard all typed numbers, or cancel and fix the refused ones.",
+    static let answers: [SettingsCloseQuestion] = [
+        .discard,
+        .cancel,
+    ]
+
+    static func findAnswer(_ leftovers: [SettingsLeftover]) -> SettingsCloseQuestion {
+        getAnswer(at: PromptWindow.ask(getPrompt(leftovers)))
+    }
+
+    static func getPrompt(_ leftovers: [SettingsLeftover]) -> HatPrompt {
+        let lines = leftovers.map { "\($0.name) \($0.text): \($0.reason)" }
+
+        return HatPrompt(
+            title: "Some typed numbers were not applied",
+            text: (lines + ["Discard them, or cancel and fix them."]).joined(separator: "\n"),
             buttons: answers.map(getTitle)
-        ))
-
-        return getAnswer(at: index, among: answers)
+        )
     }
 
-    static func getAnswers(canApply: Bool) -> [SettingsCloseQuestion] {
-        guard canApply else {
-            return [
-                .discard,
-                .cancel,
-            ]
-        }
-
-        return [
-            .apply,
-            .discard,
-            .cancel,
-        ]
-    }
-
-    static func getAnswer(at index: Int, among answers: [SettingsCloseQuestion]) -> SettingsCloseQuestion {
+    static func getAnswer(at index: Int) -> SettingsCloseQuestion {
         guard answers.indices.contains(index) else { return .cancel }
 
         return answers[index]
@@ -125,7 +105,6 @@ enum SettingsCloseQuestion {
 
     private static func getTitle(_ answer: SettingsCloseQuestion) -> String {
         switch answer {
-        case .apply: return "Apply"
         case .discard: return "Discard"
         case .cancel: return "Cancel"
         }
