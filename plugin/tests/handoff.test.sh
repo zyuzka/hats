@@ -2698,6 +2698,30 @@ if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *--cwd* ]]; then
 out=$(env HOME="$work" python3 -I "$HOOK" list --cwd proj 2>&1); rc=$?
 if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *"absolute"* ]]; then ok; else bad "list с относительной папкой — отказ, код 2, без трассировки" "rc=$rc ${out:0:300}"; fi
 
+# --- run: процесс, который не умирает и после SIGKILL (сон в ядре), не держит хук дольше REAP_TIMEOUT_S
+out=$(python3 -I -B -c 'import subprocess, sys, time
+sys.path.insert(0, sys.argv[1])
+import handoff_consts, handoff_proc
+class Stuck:
+    def __init__(self, *args, **kwargs):
+        self.pid = 999999
+        self.stdout = open("/dev/null")
+        self.waited = []
+    def communicate(self, timeout=None):
+        raise subprocess.TimeoutExpired("x", timeout)
+    def wait(self, timeout=None):
+        self.waited.append(timeout)
+        if timeout is None:
+            time.sleep(30)
+        raise subprocess.TimeoutExpired("x", timeout)
+handoff_proc.subprocess.Popen = Stuck
+handoff_proc.os.killpg = lambda pid, sig: None
+began = time.monotonic()
+result = handoff_proc.run(["x"], 0.1)
+took = time.monotonic() - began
+print(result, "fast" if took < handoff_consts.REAP_TIMEOUT_S + 1 else "slow %.1f" % took)' "$plugin_root/scripts" 2>&1)
+same "run: процесс, не умерший после SIGKILL, — ответ «нет данных» без ожидания без срока" "(None, None) fast" "$out"
+
 # --- README: как поставить плагин, как его выключить и что хук пишет на диск
 readme=$(cat "$plugin_root/../README.md" 2>/dev/null)
 has "README: как поставить плагин" "claude plugin install hats --marketplace zyuzka/hats" "$readme"
