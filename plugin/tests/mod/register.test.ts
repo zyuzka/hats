@@ -919,7 +919,7 @@ describe('the notes folder of the plugin', () => {
 
       expect(scene.world.logs).toEqual([
         'context 71% (anchor threshold 70%) — anchoring this session.',
-        'the session was not anchored: the note was not rewritten in this anchor. Say "anchor" to try again.',
+        getRetryLine('the note was not rewritten in this anchor'),
       ])
       const written = scene.world.writes.map((write: { path: string }) => write.path)
       const asked = [...scene.world.existsAsked, ...scene.world.readPaths, ...written]
