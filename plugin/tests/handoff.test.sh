@@ -2706,21 +2706,23 @@ class Stuck:
     def __init__(self, *args, **kwargs):
         self.pid = 999999
         self.stdout = open("/dev/null")
-        self.waited = []
     def communicate(self, timeout=None):
         raise subprocess.TimeoutExpired("x", timeout)
     def wait(self, timeout=None):
-        self.waited.append(timeout)
-        if timeout is None:
-            time.sleep(30)
+        time.sleep(30 if timeout is None else min(timeout, 30))
         raise subprocess.TimeoutExpired("x", timeout)
 handoff_proc.subprocess.Popen = Stuck
 handoff_proc.os.killpg = lambda pid, sig: None
 began = time.monotonic()
 result = handoff_proc.run(["x"], 0.1)
 took = time.monotonic() - began
-print(result, "fast" if took < handoff_consts.REAP_TIMEOUT_S + 1 else "slow %.1f" % took)' "$plugin_root/scripts" 2>&1)
-same "run: процесс, не умерший после SIGKILL, — ответ «нет данных» без ожидания без срока" "(None, None) fast" "$out"
+import handoff_state
+handoff_state.deadline = time.monotonic()
+began = time.monotonic()
+handoff_proc.run(["x"], 0.1)
+spent = time.monotonic() - began
+print(result, "fast" if took < 1.5 else "slow %.1f" % took, "budget-kept" if spent < 0.3 else "budget-passed %.2f" % spent)' "$plugin_root/scripts" 2>&1)
+same "run: процесс, не умерший после SIGKILL, — ответ «нет данных» без ожидания без срока и сверх бюджета хука" "(None, None) fast budget-kept" "$out"
 
 # --- README: как поставить плагин, как его выключить и что хук пишет на диск
 readme=$(cat "$plugin_root/../README.md" 2>/dev/null)
