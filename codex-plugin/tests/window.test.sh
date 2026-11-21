@@ -79,6 +79,7 @@ has "61%: names the fill" "$ctx" "61% full"
 has "61%: names the save threshold" "$ctx" "do that at 70%"
 equal "61%: notes folder mode 700" "$(stat -f %Lp "$notes" 2>/dev/null)" 700
 has "61%: journal" "$(cat "$journal" 2>/dev/null)" '"asked-to-write"'
+has "61%: first attempt journalled" "$(cat "$journal" 2>/dev/null)" '"attempt": 1'
 
 # 3. Update: next turn at 64%, no compaction, the note is there → update it, do not tell the user.
 printf 'code word BLUE\n' > "$note"
@@ -89,12 +90,31 @@ has "64%: do not tell" "$ctx" "Do not tell the user"
 lacks "64%: no second announcement" "$ctx" "tell the user in one line"
 has "64%: journal" "$(cat "$journal")" '"asked-to-update"'
 
-# 3b. The note was never written (say the sandbox refused): the user is told only once; update wording.
+# 3b. The note was never written (a turn cut short, the sandbox refused): the loud request comes back
+# while the file is missing, three loud requests in all, then only the update wording.
 rm -f "$note"
 ctx=$(run_window "$(input UserPromptSubmit)" | context)
-has "64% without the note: update wording" "$ctx" "update the resume note"
-lacks "64% without the note: no second announcement" "$ctx" "tell the user in one line"
-has "64% without the note: journal" "$(cat "$journal")" '"note-missing"'
+has "64% without the note: loud again" "$ctx" "tell the user in one line"
+has "64% without the note: second attempt journalled" "$(cat "$journal")" '"attempt": 2'
+equal "64% without the note: count" "$(json_field "$notes/$sid.state.json" loud)" 2
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "64% without the note: loud a third time" "$ctx" "tell the user in one line"
+equal "64% without the note: count at the limit" "$(json_field "$notes/$sid.state.json" loud)" 3
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "64% past the limit: update wording" "$ctx" "update the resume note"
+lacks "64% past the limit: no fourth announcement" "$ctx" "tell the user in one line"
+has "64% past the limit: journal" "$(cat "$journal")" '"note-missing"'
+
+# 3b-old. A state from an earlier version, announced without a count, and no note: one more loud request.
+printf '{"announced": true, "percent": 64}' > "$notes/$sid.state.json"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "old state without the note: loud" "$ctx" "tell the user in one line"
+equal "old state: counted as the second" "$(json_field "$notes/$sid.state.json" loud)" 2
+printf 'code word BLUE\n' > "$note"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "old state with the note: update wording" "$ctx" "update the resume note"
+lacks "old state with the note: quiet" "$ctx" "tell the user in one line"
+equal "old state with the note: count unchanged" "$(json_field "$notes/$sid.state.json" loud)" 2
 
 # 3c. Stop past the warning threshold asks nothing.
 out=$(run_window "$(input Stop)"); silent "Stop at 64%" "$out" $?
@@ -112,6 +132,7 @@ has "compact: the next step" "$ctx" "Next step: the essay"
 has "compact: go on" "$ctx" "Go on with the task"
 has "compact: journal" "$(cat "$journal")" '"handed-back"'
 equal "compact: warning armed again" "$(json_field "$notes/$sid.state.json" announced)" false
+equal "compact: count starts over" "$(json_field "$notes/$sid.state.json" loud)" 0
 ctx=$(run_window "$(input UserPromptSubmit)" | context)
 has "compact, still at 64%: first request again" "$ctx" "tell the user in one line"
 
@@ -140,6 +161,18 @@ equal "round: re-armed below the threshold" "$(json_field "$notes/$sid.state.jso
 percent_of 61 >> "$tr"
 ctx=$(run_window "$(input UserPromptSubmit)" | context)
 has "round: warns again at 61%" "$ctx" "tell the user in one line"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "round: the note of the last arming is not this one's, loud again" "$ctx" "tell the user in one line"
+touch -t 203001010000 "$note"
+ctx=$(run_window "$(input UserPromptSubmit)" | context)
+has "round: the note rewritten in this arming, update wording" "$ctx" "update the resume note"
+lacks "round: the note rewritten in this arming, quiet" "$ctx" "tell the user in one line"
+
+# 6b. A spent count starts over below the threshold.
+printf '{"announced": true, "percent": 64, "loud": 3, "before": null}' > "$notes/$sid.state.json"
+percent_of 25 >> "$tr"
+out=$(run_window "$(input Stop)"); silent "spent: 25% on Stop" "$out" $?
+equal "spent: count starts over" "$(json_field "$notes/$sid.state.json" loud)" 0
 
 # 7. Thresholds off: save_percent null → no request at 80%; warn_percent null too.
 reset; percent_of 80 > "$tr"

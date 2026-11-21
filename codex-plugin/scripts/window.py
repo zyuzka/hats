@@ -12,11 +12,17 @@ Thresholds: warn_percent and save_percent of window-thresholds.json in the Hats 
 model_auto_compact_token_limit line in ~/.codex/config.toml, where it can; the texts do not promise it.
 
 On UserPromptSubmit, at or past the warning threshold, the hook adds a text for the model
-(hookSpecificOutput.additionalContext): once per arming, to write the note to
-$TMPDIR/hats-codex-notes/<session id>.md and tell the user so in one line; on every later turn, to update
-the note without telling the user — also when the note is missing, which goes to the journal as
-note-missing. Below the warning threshold, and after a compaction (note_back.py), the warning is armed
-again. The state lives beside the note, <session id>.state.json ({"announced": bool}).
+(hookSpecificOutput.additionalContext): on the first turn of an arming, to write the note to
+$TMPDIR/hats-codex-notes/<session id>.md and tell the user so in one line; while the note has not been
+written in this arming — its file is missing, or unchanged since that first request, as a note left by an
+earlier arming is — the same request again on the next turns, at most LOUD_LIMIT requests in all, so a
+turn cut short before the note does not cost the user the line; on every other turn, to update the note
+without telling the user — also when the note is still missing after the limit, which goes to the journal
+as note-missing. Below the warning threshold, and after a compaction (note_back.py), the warning is armed
+again and the count starts over. The state lives beside the note, <session id>.state.json
+({"announced": bool, "loud": the loud requests given in this arming, "before": the note's st_mtime_ns at
+the first request, or null without a note}); a state without "loud" written by an earlier version counts
+one loud request when announced.
 With either threshold off (null) the hook asks for nothing: without a save threshold Codex does not
 compact by Hats' line, and without a warning threshold there is no point at which to ask.
 
@@ -55,6 +61,7 @@ OWN_FILE = re.compile(r"[A-Za-z0-9-]{1,80}\.json")
 LEFT_TEMPORARY = re.compile(r"\.tmp-[A-Za-z0-9_-]{1,64}\.json")
 NOTES_FILE = re.compile(r"(?:[A-Za-z0-9-]{1,80}\.(?:md|state\.json)|\.tmp-[A-Za-z0-9_-]{1,64}\.(?:json|log))")
 CWD_LIMIT = 1024
+LOUD_LIMIT = 3
 
 
 def get_count(line):
@@ -174,6 +181,29 @@ def get_update_request(path, percent, save):
     )
 
 
+def get_loud_count(state):
+    loud = state.get("loud")
+    if type(loud) is int and loud >= 0:
+        return loud
+
+    return 1 if state.get("announced") is True else 0
+
+
+def get_mtime(path):
+    try:
+        return os.stat(path).st_mtime_ns
+    except (OSError, ValueError):
+        return None
+
+
+def get_before(state, loud, now):
+    if loud == 0:
+        return now
+    before = state.get("before")
+
+    return before if type(before) is int else None
+
+
 def ask(session, percent, save):
     notes = hats.get_notes(create=True)
     if notes is None:
@@ -181,10 +211,19 @@ def ask(session, percent, save):
         return None
     state = hats.read_json(os.path.join(notes, session + ".state.json")) or {}
     note = os.path.join(notes, session + ".md")
-    first = state.get("announced") is not True
-    hats.write_whole(notes, session + ".state.json", {"announced": True, "percent": percent})
-    if first:
-        hats.journal(SCRIPT, "UserPromptSubmit", "asked-to-write", percent=percent)
+    loud = get_loud_count(state)
+    now = get_mtime(note)
+    before = get_before(state, loud, now)
+    is_written = now is not None and now != before
+    is_loud = loud == 0 or (loud < LOUD_LIMIT and not is_written)
+    hats.write_whole(notes, session + ".state.json", {
+        "announced": True,
+        "percent": percent,
+        "loud": loud + 1 if is_loud else loud,
+        "before": before,
+    })
+    if is_loud:
+        hats.journal(SCRIPT, "UserPromptSubmit", "asked-to-write", percent=percent, attempt=loud + 1)
         text = get_first_request(note, percent, save)
     else:
         if not os.path.isfile(note):
@@ -201,7 +240,7 @@ def rearm(session):
     state = hats.read_json(os.path.join(notes, session + ".state.json"))
     if state is None or state.get("announced") is not True:
         return
-    hats.write_whole(notes, session + ".state.json", {"announced": False})
+    hats.write_whole(notes, session + ".state.json", {"announced": False, "loud": 0})
 
 
 def run(data):
