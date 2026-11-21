@@ -133,14 +133,32 @@ final class LegacySlotAdoptionTests: XCTestCase {
                            + "/usr/bin/security and the live keychain")
     }
 
+    func testTheScannerSkipsTheNameInsideAStringAndFindsARealCall() {
+        let text = #"""
+        XCTAssertFalse(main.contains("AccountStore("))
+        let store = AccountStore(osAccount: "bare")
+        """#
+
+        XCTAssertEqual(
+            Self.findConstructorCalls(in: text),
+            [
+                #"AccountStore(osAccount: "bare")"#,
+            ]
+        )
+    }
+
     private static func isRealKeychain(_ call: String) -> Bool {
         call.contains("keychain: .real(") || call.contains("keychain: KeychainWorld.real(")
     }
 
-    private static func findConstructorCalls(in text: String) -> [String] {
+    static func findConstructorCalls(in text: String) -> [String] {
         var calls: [String] = []
         var rest = text[...]
         while let start = rest.range(of: "AccountStore(") {
+            if start.lowerBound > rest.startIndex, rest[rest.index(before: start.lowerBound)] == "\"" {
+                rest = rest[start.upperBound...]
+                continue
+            }
             var depth = 0
             var end = start.upperBound
             for index in rest[rest.index(before: start.upperBound)...].indices {
