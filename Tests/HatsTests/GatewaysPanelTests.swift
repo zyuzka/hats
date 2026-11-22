@@ -16,13 +16,12 @@ final class GatewaysPanelTests: XCTestCase {
         XCTAssertFalse(tabs.contains("CodexGatewayPanel"), "the Codex panel is reached through the Gateway tab")
     }
 
-    func testTheGatewayTabShowsClaudeFirstThenCodexAndScrolls() throws {
+    func testTheGatewayTabShowsClaudeFirstThenCodex() throws {
         let panel = try source("GatewaysPanel.swift")
         let claude = try XCTUnwrap(panel.range(of: " GatewayPanel(model: model, drafts: drafts)"))
         let codex = try XCTUnwrap(panel.range(of: "CodexGatewayPanel(model: model, drafts: drafts)"))
 
         XCTAssertLessThan(claude.lowerBound, codex.lowerBound)
-        XCTAssertTrue(panel.contains("ScrollView"))
     }
 
     func testEveryTabOfTheSettingsWindowScrolls() throws {
@@ -35,7 +34,12 @@ final class GatewaysPanelTests: XCTestCase {
             .compactMap { Range($0.range(at: 1), in: tabs).map { String(tabs[$0]) } }
         let panels = Array(NSOrderedSet(array: names).array as? [String] ?? [])
 
-        let flat = try panels.filter { !(try source($0 + ".swift")).contains("ScrollView {") }
+        let flat = try panels.filter { name in
+            let panel = try source(name + ".swift")
+            guard let body = panel.range(of: "var body: some View {") else { return true }
+
+            return !panel[body.upperBound...].drop { $0.isWhitespace }.hasPrefix("ScrollView {")
+        }
 
         XCTAssertEqual(panels.count, 5, "the tabs are read from the TabView of the settings window")
         XCTAssertEqual(flat, [], "a tab taller than the window pushes the tab bar under the title instead of scrolling")
