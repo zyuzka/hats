@@ -20,6 +20,8 @@ what it shipped is folded into the single entry below, and public numbering star
   still not written asks to discard it and says which field and why.
 - **Codex tells you about its resume note even after a cut-short turn.** If a turn ends before Codex wrote
   the note, the next turn asks it again to write the note and tell you, up to three times in all.
+- **The General tab of Settings scrolls.** A long line, such as an error about the Codex plugin, no longer
+  pushes the tabs under the window title.
 
 ## 0.4.1 — 2026-11-08
 

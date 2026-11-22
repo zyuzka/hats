@@ -6,6 +6,12 @@ struct GeneralPanel: View {
     private var snapshot: HatsSnapshot { model.snapshot }
 
     var body: some View {
+        ScrollView {
+            content
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             menuBarRows
             Divider()
