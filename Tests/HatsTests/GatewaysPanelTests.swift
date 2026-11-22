@@ -24,4 +24,20 @@ final class GatewaysPanelTests: XCTestCase {
         XCTAssertLessThan(claude.lowerBound, codex.lowerBound)
         XCTAssertTrue(panel.contains("ScrollView"))
     }
+
+    func testEveryTabOfTheSettingsWindowScrolls() throws {
+        let window = try source("SettingsWindow.swift")
+        let tabView = try XCTUnwrap(window.range(of: "TabView {"))
+        let end = try XCTUnwrap(window.range(of: ".padding(14)", range: tabView.upperBound..<window.endIndex))
+        let tabs = String(window[tabView.upperBound..<end.lowerBound])
+        let names = try NSRegularExpression(pattern: "\\b([A-Z][A-Za-z]*Panel)\\(")
+            .matches(in: tabs, range: NSRange(tabs.startIndex..., in: tabs))
+            .compactMap { Range($0.range(at: 1), in: tabs).map { String(tabs[$0]) } }
+        let panels = Array(NSOrderedSet(array: names).array as? [String] ?? [])
+
+        let flat = try panels.filter { !(try source($0 + ".swift")).contains("ScrollView {") }
+
+        XCTAssertEqual(panels.count, 5, "the tabs are read from the TabView of the settings window")
+        XCTAssertEqual(flat, [], "a tab taller than the window pushes the tab bar under the title instead of scrolling")
+    }
 }
