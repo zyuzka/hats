@@ -1936,15 +1936,18 @@ has "took: медленный ps — предупреждение «could not ch
 has "took: занятая runs.lock — строка журнала дописана" "outcome=took-shared unknown=1" "$(tl outcome unknown)"
 
 # --- took: stdout не принимает — печать сдаётся за 0,3 с, took другой записки записан
-# A и B стартуют разом; B до блокировки проверяет своего читателя R медленным ps (0,15 с), поэтому приходит к
-# блокировке, пока A держит её и пытается печатать. Порядок доказывают времена файлов, а не опрос.
+# Порядок по событиям, не по времени: B стартует первым и до блокировки проверяет своего читателя R; этот ps
+# отмечает «B готов» и ждёт, пока A возьмёт блокировку. A стартует только после этой отметки, поэтому B приходит
+# к блокировке, пока A держит её и пытается печатать, как бы медленно ни стартовали оба. Порядок доказывают
+# времена файлов, а не опрос.
 reset; closed_note; printf '## NOW\n\nвторая\n' >"$mem/n2.md"; closed_note b "$mem/n2.md" "вторая"
 A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mark_file "$real_mem/n2.md" "[$(reader_json "$R" sR)]"
-mkps "case \" \$* \" in *\" $(pid_of "$R") \"*) sleep 0.15 ;; esac; exec /bin/ps \"\$@\""
 sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
+mkps "case \" \$* \" in *\" $(pid_of "$R") \"*) : >\"$sig/b.ready\"; for i in \$(seq 1 250); do ls \"$sig/a/\"*.locked >/dev/null 2>&1 && break; sleep 0.02; done ;; esac; exec /bin/ps \"\$@\""
 filler=$(fill_fifo "$work/full")
-( took_in sA "$note" | timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
 run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
+wait_for '[ -f "$sig/b.ready" ]' || bad "заполненный stdout: B дошёл до проверки читателя" "нет $sig/b.ready за 5 с"
+( took_in sA "$note" | timeout 10 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
 wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
 has "заполненный stdout: печать не удалась — not-printed" "command=took outcome=not-printed warned=False" "$(tls sA command outcome warned)"
 a_ms=$(tls sA ms); a_ms=${a_ms#ms=}
