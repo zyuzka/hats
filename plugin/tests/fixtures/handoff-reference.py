@@ -914,11 +914,13 @@ def render_list(markers):
     ]
     all_facts = []
     for index, marker in enumerate(markers, 1):
-        text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
+        raw = read_regular(marker["note"], SOURCE_SIZE_LIMIT)
+        text = raw or ""
         out.append(f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}")
         problems, claims = checked_counted(text, marker["cwd"], os.path.realpath(marker["note"]))
         if not problems:
-            out.append(f"   {get_verdict_line(claims)}")
+            if raw is not None:
+                out.append(f"   {get_verdict_line(claims)}")
         elif problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
         else:
@@ -1382,12 +1384,12 @@ def cmd_save(args):
     if retired:
         print(f"removed markers of closed sessions with the same note: {retired}")
     print("\n".join(set_index(note, marker)))
-    problems = checked(text, cwd, os.path.realpath(note))
+    problems, claims = checked_counted(text, cwd, os.path.realpath(note))
     if problems:
         print("not verified in the note:")
         print("\n".join(problem_lines(problems)))
     else:
-        print("quotes and numbers: all verified")
+        print(get_verdict_line(claims))
     return 0
 
 
@@ -1493,9 +1495,9 @@ def cmd_check(args):
     if text is None:
         print(f"handoff: could not read {args.note}")
         return 1
-    problems = checked(text, os.path.realpath(os.path.expanduser(args.cwd or os.getcwd())), note)
+    problems, claims = checked_counted(text, os.path.realpath(os.path.expanduser(args.cwd or os.getcwd())), note)
     if not problems:
-        print("quotes and numbers: all verified")
+        print(get_verdict_line(claims))
         return 0
     print("\n".join(problem_lines(problems)))
     return 1

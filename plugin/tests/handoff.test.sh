@@ -33,10 +33,12 @@
 # а нечитаемая записка не отдаётся; текст меняется только у записок за пределом вывода и у
 # нечитаемых, и эти вызовы идут с CMP=0.
 # Record 99 edits the reference in place instead of replacing it with a copy: handoff.py is now
-# split into modules and prints JSON, while the reference stays one plain-text file. The edit
-# matches handoff_render.py: check_text counts checked claims as handoff_check.check_text does,
-# and with no problems render_own appends the verdict line to the tail and render_list appends
-# it indented ("nothing checked" at zero claims, "all verified" otherwise).
+# split into modules and prints JSON, while the reference stays one plain-text file. check_text
+# adds one to the count of claims at the same three places as handoff_check.check_text (each
+# quote checked, each N of M (P%), each clause with a figure up to the first without a source);
+# its fence and time-out handling stays the reference's own. With no problems render_own
+# appends the verdict line to the tail, render_list appends it indented for a note it could
+# read, and save and check print it ("nothing checked" at zero claims, "all verified" otherwise).
 #
 # Задача 8c: хук took (после Read) гоняется помощниками took и took_raw со входом из замера
 # 2026-11-13; его вывод проверяется той же формой с hookEventName PostToolUse, без сверки.
@@ -501,6 +503,7 @@ has "непроверенная строка приходит с пометко�
 # --- record 99: with no problems the note after /clear and the list say which verdict holds
 nothing_line='quotes and numbers: none outside code and the header — nothing checked'
 all_line='quotes and numbers: all verified'
+reset; mine
 printf '%s\n' 'строка один' '| 2 слова или решения | 22 | 73% |' >"$proj/src.md"
 printf '## СЕЙЧАС\n\nпросто текст\n' >"$note"
 out=$(start clear)
@@ -512,6 +515,10 @@ out=$(start clear)
 has "clear: verified quote ends with the all-verified line" "--- end of excerpt ---
 $all_line" "$out"
 lacks "clear: verified quote is not nothing checked" "$nothing_line" "$out"
+printf '## СЕЙЧАС\n\nнеделя 98%% (cmd: cat weekly.json)\n' >"$note"
+out=$(start clear)
+has "clear: figure with its command ends with the all-verified line" "--- end of excerpt ---
+$all_line" "$out"
 printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
 lacks "clear: unverified note carries no verdict line" "quotes and numbers:" "$(start clear)"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
@@ -525,6 +532,9 @@ out=$(start startup)
 has "list: verified quote gets the indented all-verified line" "
    $all_line" "$out"
 lacks "list: verified quote is not nothing checked" "$nothing_line" "$out"
+printf '## СЕЙЧАС\n\nнеделя 98%% (cmd: cat weekly.json)\n' >"$note"
+has "list: figure with its command gets the indented all-verified line" "
+   $all_line" "$(start startup)"
 printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
 out=$(start startup)
 has "list: unverified note keeps the count of lines" "   unverified lines: 1" "$out"
@@ -835,7 +845,11 @@ has "проверка упала: журнал запусков называет
 reset; printf '## СЕЙЧАС\n\nправила — %s из 3 (5%%)\n' "$big" >"$note"; mine
 out=$(start clear); has "проверка упала: после /clear записка всё равно отдаётся" "continues the note" "$out"
 has "проверка упала: после /clear это сказано" "note check failed" "$out"
+lacks "check failed: no verdict line after /clear" "quotes and numbers:" "$out"
 has "проверка упала: журнал запусков называет ошибку (/clear)" "outcome=gave-note check_error=OverflowError" "$(tl outcome check_error)"
+reset; printf '## СЕЙЧАС\n\nправила — %s из 3 (5%%)\n' "$big" >"$note"; marker a "$dead_pid" "$dead_started" "$proj" "$note" "проверка падает"
+out=$(start startup); has "check failed: the list says so" "   note check failed" "$out"
+lacks "check failed: no verdict line in the list" "quotes and numbers:" "$out"
 reset; mine; start clear >/dev/null
 has "проверка не падала: в журнале нет ошибки проверки" "outcome=gave-note check_error=None" "$(tl outcome check_error)"
 reset; rm -rf "$work/.claude/state"; printf 'x' >"$work/.claude/state"
