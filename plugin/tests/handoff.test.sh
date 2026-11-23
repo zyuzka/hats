@@ -2741,6 +2741,34 @@ if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *--cwd* ]]; then
 out=$(env HOME="$work" python3 -I "$HOOK" list --cwd proj 2>&1); rc=$?
 if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *"absolute"* ]]; then ok; else bad "list с относительной папкой — отказ, код 2, без трассировки" "rc=$rc ${out:0:300}"; fi
 
+# --- list: исключение (запись 106) — код 1, одна строка в stderr, stdout пуст
+list_harness() {  # list_harness <код на Python, правит модули до запуска> — list через exec, stdout и stderr раздельно
+  local call; call=$(mktemp -d "$work/list.XXXXXX")
+  env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
+'"$swap_py"'
+path = sys.argv[1]
+scope = {
+    "__name__": "hook",
+    "__file__": path,
+}
+exec(compile(open(path, encoding="utf-8").read(), path, "exec"), scope)
+exec(sys.argv[2], {
+    "scope": scope,
+    "os": os,
+    "swap": swap,
+})
+sys.exit(scope["main"](["list", "--cwd", sys.argv[3]]))' "$HOOK" "$1" "$proj" >"$call/out" 2>"$call/err"
+  echo "rc=$?"; printf 'out=%s\n' "$(cat "$call/out")"; printf 'err=%s' "$(cat "$call/err")"; rm -rf "$call"
+}
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
+has "list: контроль — без исключения список идёт в stdout" "additionalContext" "$(list_harness 'pass')"
+out=$(list_harness 'def broken(*args):
+    raise RuntimeError("boom")
+swap("find_closed_list", broken)')
+same "list: исключение — код 1, stdout пуст, в stderr тип и текст" "rc=1
+out=
+err=handoff.py list: RuntimeError: boom" "$out"
+
 # --- run: процесс, который не умирает и после SIGKILL (сон в ядре), не держит хук дольше REAP_TIMEOUT_S
 out=$(python3 -I -B -c 'import subprocess, sys, time
 sys.path.insert(0, sys.argv[1])

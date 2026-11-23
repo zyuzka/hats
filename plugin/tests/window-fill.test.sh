@@ -687,14 +687,20 @@ if [ "$got" = ok ] && [ -f "$rr_hats/session-windows/failures.log" ]; then ok
 else bad "правило корня: с абсолютным корнем журнал ошибок пишется (контроль)" "$got"; fi
 rm -rf "$rr_hats/session-windows" "$rr/run/rel"
 
-# --- get_field: строка обрезается до 80 знаков, не строка — null
+# --- get_field (запись 100): строка длиннее FAILURE_FIELD_LIMIT режется ровно до него, строка в предел
+# остаётся целой, не строка — None
 fields=$(python3 -I -B -c 'import sys
 sys.path.insert(0, sys.argv[1])
 import hats_common
-print(len(hats_common.get_field("я" * 81)), hats_common.get_field("x" * 80) == "x" * 80, hats_common.get_field("ab"))
-print(*(hats_common.get_field(value) for value in (None, 7, ["a"], b"ab")))' "$plugin_root/scripts" 2>&1)
-if [ "$fields" = "80 True ab
-None None None None" ]; then ok; else bad "get_field: до 80 знаков, не строка — None" "$fields"; fi
+limit = hats_common.FAILURE_FIELD_LIMIT
+long = "".join(chr(0x430 + i % 32) for i in range(limit + 5))
+at = "x" * (limit - 1) + "я"
+print("over:", hats_common.get_field(long) == long[:limit], len(hats_common.get_field(long)) == limit)
+print("at:", hats_common.get_field(at) == at, "short:", hats_common.get_field("ab"))
+print(*(hats_common.get_field(value) for value in (None, 7, {"a": "b"}, ["a"], b"ab")))' "$plugin_root/scripts" 2>&1)
+if [ "$fields" = "over: True True
+at: True short: ab
+None None None None None" ]; then ok; else bad "get_field: до FAILURE_FIELD_LIMIT знаков, не строка — None" "$fields"; fi
 
 # --- уборка ---
 ago() { python3 -I -c 'import sys, time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - float(sys.argv[1]))))' "$1"; }
