@@ -49,8 +49,7 @@ extension AppDelegate {
     private func askBeforeTheCodexThreadsLoseTheGateway(skipping: Bool, then: @escaping () -> Void) {
         let threads = codex.gateway.isServing ? codex.gateway.state.threadIDs.count : 0
         guard !skipping, let cost = HatsCopy.codexGatewayStopCost(threads: threads) else { return then() }
-        popover.close()
-        afterThePopoverSettles { [weak self] in
+        let ask = { [weak self] in
             guard HatDialogs.hasConfirmedStoppingTheGateway(cost: cost) else {
                 Journal.log("codexGateway.stopDeclined", ["threads": String(threads)])
                 self?.redraw()
@@ -58,5 +57,11 @@ extension AppDelegate {
             }
             then()
         }
+        PopoverSettle.run(
+            isShown: popover.isShown,
+            close: { popover.close() },
+            later: afterThePopoverSettles,
+            work: ask
+        )
     }
 }
