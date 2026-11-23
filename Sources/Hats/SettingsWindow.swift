@@ -60,9 +60,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         guard let model else { return true }
 
         return SettingsCloseQuestion.canClose(
-            leftovers: drafts.getLeftovers(in: model.snapshot.settings),
-            ask: SettingsCloseQuestion.findAnswer,
-            discard: drafts.discardAll
+            drafts: drafts,
+            in: model.snapshot.settings,
+            ask: SettingsCloseQuestion.findAnswer
         )
     }
 
@@ -81,14 +81,15 @@ enum SettingsCloseQuestion {
     ]
 
     static func canClose(
-        leftovers: [SettingsLeftover],
-        ask: ([SettingsLeftover]) -> SettingsCloseQuestion,
-        discard: () -> Void
+        drafts: SettingsDrafts,
+        in settings: AppSettings,
+        ask: ([SettingsLeftover]) -> SettingsCloseQuestion
     ) -> Bool {
+        let leftovers = drafts.getLeftovers(in: settings)
         guard !leftovers.isEmpty else { return true }
         switch ask(leftovers) {
         case .discard:
-            discard()
+            drafts.discardAll()
             return true
         case .cancel:
             return false
