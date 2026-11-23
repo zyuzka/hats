@@ -199,39 +199,54 @@ final class SettingsDraftsTests: XCTestCase {
 
     func testClosingWithNothingLeftDoesNotAsk() {
         // Arrange
-        var calls: [String] = []
+        let stored = settings()
+        let drafts = SettingsDrafts()
+        var asked = 0
 
         // Act
         let closes = SettingsCloseQuestion.canClose(
-            leftovers: [],
+            drafts: drafts,
+            in: stored,
             ask: { _ in
-                calls.append("ask")
+                asked += 1
                 return .cancel
-            },
-            discard: { calls.append("discard") }
+            }
         )
 
         // Assert
         XCTAssertTrue(closes)
-        XCTAssertEqual(calls, [], "nothing left: the window closes without a question")
+        XCTAssertEqual(asked, 0, "nothing left: the window closes without a question")
     }
 
-    func testDiscardClosesAndDropsTheNumbersCancelKeepsTheWindowAndThem() {
+    func testCancelKeepsTheWindowAndTheNumberDiscardDropsItAndCloses() {
         // Arrange
-        let left = [SettingsLeftover(name: "Settle", text: "700", reason: "from 0 to 600 s")]
-        var calls: [String] = []
-        let discard = { calls.append("discard") }
+        let stored = settings()
+        let drafts = SettingsDrafts()
+        drafts.setText("700", of: .settle, in: stored)
+        var shown: [[String]] = []
 
         // Act
-        let discarded = SettingsCloseQuestion.canClose(leftovers: left, ask: { _ in .discard }, discard: discard)
-        let afterDiscard = calls
-        let cancelled = SettingsCloseQuestion.canClose(leftovers: left, ask: { _ in .cancel }, discard: discard)
+        let cancelled = SettingsCloseQuestion.canClose(
+            drafts: drafts,
+            in: stored,
+            ask: { leftovers in
+                shown.append(leftovers.map(\.text))
+                return .cancel
+            }
+        )
+        let keptAfterCancel = drafts.getLeftovers(in: stored).map(\.text)
+        let discarded = SettingsCloseQuestion.canClose(
+            drafts: drafts,
+            in: stored,
+            ask: { _ in .discard }
+        )
 
         // Assert
-        XCTAssertTrue(discarded)
-        XCTAssertEqual(afterDiscard, ["discard"])
         XCTAssertFalse(cancelled, "Cancel keeps the window open")
-        XCTAssertEqual(calls, ["discard"], "Cancel drops nothing")
+        XCTAssertEqual(shown, [["700"]], "the question gets the number left in the field")
+        XCTAssertEqual(keptAfterCancel, ["700"], "Cancel drops nothing")
+        XCTAssertTrue(discarded)
+        XCTAssertEqual(drafts.getLeftovers(in: stored).count, 0, "Discard drops the number")
     }
 
     func testTheWindowClosesThroughTheDecisionAfterTheFocusedFieldIsWritten() throws {
