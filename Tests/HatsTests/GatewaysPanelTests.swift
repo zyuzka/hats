@@ -55,5 +55,7 @@ final class GatewaysPanelTests: XCTestCase {
         XCTAssertTrue(codex.contains("label: HatsCopy.codexGatewayPortLabel,"), "one name for the Codex port field")
         XCTAssertTrue(settle.contains("Text(HatsCopy.settleLabel)"), "one name for the Settle row")
         XCTAssertTrue(settle.contains("label: HatsCopy.settleLabel,"), "one name for the Settle field")
+        XCTAssertFalse(codex.contains("\"Codex gateway port\""), "no second spelling of the Codex port name")
+        XCTAssertFalse(settle.contains("\"Settle\""), "no second spelling of the Settle name")
     }
 }
