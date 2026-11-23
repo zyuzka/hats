@@ -48,6 +48,15 @@ extension Keychain {
         ownItemLock.lock()
         defer { ownItemLock.unlock() }
         let staging = stagingName(for: service)
+        if readBack(service, account) == .missing,
+           let recovered = recoverStagedItem(service: service, account: account, readOwn: readBack, rename: rename),
+           recovered.renamed != errSecSuccess {
+            throw KeychainError(
+                operation: "write \(service)",
+                detail: "renaming the leftover \(staging) back failed: \(message(for: recovered.renamed)); "
+                    + "the value is kept under \(staging)"
+            )
+        }
         try remove(staging, account)
         let added = add([
             kSecClass: kSecClassGenericPassword,
@@ -77,6 +86,18 @@ extension Keychain {
                 detail: "renaming \(staging) failed: \(message(for: renamed)); the value is kept under \(staging)"
             )
         }
+    }
+
+    static func recoverStagedItem(
+        service: String,
+        account: String,
+        readOwn: (String, String) -> OwnRead,
+        rename: (String, String, String) -> OSStatus
+    ) -> (data: Data, renamed: OSStatus)? {
+        let staging = stagingName(for: service)
+        guard case .found(let data) = readOwn(staging, account) else { return nil }
+
+        return (data, rename(staging, service, account))
     }
 
     static func renameOwnItem(from staging: String, to service: String, account: String) -> OSStatus {

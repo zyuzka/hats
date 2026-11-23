@@ -5,7 +5,8 @@ extension Keychain {
         service: String,
         account: String,
         readOwn: (String, String) -> OwnRead = { readOwnItem(service: $0, account: $1) },
-        find: ([String]) -> Result = { run($0) }
+        find: ([String]) -> Result = { run($0) },
+        rename: (String, String, String) -> OSStatus = { renameOwnItem(from: $0, to: $1, account: $2) }
     ) throws -> Data? {
         guard route(for: service) == .hatsOwned else {
             return try findValue(service: service, account: account, find: find)
@@ -14,7 +15,8 @@ extension Keychain {
         defer { ownItemLock.unlock() }
         switch readOwn(service, account) {
         case .found(let data): return data
-        case .missing: return nil
+        case .missing:
+            return recoverStagedItem(service: service, account: account, readOwn: readOwn, rename: rename)?.data
         case .refused: return try findValue(service: service, account: account, find: find)
         }
     }

@@ -2,81 +2,112 @@ import XCTest
 @testable import Hats
 
 final class KeychainOwnItemTests: XCTestCase {
-    private final class Steps {
-        var order: [String] = []
-        var added: Data?
-        var addStatus: OSStatus = errSecSuccess
-        var readBack: Keychain.OwnRead?
-        var failRemoveOf: String?
-        var renameStatus: OSStatus = errSecSuccess
-    }
-
     private let parked = Slot.parked("A-1")
 
     private var staging: String { Keychain.stagingName(for: parked) }
 
-    private func park(_ data: Data, service: String? = nil, steps: Steps) throws {
+    private func park(_ data: Data, service: String? = nil, store: KeychainItemStore) throws {
         try Keychain.writeOwnItem(
             service: service ?? parked,
             account: "me",
             data: data,
-            remove: { name, _ in
-                steps.order.append("remove \(name)")
-                if name == steps.failRemoveOf { throw KeychainError(operation: "delete \(name)", detail: "refused") }
-            },
-            add: { item in
-                steps.order.append("add \(item[kSecAttrService] as? String ?? "?")")
-                steps.added = item[kSecValueData] as? Data
-                return steps.addStatus
-            },
-            readBack: { name, _ in
-                steps.order.append("read \(name)")
-                return steps.readBack ?? steps.added.map { .found($0) } ?? .missing
-            },
-            rename: { from, to, _ in
-                steps.order.append("rename \(from) -> \(to)")
-                return steps.renameStatus
-            }
+            remove: { name, _ in try store.remove(name) },
+            add: { store.add($0) },
+            readBack: { name, _ in store.read(name) },
+            rename: { from, to, _ in store.rename(from, to) }
         )
     }
 
+    private func storeWithOldItem() -> KeychainItemStore {
+        let store = KeychainItemStore()
+        store.items[parked] = Data("old".utf8)
+
+        return store
+    }
+
     func testParkingWritesTheNewValueReadsItBackAndOnlyThenRemovesTheOldItem() throws {
-        let steps = Steps()
+        let store = storeWithOldItem()
         let data = Data("{\"token\":\"x\"}".utf8)
 
-        try park(data, steps: steps)
+        try park(data, store: store)
 
-        XCTAssertEqual(steps.added, data)
-        XCTAssertEqual(steps.order, [
+        XCTAssertEqual(store.added, data)
+        XCTAssertEqual(store.order, [
+            "read \(parked)",
             "remove \(staging)",
             "add \(staging)",
             "read \(staging)",
             "remove \(parked)",
             "rename \(staging) -> \(parked)",
         ])
+        XCTAssertEqual(store.items, [parked: data])
+    }
+
+    func testALeftoverStagingItemBesideTheRealOneIsRemoved() throws {
+        let store = storeWithOldItem()
+        store.items[staging] = Data("leftover".utf8)
+
+        try park(Data("new".utf8), store: store)
+
+        XCTAssertEqual(Array(store.order.prefix(3)), ["read \(parked)", "remove \(staging)", "add \(staging)"])
+        XCTAssertEqual(store.items, [parked: Data("new".utf8)])
+    }
+
+    func testAStagingItemLeftAloneIsRenamedBackBeforeTheWrite() throws {
+        let store = KeychainItemStore()
+        store.items[staging] = Data("interrupted".utf8)
+
+        try park(Data("new".utf8), store: store)
+
+        XCTAssertEqual(store.order, [
+            "read \(parked)",
+            "read \(staging)",
+            "rename \(staging) -> \(parked)",
+            "remove \(staging)",
+            "add \(staging)",
+            "read \(staging)",
+            "remove \(parked)",
+            "rename \(staging) -> \(parked)",
+        ])
+        XCTAssertEqual(store.items, [parked: Data("new".utf8)])
+    }
+
+    func testAStagingItemThatCannotBeRenamedBackStopsTheWriteAndIsKept() {
+        let store = KeychainItemStore()
+        store.items[staging] = Data("interrupted".utf8)
+        store.renameStatus = errSecDuplicateItem
+
+        XCTAssertThrowsError(try park(Data("new".utf8), store: store))
+        XCTAssertEqual(store.items, [staging: Data("interrupted".utf8)], "the only copy of the login must stay")
     }
 
     func testAFailedAddThrowsWithItsStatusAndKeepsTheOldItem() {
-        let steps = Steps()
-        steps.addStatus = errSecDuplicateItem
+        let store = storeWithOldItem()
+        store.addStatus = errSecDuplicateItem
 
-        XCTAssertThrowsError(try park(Data("new".utf8), steps: steps)) {
+        XCTAssertThrowsError(try park(Data("new".utf8), store: store)) {
             XCTAssertTrue(
                 $0.localizedDescription.contains("\(errSecDuplicateItem)"),
                 "the message names the status: \($0.localizedDescription)"
             )
         }
-        XCTAssertEqual(steps.order, ["remove \(staging)", "add \(staging)"], "the old item must not be removed")
+        XCTAssertEqual(
+            store.order,
+            ["read \(parked)", "remove \(staging)", "add \(staging)"],
+            "the old item must not be removed"
+        )
+        XCTAssertEqual(store.items, [parked: Data("old".utf8)])
     }
 
     func testAValueThatReadsBackDifferentRemovesTheStagingItemAndKeepsTheOldOne() {
-        let steps = Steps()
-        steps.readBack = .found(Data("other".utf8))
+        let store = storeWithOldItem()
+        store.readOverride[staging] = .found(Data("other".utf8))
 
-        XCTAssertThrowsError(try park(Data("new".utf8), steps: steps))
+        XCTAssertThrowsError(try park(Data("new".utf8), store: store))
         XCTAssertEqual(
-            steps.order,
+            store.order,
             [
+                "read \(parked)",
                 "remove \(staging)",
                 "add \(staging)",
                 "read \(staging)",
@@ -84,22 +115,23 @@ final class KeychainOwnItemTests: XCTestCase {
             ],
             "the staging item goes and the old item stays"
         )
+        XCTAssertEqual(store.items, [parked: Data("old".utf8)])
     }
 
     func testAFailedRemoveOfTheOldItemRemovesTheStagingItemAndThrows() {
-        let steps = Steps()
-        steps.failRemoveOf = Slot.parked("A-1")
+        let store = storeWithOldItem()
+        store.failRemoveOf = parked
 
-        XCTAssertThrowsError(try park(Data("new".utf8), steps: steps))
-        XCTAssertEqual(Array(steps.order.suffix(2)), ["remove \(parked)", "remove \(staging)"])
-        XCTAssertFalse(steps.order.contains { $0.hasPrefix("rename") }, "nothing is renamed over an old item")
+        XCTAssertThrowsError(try park(Data("new".utf8), store: store))
+        XCTAssertEqual(Array(store.order.suffix(2)), ["remove \(parked)", "remove \(staging)"])
+        XCTAssertFalse(store.order.contains { $0.hasPrefix("rename") }, "nothing is renamed over an old item")
     }
 
     func testAFailedRenameThrowsNamingTheStatusAndWhereTheValueIs() {
-        let steps = Steps()
-        steps.renameStatus = errSecDuplicateItem
+        let store = storeWithOldItem()
+        store.renameStatus = errSecDuplicateItem
 
-        XCTAssertThrowsError(try park(Data("new".utf8), steps: steps)) {
+        XCTAssertThrowsError(try park(Data("new".utf8), store: store)) {
             let text = $0.localizedDescription
             XCTAssertTrue(text.contains("\(errSecDuplicateItem)"), "the message names the status: \(text)")
             XCTAssertTrue(text.contains(self.staging), "the message says where the value is: \(text)")
@@ -107,15 +139,65 @@ final class KeychainOwnItemTests: XCTestCase {
     }
 
     func testACodexItemOfFourKilobytesIsAddedWhole() throws {
-        let steps = Steps()
+        let store = KeychainItemStore()
         let service = Slot.codexParked("C-1")
         let data = Data(repeating: 0x7a, count: 4220)
 
-        try park(data, service: service, steps: steps)
+        try park(data, service: service, store: store)
 
         XCTAssertEqual(Keychain.route(for: service), .hatsOwned)
-        XCTAssertEqual(steps.added?.count, 4220)
-        XCTAssertEqual(steps.added, data)
+        XCTAssertEqual(store.added?.count, 4220)
+        XCTAssertEqual(store.items, [service: data])
+    }
+
+    private func readParked(from store: KeychainItemStore, finds: inout Int) throws -> Data? {
+        var count = 0
+        defer { finds = count }
+        return try Keychain.read(
+            service: parked,
+            account: "me",
+            readOwn: { name, _ in store.read(name) },
+            find: { _ in
+                count += 1
+                return Keychain.Result(status: 0, stdout: "found", stderr: "")
+            },
+            rename: { from, to, _ in store.rename(from, to) }
+        )
+    }
+
+    func testReadingAHatLeftOnlyUnderItsStagingNameRenamesItBack() throws {
+        let store = KeychainItemStore()
+        store.items[staging] = Data("interrupted".utf8)
+        var finds = 0
+
+        let value = try readParked(from: store, finds: &finds)
+
+        XCTAssertEqual(value, Data("interrupted".utf8))
+        XCTAssertEqual(store.items, [parked: Data("interrupted".utf8)])
+        XCTAssertEqual(finds, 0, "security find must not run")
+    }
+
+    func testReadingAStagingItemThatCannotBeRenamedStillReturnsIt() throws {
+        let store = KeychainItemStore()
+        store.items[staging] = Data("interrupted".utf8)
+        store.renameStatus = errSecDuplicateItem
+        var finds = 0
+
+        let value = try readParked(from: store, finds: &finds)
+
+        XCTAssertEqual(value, Data("interrupted".utf8))
+        XCTAssertEqual(store.items, [staging: Data("interrupted".utf8)], "the item stays where it is")
+    }
+
+    func testReadingAHatWithNeitherItemIsNil() throws {
+        let store = KeychainItemStore()
+        var finds = 0
+
+        let value = try readParked(from: store, finds: &finds)
+
+        XCTAssertNil(value)
+        XCTAssertEqual(store.order, ["read \(parked)", "read \(staging)"])
+        XCTAssertEqual(finds, 0, "security find must not run")
     }
 
     func testAStagingItemIsNeverListedAsAHat() {
