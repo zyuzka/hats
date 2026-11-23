@@ -3,7 +3,7 @@
 Part of handoff.py, which holds the contract of the whole hook."""
 import os
 
-from handoff_check import checked, problem_lines, state_lines
+from handoff_check import checked_counted, get_verdict_line, problem_lines, state_lines
 from handoff_consts import (
     CUT_LINE,
     HEAD_LIMIT,
@@ -68,10 +68,12 @@ def render_own(marker, text):
         "--- note ---",
     ]
     tail = ["--- end of excerpt ---"]
-    problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
+    problems, claims = checked_counted(text, marker["cwd"], os.path.realpath(marker["note"]))
     if problems:
         tail.append("Not verified (check against the source before relying on it):")
         tail.extend(problem_lines(problems))
+    else:
+        tail.append(get_verdict_line(claims))
     facts = state_lines(text)
     if facts:
         tail.append("State compared with the system:")
@@ -96,10 +98,12 @@ def get_list_blocks(markers):
             out.append(f"   {UNREADABLE_NOTE}: no permission, over the size limit or not a regular file")
             blocks.append(out)
             continue
-        problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
-        if problems and problems[0][0] is None:
+        problems, claims = checked_counted(text, marker["cwd"], os.path.realpath(marker["note"]))
+        if not problems:
+            out.append(f"   {get_verdict_line(claims)}")
+        elif problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
-        elif problems:
+        else:
             out.append(f"   unverified lines: {len(problems)}")
         facts = state_lines(text)
         all_facts.extend(facts)
