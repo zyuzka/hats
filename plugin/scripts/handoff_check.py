@@ -131,10 +131,6 @@ def checked_counted(text, base_dir, note_real):
         return [(None, f"note check failed ({type(error).__name__}) — check the note yourself")], 0
 
 
-def checked(text, base_dir, note_real):
-    return checked_counted(text, base_dir, note_real)[0]
-
-
 def get_verdict_line(claims):
     return NOTHING_CHECKED if claims == 0 else ALL_VERIFIED
 
