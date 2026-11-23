@@ -22,6 +22,8 @@ what it shipped is folded into the single entry below, and public numbering star
   the note, the next turn asks it again to write the note and tell you, up to three times in all.
 - **The General tab of Settings scrolls.** A long line, such as an error about the Codex plugin, no longer
   pushes the tabs under the window title.
+- **Discard means discard for the Codex gateway port too.** Closing Settings with a new Codex port asks
+  about the Codex sessions first, so a question can no longer come after **Discard** and move the port.
 
 ## 0.4.1 — 2026-11-08
 
