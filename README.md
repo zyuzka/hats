@@ -34,9 +34,10 @@ Not affiliated with Anthropic.
 
 ## What it does not do
 
-- **Its network traffic is to Anthropic, and to GitHub for updates.** The relay forwards your own
-  Claude Code requests, and each hat's usage is read from Anthropic's usage endpoint with that hat's
-  own token. About every six hours Hats reads the release feed of this repository on GitHub (with
+- **Its network traffic is to Anthropic, to OpenAI for Codex hats, and to GitHub for updates.** The
+  relay forwards your own Claude Code requests, and each hat's usage is read from Anthropic's usage
+  endpoint with that hat's own token; Codex hats sign in, renew and read usage at OpenAI
+  (`auth.openai.com`, `chatgpt.com`), and the Codex gateway forwards Codex's own requests there. About every six hours Hats reads the release feed of this repository on GitHub (with
   the automatic look turned off, only when you press Check for Updates…; see [Updating](#updating)),
   and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
@@ -55,8 +56,10 @@ Not affiliated with Anthropic.
   Code's requests.** Anthropic's rules for third-party developers say that "developers may not
   collect, store, or intermediate Claude.ai credentials or session tokens"
   ([Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)).
-  Whether that covers a tool you run on your own accounts is Anthropic's to decide; the page does
-  not say.
+  The same section lets "an end user" sign in "to the unmodified Claude Code binary with their own
+  Claude subscription", which Hats leaves as it is; whether keeping copies of those sign-ins in a
+  tool you run on your own accounts is allowed, the page does not say, and that is Anthropic's to
+  decide.
 - **The risk is on your accounts.** The same page says "Anthropic reserves the right to take measures
   to enforce these restrictions and may do so without prior notice". Use Hats knowing that.
 
