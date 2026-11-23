@@ -1888,13 +1888,15 @@ same "took: плохой читатель выброшен, новый запи�
 
 # --- took: гонки — три читателя через блокировку, ps вне блокировки
 reset; closed_note; A=$(live); B=$(live); C=$(live); sig="$work/sig"; rm -rf "$sig" "$work/ra" "$work/rb"; mkdir -p "$sig"
-# A держит блокировку (HANDOFF_TEST_TAKEN_HOLD), пока тест не увидит, что B её ждёт; сроки обоих большие.
+# A holds the lock (HANDOFF_TEST_TAKEN_HOLD) until the test sees B waiting for it; both get a long budget.
 run_took "$(took_in sA "$note")" "$A" "$work/ra" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_HOLD="$work/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig" & ra=$!
 wait_for '[ -n "$(ls "$sig" | grep "\.locked$")" ]'
 run_took "$(took_in sB "$note")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_SIGNAL="$sig" & rb=$!
 wait_for '[ "$(ls "$sig" | grep -c "\.waiting$")" -eq 1 ]'; locked=$(ls "$sig" | grep -c '\.locked$'); a_alive=$(kill -0 "$ra" 2>/dev/null && echo yes)
+waiter=$(ls "$sig" | grep '\.waiting$'); holder=$(ls "$sig" | grep '\.locked$')
 : >"$work/release"; wait "$ra"; wait "$rb"; rm -f "$work/release"
-if [ "$locked" -eq 1 ] && [ "$a_alive" = yes ]; then ok; else bad "гонка: B доказанно ждёт блокировку, пока её держит A" "locked=$locked A жив=${a_alive:-нет}"; fi
+if [ "$locked" -eq 1 ] && [ "$a_alive" = yes ] && [ "${waiter%.waiting}" != "${holder%.locked}" ]; then ok
+else bad "race: B is shown waiting for the lock while A holds it" "locked=$locked A alive=${a_alive:-no} waiting=$waiter holding=$holder"; fi
 out=$(judged "$work/ra" "гонка A"); empty "гонка: A — без предупреждения" "$out$(heard)"
 at_a=$(at_of "$real_note" "$A")
 out=$(judged "$work/rb" "гонка B"); same "гонка: B — об A, записавшемся после снимка B" "Hats handoff: 1 other live session(s) reading this note: $(item_of "$A" sA "$at_a")" "$(told)"
@@ -1937,11 +1939,11 @@ has "took: медленный ps — предупреждение «could not ch
 has "took: занятая runs.lock — строка журнала дописана" "outcome=took-shared unknown=1" "$(tl outcome unknown)"
 
 # --- took: stdout не принимает — печать сдаётся за 0,3 с, took другой записки записан
-# Порядок по событиям, не по времени: B стартует первым и до блокировки проверяет своего читателя R; этот ps
-# отмечает «B готов» и ждёт, пока A возьмёт блокировку. A стартует только после этой отметки и держит блокировку
-# (HANDOFF_TEST_TAKEN_HOLD), пока тест не увидит, что B её ждёт; только тогда тест отпускает A, и A пытается
-# печатать. Сроки took у обоих большие, чтобы медленный старт не сдал их раньше. Порядок доказывают времена
-# файлов, а не опрос.
+# Ordered by events, not by time: B starts first and checks its reader R before the lock; that ps marks
+# "B ready" and waits until A takes the lock. A starts only after that mark and holds the lock
+# (HANDOFF_TEST_TAKEN_HOLD) until the test sees B waiting for it; only then does the test release A, and A
+# tries to print. Both get a long took budget so a slow start does not use it up. File times prove the order,
+# not polling.
 reset; closed_note; printf '## NOW\n\nвторая\n' >"$mem/n2.md"; closed_note b "$mem/n2.md" "вторая"
 A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mark_file "$real_mem/n2.md" "[$(reader_json "$R" sR)]"
 sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
@@ -1950,12 +1952,12 @@ filler=$(fill_fifo "$work/full")
 run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
 wait_for '[ -f "$sig/b.ready" ]' || bad "заполненный stdout: B дошёл до проверки читателя" "нет $sig/b.ready за 5 с"
 ( took_in sA "$note" | timeout 20 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=10 HANDOFF_TEST_TAKEN_HOLD="$sig/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
-wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "заполненный stdout: B дошёл до ожидания блокировки" "нет $sig/b/*.waiting за 5 с"
+wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "full stdout: B reached the wait for the lock" "no $sig/b/*.waiting within 5 s"
 : >"$sig/release"
 wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
 has "заполненный stdout: печать не удалась — not-printed" "command=took outcome=not-printed warned=False" "$(tls sA command outcome warned)"
 print_ms=$(python3 -I -c 'import os,sys; print((os.stat(sys.argv[2]).st_mtime_ns - os.stat(sys.argv[1]).st_mtime_ns) // 1000000)' "$sig/release" "$work/full.rc")
-if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 5000 ]; then ok; else bad "заполненный stdout: A кончился за 0,25–5 с после отпускания — печать сдалась, а не ждала срока 10 с" "${print_ms} мс"; fi
+if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 5000 ]; then ok; else bad "full stdout: A ended 0.25-5 s after its release, so the print gave up rather than waiting out the 10 s budget" "${print_ms} ms"; fi
 same "заполненный stdout: читатель не записан" "$me_pid/sMe" "$(readers_of "$real_note")"
 if [ "$(cat "$work/full.rc")" = 0 ] && [ ! -s "$work/full.err" ]; then ok; else bad "заполненный stdout: код 0, stderr пуст" "rc=$(cat "$work/full.rc") $(head -c 200 "$work/full.err")"; fi
 same "заполненный stdout: временных файлов не осталось" "0" "$(tmp_left)"
