@@ -1942,13 +1942,15 @@ has "took: занятая runs.lock — строка журнала дописа
 # Ordered by events, not by time: A starts first and holds the lock (HANDOFF_TEST_TAKEN_HOLD); B starts only
 # once A holds it, and waits for the lock. Only when the test sees B waiting does it release A, and A tries to
 # print. No ps call waits for another process, so the 2 s bound of one ps call in took cannot cut it. B's
-# budget is longer than the 5 s the test polls for its wait. File times then prove what the test did not
-# arrange itself: B took the lock only after A was released.
+# budget is longer than the 5 s the test polls for its wait. A's budget (18 s, under its outer timeout of 20 s)
+# leaves more than 5 s after both 5 s polls, so a print that waited out the budget instead of its 0.3 s limit
+# still breaks the 5 s print check. File times then prove what the test did not arrange itself: B took the
+# lock only after A was released.
 reset; closed_note; printf '## NOW\n\nвторая\n' >"$mem/n2.md"; closed_note b "$mem/n2.md" "вторая"
 A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mark_file "$real_mem/n2.md" "[$(reader_json "$R" sR)]"
 sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
 filler=$(fill_fifo "$work/full")
-( took_in sA "$note" | timeout 20 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=10 HANDOFF_TEST_TAKEN_HOLD="$sig/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
+( took_in sA "$note" | timeout 20 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=18 HANDOFF_TEST_TAKEN_HOLD="$sig/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
 wait_for 'ls "$sig/a/"*.locked >/dev/null 2>&1' || bad "full stdout: A holds the lock before B starts" "no $sig/a/*.locked within 5 s"
 run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=8 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" & fb=$!
 wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "full stdout: B reached the wait for the lock" "no $sig/b/*.waiting within 5 s"
