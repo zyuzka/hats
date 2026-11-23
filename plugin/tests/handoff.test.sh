@@ -32,6 +32,11 @@
 # Запись 47 образец тоже не заменила: выдержка теперь режется, чтобы блок «Not verified» влез,
 # а нечитаемая записка не отдаётся; текст меняется только у записок за пределом вывода и у
 # нечитаемых, и эти вызовы идут с CMP=0.
+# Record 99 edits the reference in place instead of replacing it with a copy: handoff.py is now
+# split into modules and prints JSON, while the reference stays one plain-text file. The edit
+# matches handoff_render.py: check_text counts checked claims as handoff_check.check_text does,
+# and with no problems render_own appends the verdict line to the tail and render_list appends
+# it indented ("nothing checked" at zero claims, "all verified" otherwise).
 #
 # Задача 8c: хук took (после Read) гоняется помощниками took и took_raw со входом из замера
 # 2026-11-13; его вывод проверяется той же формой с hookEventName PostToolUse, без сверки.
@@ -492,6 +497,38 @@ has "срок вышел — факт состояния «не успел пр�
 has "фактов не больше четырёх" "more than four" "$(start clear)"
 printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
 has "непроверенная строка приходит с пометкой" "Not verified" "$(start clear)"
+
+# --- record 99: with no problems the note after /clear and the list say which verdict holds
+nothing_line='quotes and numbers: none outside code and the header — nothing checked'
+all_line='quotes and numbers: all verified'
+printf '%s\n' 'строка один' '| 2 слова или решения | 22 | 73% |' >"$proj/src.md"
+printf '## СЕЙЧАС\n\nпросто текст\n' >"$note"
+out=$(start clear)
+has "clear: note with nothing to check ends with the nothing-checked line" "--- end of excerpt ---
+$nothing_line" "$out"
+lacks "clear: note with nothing to check is not all verified" "$all_line" "$out"
+printf '## СЕЙЧАС\n\nитог (cite: %s/src.md:2 "| 22 | 73%% |")\n' "$proj" >"$note"
+out=$(start clear)
+has "clear: verified quote ends with the all-verified line" "--- end of excerpt ---
+$all_line" "$out"
+lacks "clear: verified quote is not nothing checked" "$nothing_line" "$out"
+printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
+lacks "clear: unverified note carries no verdict line" "quotes and numbers:" "$(start clear)"
+reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
+printf '%s\n' 'строка один' '| 2 слова или решения | 22 | 73% |' >"$proj/src.md"
+out=$(start startup)
+has "list: note with nothing to check gets the indented nothing-checked line" "
+   $nothing_line" "$out"
+lacks "list: note with nothing to check is not all verified" "$all_line" "$out"
+printf '## СЕЙЧАС\n\nитог (cite: %s/src.md:2 "| 22 | 73%% |")\n' "$proj" >"$note"
+out=$(start startup)
+has "list: verified quote gets the indented all-verified line" "
+   $all_line" "$out"
+lacks "list: verified quote is not nothing checked" "$nothing_line" "$out"
+printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
+out=$(start startup)
+has "list: unverified note keeps the count of lines" "   unverified lines: 1" "$out"
+lacks "list: unverified note carries no verdict line" "quotes and numbers:" "$out"
 
 # --- пределы вывода
 reset; python3 -I -c 'import sys; print("## СЕЙЧАС\n"); print("\n".join("слово " * 20 for _ in range(200)))' >"$note"; mine

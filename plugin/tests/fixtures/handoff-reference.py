@@ -198,6 +198,8 @@ OUTPUT_LIMIT = 9500
 LIST_LIMIT = 5
 MAX_AGE = timedelta(days=30)
 PROBLEM_LIMIT = 10
+ALL_VERIFIED = "quotes and numbers: all verified"
+NOTHING_CHECKED = "quotes and numbers: none outside code and the header — nothing checked"
 STATE_FACT_LIMIT = 4
 TIME_BUDGET_S = 3.5
 CALL_TIMEOUT_S = 2.0
@@ -750,6 +752,7 @@ def verify_cite(match, base_dir, note_real, cache):
 
 def check_text(text, base_dir, note_real):
     problems = []
+    claims = 0
     cache = {}
     lines = text.split("\n")
     in_fence = False
@@ -770,6 +773,7 @@ def check_text(text, base_dir, note_real):
         for match in CITE.finditer(line):
             if out_of_time():
                 break
+            claims += 1
             reason = verify_cite(match, base_dir, note_real, cache)
             if reason:
                 problems.append((number, reason))
@@ -777,24 +781,36 @@ def check_text(text, base_dir, note_real):
         if CITE_START.search(INLINE_CODE.sub(" ", rest)):
             problems.append((number, "quote not parsed — write (cite: <path>:<line> \"<exact text>\")"))
         for match in RATIO_PERCENT.finditer(rest):
+            claims += 1
             n, m = int(match.group("n")), int(match.group("m"))
             p = float(match.group("p").replace(",", "."))
             if m == 0 or abs(n * 100 / m - p) > 1:
                 share = "—" if m == 0 else f"{n * 100 / m:.1f}%"
                 problems.append((number, f"arithmetic: {n} of {m} is {share}, written {match.group('p')}%"))
         for clause in CLAUSE_BREAK.split(SYSTEM_SOURCE.sub("(cmd: -)", RATIO_PERCENT.sub(" ", rest))):
-            if NUMBER_CLAIM.search(clause) and not SYSTEM_SOURCE.search(clause):
+            if not NUMBER_CLAIM.search(clause):
+                continue
+            claims += 1
+            if not SYSTEM_SOURCE.search(clause):
                 problems.append((number, "number with no quote and no source"))
                 break
-    return problems
+    return problems, claims
 
 
-def checked(text, base_dir, note_real):
+def checked_counted(text, base_dir, note_real):
     try:
         return check_text(text, base_dir, note_real)
     except Exception as error:
         _check_errors.append(type(error).__name__)
-        return [(None, f"note check failed ({type(error).__name__}) — check the note yourself")]
+        return [(None, f"note check failed ({type(error).__name__}) — check the note yourself")], 0
+
+
+def checked(text, base_dir, note_real):
+    return checked_counted(text, base_dir, note_real)[0]
+
+
+def get_verdict_line(claims):
+    return NOTHING_CHECKED if claims == 0 else ALL_VERIFIED
 
 
 def problem_lines(problems):
@@ -875,10 +891,12 @@ def render_own(marker):
         note_head(text),
         "--- end of excerpt ---",
     ]
-    problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
+    problems, claims = checked_counted(text, marker["cwd"], os.path.realpath(marker["note"]))
     if problems:
         out.append("Not verified (check against the source before relying on it):")
         out.extend(problem_lines(problems))
+    else:
+        out.append(get_verdict_line(claims))
     facts = state_lines(text)
     if facts:
         out.append("State compared with the system:")
@@ -898,10 +916,12 @@ def render_list(markers):
     for index, marker in enumerate(markers, 1):
         text = read_regular(marker["note"], SOURCE_SIZE_LIMIT) or ""
         out.append(f"{index}. \"{marker['topic']}\" — saved {marker['saved_at']}: {marker['note']}")
-        problems = checked(text, marker["cwd"], os.path.realpath(marker["note"]))
-        if problems and problems[0][0] is None:
+        problems, claims = checked_counted(text, marker["cwd"], os.path.realpath(marker["note"]))
+        if not problems:
+            out.append(f"   {get_verdict_line(claims)}")
+        elif problems[0][0] is None:
             out.append(f"   {problems[0][1]}")
-        elif problems:
+        else:
             out.append(f"   unverified lines: {len(problems)}")
         facts = state_lines(text)
         all_facts.extend(facts)
