@@ -1958,7 +1958,7 @@ wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "full stdout: B reached 
 wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
 has "заполненный stdout: печать не удалась — not-printed" "command=took outcome=not-printed warned=False" "$(tls sA command outcome warned)"
 print_ms=$(python3 -I -c 'import os,sys; print((os.stat(sys.argv[2]).st_mtime_ns - os.stat(sys.argv[1]).st_mtime_ns) // 1000000)' "$sig/release" "$work/full.rc")
-if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 5000 ]; then ok; else bad "full stdout: A ended 0.25-5 s after its release, so the print gave up rather than waiting out the 10 s budget" "${print_ms} ms"; fi
+if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 5000 ]; then ok; else bad "full stdout: A ended 0.25-5 s after its release, so the print gave up rather than waiting out its budget" "${print_ms} ms"; fi
 same "заполненный stdout: читатель не записан" "$me_pid/sMe" "$(readers_of "$real_note")"
 if [ "$(cat "$work/full.rc")" = 0 ] && [ ! -s "$work/full.err" ]; then ok; else bad "заполненный stdout: код 0, stderr пуст" "rc=$(cat "$work/full.rc") $(head -c 200 "$work/full.err")"; fi
 same "заполненный stdout: временных файлов не осталось" "0" "$(tmp_left)"
