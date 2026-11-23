@@ -22,6 +22,10 @@ what it shipped is folded into the single entry below, and public numbering star
   the note, the next turn asks it again to write the note and tell you, up to three times in all.
 - **The General tab of Settings scrolls.** A long line, such as an error about the Codex plugin, no longer
   pushes the tabs under the window title.
+- **A background task that ends no longer stops the clear after an anchor on the threshold.** Its notice
+  used to count as input, and the session stayed as it was. Now the clear goes on; if Claude answered the
+  notice in a turn of its own first, every check runs again before `/clear`. The prompt after the clear names
+  each task that ended, with its state and the path of its output.
 - **Discard means discard for the Codex gateway port too.** Closing Settings with a new Codex port asks
   about the Codex sessions first, so a question can no longer come after **Discard** and move the port.
 
