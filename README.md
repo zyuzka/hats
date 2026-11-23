@@ -518,8 +518,9 @@ every decision, also while Hats is not running, and without it takes 60%, 70% an
 The Codex plugin reads the same two thresholds from the same file (see "The Codex note before compaction").
 Each session's stage goes to `session-thresholds/<session>.json` beside it, but only into a folder
 Hats made. A running Hats reads those files and shows one notification for each threshold a session
-crosses, titled with the session's name — the title you gave it, else its folder, else the start of
-its id — and its percent: `hats — context 62%` with «Past the warning threshold of 60%. The session
+crosses, titled with the tool, the percent and the session's name — the title you gave it, else its
+folder, else the start of its id: `Claude Code · context 62% — hats` with «Past the warning threshold
+of 60%. The session
 anchors at 70%.», or «Past 70%: the session anchors at the end of its turn.» (with the clear action:
 «… at the end of its turn and, if nothing stands in the way, clears its context and goes on from its
 note.») — also while Settings is open in front. It says nothing about stages written before it

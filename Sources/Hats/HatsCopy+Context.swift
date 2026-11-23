@@ -41,8 +41,8 @@ extension HatsCopy {
         "Wait up to \(minutes) min"
     }
 
-    static func getContextNoticeTitle(label: String, percent: Int) -> String {
-        "\(label) — context \(percent)%"
+    static func getContextNoticeTitle(tool: Tool, label: String, percent: Int) -> String {
+        "\(tool.displayName) · context \(percent)% — \(label)"
     }
 
     static func getWarnNoticeBody(warn: Int, save: Int?) -> String {

@@ -74,7 +74,14 @@ final class ContextThresholdNoticesTests: XCTestCase {
     }
 
     func testTheTextsOfTheNotices() {
-        XCTAssertEqual(HatsCopy.getContextNoticeTitle(label: "Fix the login", percent: 47), "Fix the login — context 47%")
+        XCTAssertEqual(
+            HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "Fix the login", percent: 47),
+            "Claude Code · context 47% — Fix the login"
+        )
+        XCTAssertEqual(
+            HatsCopy.getContextNoticeTitle(tool: .codex, label: "Fix the login", percent: 47),
+            "Codex · context 47% — Fix the login"
+        )
         XCTAssertEqual(HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
                        "Past the warning threshold of 45%. The session anchors at 55%.")
         XCTAssertEqual(HatsCopy.getWarnNoticeBody(warn: 45, save: nil), "Past the warning threshold of 45%.",
@@ -217,7 +224,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 56%"], "the label falls back to the folder of the session")
+        XCTAssertEqual(titles, ["Claude Code · context 56% — hats"], "the label falls back to the folder of the session")
         XCTAssertEqual(bodies, [HatsCopy.getAnchorNoticeBody(save: 55, drainMinutes: nil)])
     }
 
@@ -243,7 +250,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.warned, warn: 1, save: 0, percent: 47)]), windows: [])
         notices.noteARead(read([stage(.warned, warn: 1, save: 0, session: "solo", percent: 47, thresholds: (45, nil))]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 47%", "hats — context 47%"])
+        XCTAssertEqual(titles, ["Claude Code · context 47% — hats", "Claude Code · context 47% — hats"])
         XCTAssertEqual(bodies, [
             HatsCopy.getWarnNoticeBody(warn: 45, save: 55),
             HatsCopy.getWarnNoticeBody(warn: 45, save: nil),
@@ -258,7 +265,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.warned, warn: 1, save: 0, percent: 48)]), windows: [])
         notices.noteARead(read([stage(.warned, warn: 1, save: 0, session: "other", percent: 49)]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 47%", "hats — context 49%"],
+        XCTAssertEqual(titles, ["Claude Code · context 47% — hats", "Claude Code · context 49% — hats"],
                        "the same session and round read again is told once; another session's is told")
     }
 
@@ -345,7 +352,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
         notices.noteARead(read([stage(.requested, warn: 1, save: 1, session: "other")]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 56%", "hats — context 56%"],
+        XCTAssertEqual(titles, ["Claude Code · context 56% — hats", "Claude Code · context 56% — hats"],
                        "the same round read again after a gap is not told; another session's is")
         XCTAssertEqual(told.count, 2)
     }
@@ -368,7 +375,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1)]), windows: [])
         notices.noteARead(read([stage(.requested, warn: 1, save: 2, percent: 58)]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 58%"],
+        XCTAssertEqual(titles, ["Claude Code · context 58% — hats"],
                        "the round that lay there half-written before Hats started is not told; the next one is")
     }
 
@@ -380,7 +387,7 @@ final class ContextThresholdNoticesTests: XCTestCase {
         XCTAssertEqual(told.count, 0)
         notices.noteARead(read([stage(.requested, warn: 1, save: 1, percent: 57)]), windows: [])
 
-        XCTAssertEqual(titles, ["hats — context 57%"])
+        XCTAssertEqual(titles, ["Claude Code · context 57% — hats"])
     }
 
     func testTheNoticeIsNamedAfterTheSessionTitleFromItsWindowFile() {
@@ -394,8 +401,8 @@ final class ContextThresholdNoticesTests: XCTestCase {
         notices.noteARead(read([stage(.requested, warn: 1, save: 1, session: "3b9e")]), windows: [window("3b9e", title: nil)])
 
         XCTAssertEqual(titles, [
-            HatsCopy.getContextNoticeTitle(label: "Fix the login", percent: 56),
-            HatsCopy.getContextNoticeTitle(label: "hats", percent: 56),
+            HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "Fix the login", percent: 56),
+            HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "hats", percent: 56),
         ])
     }
 

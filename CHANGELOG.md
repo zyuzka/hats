@@ -10,6 +10,9 @@ what it shipped is folded into the single entry below, and public numbering star
 
 ## Unreleased
 
+- **A context notification says whose session it is.** Its title starts with the tool and the percent,
+  then the session's name: `Claude Code · context 62% — hats`, so a long name no longer pushes the percent out.
+
 - **A number in Settings applies itself, like a checkbox.** The **Apply** button under the tabs is gone.
   A number you type is written when you press Enter or leave the field: click another number field, press Tab,
   switch tabs or close the window. A number that cannot be used stays in the field with its reason,
