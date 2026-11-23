@@ -695,12 +695,14 @@ import hats_common
 limit = hats_common.FAILURE_FIELD_LIMIT
 long = "".join(chr(0x430 + i % 32) for i in range(limit + 5))
 at = "x" * (limit - 1) + "я"
+print("limit:", limit)
 print("over:", hats_common.get_field(long) == long[:limit], len(hats_common.get_field(long)) == limit)
-print("at:", hats_common.get_field(at) == at, "short:", hats_common.get_field("ab"))
-print(*(hats_common.get_field(value) for value in (None, 7, {"a": "b"}, ["a"], b"ab")))' "$plugin_root/scripts" 2>&1)
-if [ "$fields" = "over: True True
-at: True short: ab
-None None None None None" ]; then ok; else bad "get_field: до FAILURE_FIELD_LIMIT знаков, не строка — None" "$fields"; fi
+print("at:", hats_common.get_field(at) == at, "short:", repr(hats_common.get_field("ab")))
+print(*(repr(hats_common.get_field(value)) for value in (None, 7, {"a": "b"}, ["a"], b"ab")))' "$plugin_root/scripts" 2>&1)
+if [ "$fields" = "limit: 80
+over: True True
+at: True short: 'ab'
+None None None None None" ]; then ok; else bad "get_field: FAILURE_FIELD_LIMIT — 80, до него знаков, не строка — None" "$fields"; fi
 
 # --- уборка ---
 ago() { python3 -I -c 'import sys, time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - float(sys.argv[1]))))' "$1"; }
