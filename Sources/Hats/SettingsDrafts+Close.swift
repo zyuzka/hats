@@ -32,8 +32,8 @@ extension SettingsDrafts {
         case .codexSessionSwitch: return "\(Tool.codex.displayName) auto-switch on the 5-hour limit"
         case .codexWeeklySwitch: return "\(Tool.codex.displayName) auto-switch on the weekly limit"
         case .port: return "Gateway port"
-        case .settle: return "Settle"
-        case .codexPort: return "Codex gateway port"
+        case .settle: return HatsCopy.settleLabel
+        case .codexPort: return HatsCopy.codexGatewayPortLabel
         }
     }
 }

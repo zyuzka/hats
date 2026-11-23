@@ -7,11 +7,11 @@ struct GatewaySettleRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text("Settle").font(.system(size: 13))
+                Text(HatsCopy.settleLabel).font(.system(size: 13))
                 DigitField(
                     text: state.text,
                     placeholder: "35",
-                    label: "Settle",
+                    label: HatsCopy.settleLabel,
                     change: { drafts.setText($0, of: .settle, in: model.snapshot.settings) },
                     submit: { drafts.apply(.settle, model) },
                     cancel: { drafts.reset(.settle) }
