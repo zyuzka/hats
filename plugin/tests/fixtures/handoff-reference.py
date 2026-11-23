@@ -198,7 +198,7 @@ OUTPUT_LIMIT = 9500
 LIST_LIMIT = 5
 MAX_AGE = timedelta(days=30)
 PROBLEM_LIMIT = 10
-ALL_VERIFIED = "quotes and numbers: all verified"
+ALL_VERIFIED = "quotes and numbers: quotes and arithmetic checked, other figures name a source that was not run"
 NOTHING_CHECKED = "quotes and numbers: none outside code and the header — nothing checked"
 STATE_FACT_LIMIT = 4
 TIME_BUDGET_S = 3.5
@@ -925,6 +925,9 @@ def render_list(markers):
         all_facts.extend(facts)
         out.extend("   " + fact for fact in facts)
     out.extend(fetch_hint(all_facts))
+    if len("\n".join(out).encode("utf-16-le")) // 2 > OUTPUT_LIMIT:
+        verdicts = {f"   {ALL_VERIFIED}", f"   {NOTHING_CHECKED}"}
+        out = [line for line in out if line not in verdicts]
     return "\n".join(out)
 
 

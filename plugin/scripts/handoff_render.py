@@ -5,10 +5,13 @@ import os
 
 from handoff_check import checked_counted, get_verdict_line, problem_lines, state_lines
 from handoff_consts import (
+    ALL_VERIFIED,
     CUT_LINE,
     HEAD_LIMIT,
     MARK_INDENT,
+    NOTHING_CHECKED,
     NOW_HEADING,
+    OUTPUT_LIMIT,
     OWN_LIMIT,
     SESSION_ID,
     SOURCE_SIZE_LIMIT,
@@ -110,6 +113,9 @@ def get_list_blocks(markers):
         out.extend("   " + fact for fact in facts)
         blocks.append(out)
     blocks.append(fetch_hint(all_facts))
+    if get_units(get_joined(blocks)) > OUTPUT_LIMIT:
+        verdicts = {f"   {ALL_VERIFIED}", f"   {NOTHING_CHECKED}"}
+        blocks = [[line for line in block if line not in verdicts] for block in blocks]
     return blocks
 
 
