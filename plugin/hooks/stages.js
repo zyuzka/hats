@@ -18,6 +18,7 @@ import {
   setRoundStarted,
 } from './drain.js'
 import { setAskFailed } from './limits.js'
+import { setLoaded } from './restart.js'
 
 export async function endChain($, job) {
   const { state, reason } = job
@@ -95,6 +96,7 @@ export async function restoreStage($, state) {
   state.warnRound = saved.warnRound
   state.saveRound = saved.saveRound
   state.limits = saved.limits
+  setLoaded(state, saved)
   if (saved.stage !== 'requested' && saved.stage !== 'waiting') return
   setStage(state, { stage: 'interrupted', reason: REASONS.reloaded })
   await queueStage($, state)

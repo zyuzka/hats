@@ -63,7 +63,6 @@ const STAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z$/
 const NOW_HEADING = /^##\s+(?:СЕЙЧАС(?![\p{L}\p{N}_])|[Nn][Oo][Ww]\s*(?:$|[—–:(,]|-\s|\d))/u
 const HANDOFF_COMMAND = /^sh "([^"]*)\/scripts\/py\.sh" "([^"]*)\/scripts\/handoff\.py" (new|save)(?:\s|$)/
 const STEPS_COMMAND = /^sh "([^"]*)\/scripts\/py\.sh" "([^"]*)\/scripts\/anchor-steps\.py"/
-const STEPS_EXACT = /^sh "[^"]*\/scripts\/py\.sh" "[^"]*\/scripts\/anchor-steps\.py"\s*$/
 const SERVICE_NAMES = [
   'resume-index.md',
   'memory.md',
@@ -235,18 +234,24 @@ export const getClearRefusal = message => {
   return `the clear command was refused: ${message}`
 }
 
+export const hasStepsArgument = command => {
+  const parts = typeof command === 'string' ? STEPS_COMMAND.exec(command) : null
+  if (parts === null) return false
+  const head = command.slice(parts[0].length).split(/[|<>;&]/)[0]
+
+  return head.split(/\s+/).some(token => token.startsWith('-'))
+}
+
 export const isStepsCommand = command => {
   const parts = typeof command === 'string' ? STEPS_COMMAND.exec(command) : null
 
   return parts !== null && parts[1] === parts[2]
 }
 
-export const isExactStepsCommand = command => isStepsCommand(command) && STEPS_EXACT.test(command)
-
 export const findStepsOutcome = stdout => {
   const lines = typeof stdout === 'string' ? stdout.split('\n').map(line => line.trimEnd()) : []
-  if (lines.some(line => line.startsWith('anchor-steps:'))) return 'unread'
   if (lines.includes('after anchor:')) return 'after'
+  if (lines.some(line => line.startsWith('anchor-steps:'))) return 'unread'
   if (lines.includes('after anchor: none') || lines.includes('no own steps')) return 'none'
 
   return 'unread'
@@ -494,6 +499,7 @@ export const createStageRecord = (state, now) => ({
   marker: state.marker,
   at: getStamp(now),
   limits: state.limits ?? { five_hour: null, seven_day: null },
+  save_reached: state.saveReached === true,
 })
 
 export const findRounds = (text, id) => {
@@ -508,5 +514,5 @@ export const findRounds = (text, id) => {
 
   const percent = isWholeIn(data.percent, PERCENT_RANGE) ? data.percent : null
 
-  return { warnRound: data.warn_round, saveRound: data.save_round, stage: data.stage, percent }
+  return { warnRound: data.warn_round, saveRound: data.save_round, stage: data.stage, percent, saveReached: data.save_reached === true }
 }

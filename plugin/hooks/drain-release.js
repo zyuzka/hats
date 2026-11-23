@@ -124,6 +124,7 @@ const dropRisenWindow = (state, reading) => {
 const isWindowRefusing = (state, thresholds) => state.drain !== null && state.arm.save && isDrainOn(thresholds)
 
 const isAnyRefusing = (state, job) =>
+  job.isRestart === true ||
   isWindowRefusing(state, job.reading?.thresholds ?? state.thresholds) ||
   (job.view.drain.isOn && LIMIT_KINDS.some(kind => isKindRefusing(job.view, kind)))
 

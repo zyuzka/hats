@@ -10,6 +10,17 @@ what it shipped is folded into the single entry below, and public numbering star
 
 ## Unreleased
 
+- **A session that clears after its anchor starts no new work past the threshold.** With the clear action,
+  the plugin says once that the session restarts after saving, refuses new subagents, workflows, monitors,
+  background commands, cron jobs and wake-ups until the session is cleared, and tells the model on each of
+  your messages to save only: to ask you to say «анкор», or to type `/clear` once the note is saved. It ends
+  with a new session, when the window falls below the threshold, or when the settings change.
+- **The 10-minute pause after the plugin's own clear starts only when the session changed.** A `/clear`
+  that left the same session no longer stops the next anchor.
+- **Own steps read with a pipe no longer stop the clear when their output shows the answer.** The steps
+  command run with more after it counts by what its output shows: `after anchor: none` or `no own steps`
+  lets the clear go on, an after list keeps the session, and an output that hides its last line keeps it
+  as before.
 - **A context notification says whose session it is.** Its title starts with the tool and the percent,
   then the session's name: `Claude Code · context 62% — hats`, so a long name no longer pushes the percent out.
 

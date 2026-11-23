@@ -41,7 +41,7 @@ const NOTICE_BLOCK = /<task-notification>[\s\S]*?<\/task-notification>/g
 let chain = null
 let foreign = null
 let tasks = new Map()
-let lastClearAt = null
+let lastClear = null
 let lastToolEndAt = 0
 let lastMainToolEndAt = 0
 
@@ -115,7 +115,7 @@ export const isClearOpen = () => chain !== null
 
 export const isClearBeforeRun = () => chain !== null && isBeforeClear(chain)
 
-export const isPausedAfterClear = now => lastClearAt !== null && now - lastClearAt < CLEAR_PAUSE_MS
+export const isPausedAfterClear = (now, id) => lastClear !== null && lastClear.id === id && now - lastClear.at < CLEAR_PAUSE_MS
 
 export const markChainFailed = () => {
   if (chain !== null) chain.hasHookFailed = true
@@ -179,6 +179,7 @@ async function tellCleared($, current) {
 async function tellAfterFailure($, current) {
   const id = await $.session.id().catch(() => null)
   current.newId = typeof id === 'string' && id !== current.request.sessionId ? id : null
+  if (current.newId !== null) lastClear = { at: current.ranAt ?? (await $.clock.now()), id: current.newId }
   await tellCleared($, current)
 }
 
@@ -190,7 +191,7 @@ async function onClearDone($, current) {
     await keep($, current, KEPT.notCleared)
     return
   }
-  lastClearAt = await $.clock.now()
+  lastClear = { at: await $.clock.now(), id }
   current.stage = 'clearing'
   current.newId = id
   await tellCleared($, current)
@@ -295,12 +296,12 @@ export async function runOwnClear($, e, next) {
   current.tasks = [...tasks.values()]
   const out = await next(e).catch(error => keep($, current, getClearRefusal(String(error?.message ?? error))))
   if (current.stage !== 'clearing') return {}
-  lastClearAt = current.ranAt
   const id = await $.session.id()
   if (typeof id !== 'string' || id === current.request.sessionId) {
     await keep($, current, KEPT.notCleared)
     return out
   }
+  lastClear = { at: current.ranAt, id }
   current.newId = id
   await goOn($, current)
 

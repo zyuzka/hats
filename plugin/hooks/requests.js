@@ -61,6 +61,10 @@ import {
   watchInputs,
 } from './clear-chain.js'
 import {
+  findRestart,
+  noteSaveReached,
+} from './restart.js'
+import {
   findLimitAsks,
   findLimitView,
   setAskFailed,
@@ -115,6 +119,7 @@ const countWindow = (state, job) => {
   const { request, reading } = job
   if (request.isWindow || reading === null || !isSaveDue(state.arm, reading)) return
   setWindowSaved(state, reading)
+  state.saveReached = true
   state.saveRound += 1
   request.isWindow = true
   request.percent = reading.percent
@@ -154,6 +159,7 @@ async function finishAborted($, job) {
   const { state, request, verdict, counted, now } = job
   state.request = null
   if (verdict === null) setAbortedSaved(state, job)
+  if (verdict === null && request.isWindow) state.stoppedSaveRound = state.saveRound
   if (verdict !== null) setAskFailed(request.limits)
   if (request.isWindow) setStage(state, { stage: 'interrupted' })
   await queueStage($, state)
@@ -305,6 +311,8 @@ async function findCauses($, state) {
   if (!isCurrent(state)) return null
   if (reading !== null) setArm(state.arm, reading)
   if (reading !== null) await settleRound($, { state, reading })
+  if (reading !== null) noteSaveReached(state, { reading, now: await $.clock.now() })
+  await findRestart($, { state, reading })
   const view = await findLimitView($, state)
   if (!isCurrent(state)) return null
   if (settleLimitWaits(state, { view, now: view.now })) await queueStage($, state)
@@ -317,7 +325,7 @@ async function findCauses($, state) {
 async function isWindowWanted($, job) {
   const { state, causes } = job
   if (!causes.isWindowDue) return false
-  if (!isPausedAfterClear(await $.clock.now())) return true
+  if (!isPausedAfterClear(await $.clock.now(), state.id)) return true
   setPaused(state)
   if (causes.limits.length === 0) tellUser($, getPauseLine(causes.reading.percent, causes.reading.thresholds.save))
 
