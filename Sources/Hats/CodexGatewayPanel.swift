@@ -29,7 +29,7 @@ struct CodexGatewayPanel: View {
                     DigitField(
                         text: portState.text,
                         placeholder: String(CodexGatewayPaths.defaultPort),
-                        label: "Codex gateway port",
+                        label: HatsCopy.codexGatewayPortLabel,
                         change: { drafts.setText($0, of: .codexPort, in: snapshot.settings) },
                         submit: { drafts.apply(.codexPort, model) },
                         cancel: { drafts.reset(.codexPort) }

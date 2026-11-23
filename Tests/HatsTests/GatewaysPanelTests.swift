@@ -1,4 +1,5 @@
 import XCTest
+@testable import Hats
 
 final class GatewaysPanelTests: XCTestCase {
     private func source(_ name: String) throws -> String {
@@ -43,5 +44,16 @@ final class GatewaysPanelTests: XCTestCase {
 
         XCTAssertEqual(panels.count, 5, "the tabs are read from the TabView of the settings window")
         XCTAssertEqual(flat, [], "a tab taller than the window pushes the tab bar under the title instead of scrolling")
+    }
+
+    func testTheCloseQuestionNamesTheGatewayFieldsAsTheirPanelsDo() throws {
+        let codex = try source("CodexGatewayPanel.swift")
+        let settle = try source("GatewaySettleRow.swift")
+
+        XCTAssertEqual(SettingsDrafts.getName(.codexPort), HatsCopy.codexGatewayPortLabel)
+        XCTAssertEqual(SettingsDrafts.getName(.settle), HatsCopy.settleLabel)
+        XCTAssertTrue(codex.contains("label: HatsCopy.codexGatewayPortLabel,"), "one name for the Codex port field")
+        XCTAssertTrue(settle.contains("Text(HatsCopy.settleLabel)"), "one name for the Settle row")
+        XCTAssertTrue(settle.contains("label: HatsCopy.settleLabel,"), "one name for the Settle field")
     }
 }

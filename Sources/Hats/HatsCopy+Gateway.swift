@@ -1,6 +1,9 @@
 import Foundation
 
 extension HatsCopy {
+    static let codexGatewayPortLabel = "Codex gateway port"
+    static let settleLabel = "Settle"
+
     static func retiredListener(port: Int, dependants: Int?, keptByTheTypedPort: Bool) -> String {
         let who: String
         switch dependants {
