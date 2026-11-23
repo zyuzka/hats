@@ -78,6 +78,14 @@ import {
   refuseLostClear,
   runOwnClear,
 } from './clear-chain.js'
+import {
+  RESTART_DENY_TEXT,
+  findRestart,
+  isRestartCall,
+  isUserInput,
+  noteSaveReached,
+  setLoaded,
+} from './restart.js'
 
 const WRITE_TOOLS = [
   'Write',
@@ -112,6 +120,11 @@ const createSession = id => ({
   pace: createPace(),
   drainTold: createTold(),
   released: [],
+  saveReached: false,
+  stoppedSaveRound: null,
+  isRestartOn: false,
+  seen: null,
+  loaded: null,
 })
 
 const findState = async $ => {
@@ -126,6 +139,7 @@ const findState = async $ => {
     fresh.warnRound = saved.warnRound
     fresh.saveRound = saved.saveRound
     fresh.limits = saved.limits
+    setLoaded(fresh, saved)
   }
   if (old !== null) await endChain($, { state: old, reason: REASONS.sessionChanged })
   if (old !== null) await endClearBeforeRun($, KEPT.sessionChanged)
@@ -144,10 +158,17 @@ const isDone = out => out.deny === undefined && out.isError !== true
 
 const isDrainWarning = warning => warning !== null && warning.told.length > 0
 
+const noteReached = async ($, state, reading) => {
+  const isNew = noteSaveReached(state, { reading, now: await $.clock.now() })
+  if (isNew && reading.thresholds.after === 'clear') await queueStage($, state)
+}
+
 const updateArm = async ($, state) => {
   const reading = await findReading($)
   if (reading !== null) setArm(state.arm, reading)
   if (reading !== null) await settleRound($, { state, reading })
+  if (reading !== null) await noteReached($, state, reading)
+  await findRestart($, { state, reading })
 
   return reading
 }
@@ -157,11 +178,13 @@ const findDelivered = async ($, job) => {
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
   if (out.deny !== undefined) await notePace($, state)
+  const isRestart = state.isRestartOn
   const news = out.deny === undefined ? await findLimitNews($, state) : null
-  const warning = news?.warning ?? null
-  const found = news === null ? null : findReleaseText(state, { view: news.view, reading })
+  const warning = isRestart ? null : (news?.warning ?? null)
+  const found = news === null ? null : findReleaseText(state, { view: news.view, reading, isRestart })
   const release = isDrainWarning(warning) ? null : found
   const list = getDrainList(state)
+  if (isRestart) state.pending = null
   const texts = [
     release,
     warning?.text ?? null,
@@ -294,11 +317,17 @@ const onPromptSubmit = async (
   const state = await findState($)
   if (isOwnAnchor(e)) return submitOwnAnchor($, { state, e, next })
   if (e.origin?.kind === 'plugin' || e.command !== undefined) return next(e)
-  const { view, warning } = await findLimitNews($, state)
-  const found = findReleaseText(state, { view, reading: await findReading($) })
+  const reading = await findReading($)
+  const restart = await findRestart($, { state, reading })
+  const isRestart = restart !== null
+  const news = await findLimitNews($, state)
+  const warning = isRestart ? null : news.warning
+  const found = findReleaseText(state, { view: news.view, reading, isRestart })
   const release = isDrainWarning(warning) ? null : found
+  if (isRestart) state.pending = null
   const text = state.pending
   const texts = [
+    isRestart && isUserInput(e) ? restart : null,
     release,
     warning?.text ?? null,
     text,
@@ -338,9 +367,11 @@ const onTurnStart = async (
 }
 
 const findCallDenial = async ($, e) => {
-  if (!isDrainCall(e)) return null
+  if (!isRestartCall(e)) return null
   const state = await findState($)
   await updateArm($, state)
+  if (state.isRestartOn) return RESTART_DENY_TEXT
+  if (!isDrainCall(e)) return null
   const limit = await findLimitDenial($, state)
 
   return limit ?? findDenial($, state)

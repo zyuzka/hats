@@ -18,6 +18,7 @@ import {
   findSnapshot,
   findStepsOutcome,
   findStepsReason,
+  hasStepsArgument,
   findThresholds,
   getClearRefusal,
   getHandedKey,
@@ -40,7 +41,6 @@ import {
   isMarkerShape,
   isNoteCandidate,
   isSaveDue,
-  isExactStepsCommand,
   isSessionId,
   isStepsCommand,
   isWarnDue,
@@ -406,13 +406,17 @@ describe('the stage file', () => {
       marker: null,
       at: '2026-11-14T16:33:17Z',
       limits: { five_hour: null, seven_day: null },
+      save_reached: false,
     }
     expect(json(createStageRecord(state, ASKED_AT))).toBe(json(record))
+    expect(createStageRecord({ ...state, saveReached: true }, ASKED_AT).save_reached).toBe(true)
   })
 
   test('gives back its rounds only for the same session', () => {
     const text = json({ session: 's1', stage: 'warned', warn_round: 2, save_round: 1, percent: 47 })
-    expect(findRounds(text, 's1')).toEqual({ warnRound: 2, saveRound: 1, stage: 'warned', percent: 47 })
+    expect(findRounds(text, 's1')).toEqual({ warnRound: 2, saveRound: 1, stage: 'warned', percent: 47, saveReached: false })
+    expect(findRounds(json({ session: 's1', warn_round: 0, save_round: 1, save_reached: true }), 's1')?.saveReached).toBe(true)
+    expect(findRounds(json({ session: 's1', warn_round: 0, save_round: 1, save_reached: 'true' }), 's1')?.saveReached).toBe(false)
     expect(findRounds(json({ session: 's1', warn_round: 0, save_round: 1, percent: 101 }), 's1')?.percent).toBe(null)
     expect(findRounds(text, 's2')).toBe(null)
     expect(findRounds(json({ session: 's1', warn_round: -1, save_round: 0 }), 's1')).toBe(null)
@@ -488,14 +492,15 @@ describe('the output of the own steps command', () => {
     expect(isStepsCommand(undefined)).toBe(false)
   })
 
-  test('is read only as the exact command: anything after it makes its output unreadable', () => {
-    expect(isExactStepsCommand(ROOTED)).toBe(true)
-    expect(isExactStepsCommand(`${ROOTED}  `)).toBe(true)
-    expect(isExactStepsCommand(`${ROOTED} | grep -v after`)).toBe(false)
-    expect(isExactStepsCommand(`${ROOTED} > /tmp/x`)).toBe(false)
-    expect(isExactStepsCommand(`${ROOTED}; echo hi`)).toBe(false)
-    expect(isExactStepsCommand(`${ROOTED} --cwd "/w"`)).toBe(false)
-    expect(isExactStepsCommand(`sh "/a/scripts/py.sh" "/b/scripts/anchor-steps.py"`)).toBe(false)
+  test('has an argument when a token starting with - follows the script before any pipe, redirect or ;', () => {
+    expect(hasStepsArgument(`${ROOTED} --cwd "/w"`)).toBe(true)
+    expect(hasStepsArgument(`${ROOTED} -h`)).toBe(true)
+    expect(hasStepsArgument(ROOTED)).toBe(false)
+    expect(hasStepsArgument(`${ROOTED} | tail -1`)).toBe(false)
+    expect(hasStepsArgument(`${ROOTED} 2>&1 | head -5`)).toBe(false)
+    expect(hasStepsArgument(`${ROOTED}; echo -n done`)).toBe(false)
+    expect(hasStepsArgument(`${ROOTED} > /tmp/-x`)).toBe(false)
+    expect(hasStepsArgument(SAVE)).toBe(false)
   })
 
   test('reads an after list, none, no own steps and anything else', () => {
@@ -503,6 +508,9 @@ describe('the output of the own steps command', () => {
     expect(findStepsOutcome('before anchor:\n1. [general] hi\nafter anchor: none\n')).toBe('none')
     expect(findStepsOutcome('no own steps\n')).toBe('none')
     expect(findStepsOutcome('anchor-steps: OSError: boom\n')).toBe('unread')
+    expect(findStepsOutcome('anchor-steps: OSError: boom\nafter anchor:\n1. [general] push\n')).toBe('after')
+    expect(findStepsOutcome('anchor-steps: OSError: boom\nafter anchor: none\n')).toBe('unread')
+    expect(findStepsOutcome('1. [general] push\n')).toBe('unread')
     expect(findStepsOutcome('')).toBe('unread')
     expect(findStepsOutcome(undefined)).toBe('unread')
   })

@@ -19,6 +19,7 @@ import {
 import { CONTINUE_TASKS_HEAD } from '../../hooks/continue-text.js'
 
 const REQUEST_56 = 'context 56% (anchor threshold 55%) — anchoring this session.'
+const RESTART_56 = 'context 56% — this session restarts after saving; new work waits for the next session.'
 const CLEARING = 'anchored at 56% — clearing the context; the session goes on from its note.'
 const CONTINUE =
   'Hats: this session reached 56% of its context window, was anchored and cleared. ' +
@@ -63,10 +64,15 @@ const BACKGROUND = [
   },
 ]
 
-const PIPED_TAILS = [
-  ' | grep -v after',
-  ' > /tmp/steps.txt',
-  '; echo done',
+const HIDING_TAILS = [
+  { tail: ' | grep -v after', stdout: 'before anchor:\n1. [general] say hi\n' },
+  { tail: ' > /tmp/steps.txt', stdout: '' },
+  { tail: ' | tail -1', stdout: '1. [general] push\n' },
+]
+const SHOWING_NONE_TAILS = [
+  { tail: ' | tail -1', stdout: 'after anchor: none\n' },
+  { tail: '; echo done', stdout: 'before anchor:\n1. [general] say hi\nafter anchor: none\ndone\n' },
+  { tail: ' 2>&1 | head -5', stdout: 'no own steps\n' },
 ]
 const KEPT_WRITES = [
   'requested',
@@ -130,6 +136,7 @@ const keptWith = async (scene: any, failure: { steps: (() => Promise<unknown>)[]
   await clearWith(scene, failure.steps)
   expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: failure.reason, save_round: 1 })
   expect(scene.world.logs).toEqual([
+    RESTART_56,
     REQUEST_56,
     getKept(failure.reason),
   ])
@@ -162,6 +169,7 @@ describe('clearing after an anchor on the threshold', () => {
     ])
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -176,6 +184,7 @@ describe('clearing after an anchor on the threshold', () => {
     await clearWith(scene, getClearSteps(scene))
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -210,7 +219,9 @@ describe('clearing after an anchor on the threshold', () => {
 
     expect(scene.world.getStage()).toMatchObject({ stage: 'saved', reason: 'manual' })
     expect(scene.world.runs).toEqual([])
-    expect(scene.world.logs).toEqual([])
+    expect(scene.world.logs).toEqual([
+      'context 58% — this session restarts after saving; new work waits for the next session.',
+    ])
   })
 
   test('the offer_clear action only offers', async ($, on) => {
@@ -300,6 +311,7 @@ describe('input during anchoring', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'cleared' })
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -383,6 +395,7 @@ describe('input during anchoring', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'unexpected input from Claude Code' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('unexpected input from Claude Code'),
     ])
@@ -424,17 +437,52 @@ describe('own steps', () => {
     await keptWith(scene, { steps, reason: 'own steps could not be read' })
   })
 
-  for (const tail of PIPED_TAILS) {
-    test(`the steps command with "${tail.trim()}" after it: kept`, async ($, on) => {
+  for (const run of HIDING_TAILS) {
+    test(`the steps command with "${run.tail.trim()}" after it, the last line not shown: kept`, async ($, on) => {
       const scene = createScene($, { on })
       const steps = [
         ...getClearSteps(scene),
-        () => scene.runSteps(NO_AFTER_STEPS, tail),
+        () => scene.runSteps(run.stdout, run.tail),
       ]
 
       await keptWith(scene, { steps, reason: 'own steps could not be read' })
     })
   }
+
+  for (const run of SHOWING_NONE_TAILS) {
+    test(`the steps command with "${run.tail.trim()}" after it, showing no after steps: cleared`, async ($, on) => {
+      const scene = createScene($, { on })
+      const steps = [
+        ...getSaveSteps(scene),
+        () => scene.runSteps(run.stdout, run.tail),
+        async () => scene.setSnapshot(),
+      ]
+
+      await clearWith(scene, steps)
+
+      expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    })
+  }
+
+  test('the steps command with an argument after the script: kept, whatever it printed', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.runSteps('no own steps\n', ' --cwd "/other"'),
+    ]
+
+    await keptWith(scene, { steps, reason: 'own steps could not be read' })
+  })
+
+  test('the steps command with "| tail -3" after it, showing an after list: kept for the after steps', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.runSteps('after anchor:\n1. [general] push\n', ' | tail -3'),
+    ]
+
+    await keptWith(scene, { steps, reason: 'own after-steps ran' })
+  })
 
   test('the steps command failed: kept', async ($, on) => {
     const scene = createScene($, { on })
@@ -696,6 +744,7 @@ describe('the background work at the end of the anchor turn', () => {
 
     await scene.world.clock.advance(1900)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
     ])
     await scene.world.clock.advance(200)
@@ -845,6 +894,7 @@ describe('a session change before the own /clear', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the session changed' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('the session changed'),
     ])
@@ -862,6 +912,7 @@ describe('a session change before the own /clear', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the session changed' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('the session changed'),
     ])
@@ -879,6 +930,7 @@ describe('a session change before the own /clear', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the session changed' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('the session changed'),
     ])
@@ -899,6 +951,7 @@ describe('the last check, when /clear runs', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'input arrived during anchoring (composer)' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('input arrived during anchoring (composer)'),
@@ -967,6 +1020,7 @@ describe('the last check, when /clear runs', () => {
     expect(reason).toContain('the clear command was refused: ')
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept(reason),
@@ -986,6 +1040,7 @@ describe('the last check, when /clear runs', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'the session changed' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('the session changed'),
@@ -1024,6 +1079,7 @@ describe('the last check, when /clear runs', () => {
 
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('the session changed'),
@@ -1044,6 +1100,7 @@ describe('the last check, when /clear runs', () => {
 
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('plugin reloaded'),
@@ -1062,6 +1119,7 @@ describe('the last check, when /clear runs', () => {
     await scene.runAnchorTurn({ steps: getClearSteps(scene) })
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       SEND_YOURS,
@@ -1086,6 +1144,7 @@ describe('the last check, when /clear runs', () => {
     await clearWith(scene, getClearSteps(scene))
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('the session did not change after /clear'),
@@ -1122,10 +1181,11 @@ describe('after the own /clear', () => {
     await clearWith(scene, getClearSteps(scene))
 
     await scene.world.clock.advance(4900)
-    expect(scene.world.logs.length).toBe(2)
+    expect(scene.world.logs.length).toBe(3)
     await scene.world.clock.advance(200)
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       NOT_BACK,
@@ -1172,6 +1232,7 @@ describe('after the own /clear', () => {
 
     expect(getContinuations(scene).length).toBe(1)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -1188,6 +1249,7 @@ describe('after the own /clear', () => {
     await clearWith(scene, getClearSteps(scene))
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       SEND_YOURS,
@@ -1214,6 +1276,7 @@ describe('after the own /clear', () => {
     await clearWith(scene, getClearSteps(scene))
 
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -1246,6 +1309,7 @@ describe('after the own /clear', () => {
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.prompts.map((prompt: any) => prompt.text)).toContain('typed just now')
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -1262,6 +1326,7 @@ describe('after the own /clear', () => {
 
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       SEND_YOURS,
@@ -1279,6 +1344,7 @@ describe('after the own /clear', () => {
     await scene.runAnchorTurn({ steps: getClearSteps(scene) })
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       SEND_YOURS,
@@ -1290,6 +1356,28 @@ describe('after the own /clear', () => {
 
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
     expect(scene.world.logs.at(-1)).toBe(PAUSED)
+  })
+
+  test('the session changed and a hook of the mod failed during the clear: the new session gets the 10-minute pause', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene, { warn_percent: null })
+    scene.world.clearAnswer = 'changed-then-failed'
+    await scene.askToAnchor()
+    await scene.runAnchorTurn({ steps: getClearSteps(scene) })
+    expect(scene.world.sessionId).toBe(NEXT_SESSION)
+    const logs = scene.world.logs.length
+
+    const low = await scene.startTurn(undefined)
+    await scene.endTurn(low, { percent: 52 })
+    const high = await scene.startTurn(52)
+    const agent = await scene.callTool(56, { tool: 'Agent', description: 'probe', prompt: 'Reply OK.' })
+    await scene.endTurn(high, { percent: 56 })
+    await scene.prompt('next')
+
+    expect(agent.deny).toBe(undefined)
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(scene.world.logs.slice(logs)).toEqual([PAUSED])
+    expect(scene.world.prompts.at(-1).context ?? []).toEqual([])
   })
 
   test('the own run hook fails once /clear ran and the note did not come back: the line with the path', async ($, on) => {
@@ -1304,6 +1392,7 @@ describe('after the own /clear', () => {
 
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       NOT_BACK,
@@ -1320,6 +1409,7 @@ describe('after the own /clear', () => {
 
     expect(getContinuations(scene)).toEqual([])
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -1346,6 +1436,7 @@ describe('after the own /clear', () => {
 
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])
@@ -1362,7 +1453,7 @@ describe('after the own /clear', () => {
     await scene.endTurn(later, { percent: 31 })
 
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
-    expect(scene.world.logs.length).toBe(2)
+    expect(scene.world.logs.length).toBe(3)
     expect(scene.world.files.has(`${STAGES}/${NEXT_SESSION}.json`)).toBe(false)
   })
 })
@@ -1381,6 +1472,7 @@ describe('a failed hook while a clear is open', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'a plugin hook failed' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('a plugin hook failed'),
     ])
@@ -1399,6 +1491,7 @@ describe('a failed hook while a clear is open', () => {
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'input arrived during anchoring (composer)' })
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       getKept('input arrived during anchoring (composer)'),
     ])
@@ -1481,6 +1574,7 @@ const holdClear = async (scene: any) => {
   await clearWith(scene, getClearSteps(scene))
   expect(scene.world.runs).toEqual(ANCHOR_ONLY)
   expect(scene.world.logs).toEqual([
+    RESTART_56,
     REQUEST_56,
     CLEARING,
   ])
@@ -1751,6 +1845,7 @@ describe('a notice of a background task', () => {
 
     expect(scene.world.getStage()).toMatchObject({ stage: 'requested' })
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
     ])
     const anchorTurn = await scene.startTurn(56)
@@ -1797,6 +1892,7 @@ describe('a notice turn while the own /clear waits in the queue', () => {
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'background work not in the note: b7x3k9' })
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
       getKept('background work not in the note: b7x3k9'),
@@ -1832,6 +1928,7 @@ describe('a notice turn while the own /clear waits in the queue', () => {
 
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
     expect(scene.world.logs).toEqual([
+      RESTART_56,
       REQUEST_56,
       CLEARING,
     ])

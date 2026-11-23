@@ -149,7 +149,7 @@ const createWorld = (options: SceneOptions) => {
     handedAfterMs: 0,
     onStageWrite: null as null | ((stage: string) => Promise<unknown>),
     isHandedBack: true,
-    clearAnswer: 'clear' as 'clear' | 'throw' | 'same',
+    clearAnswer: 'clear' as 'clear' | 'throw' | 'same' | 'changed-then-failed',
     nextSessionId: NEXT_SESSION,
     onClear: null as null | (() => Promise<unknown>),
     endSession: async (_reason: string) => {},
@@ -268,6 +268,7 @@ const runClear = async (world: World) => {
   if (world.clearAnswer === 'throw') throw new Error('the test refuses /clear')
   if (world.onClear !== null) await world.onClear()
   if (world.clearAnswer === 'same') return { text: '' }
+  if (world.clearAnswer === 'changed-then-failed') world.sessionIdDenials = 1
   await world.endSession('clear')
   world.sessionId = world.nextSessionId
   const marker = world.files.get(world.resolve(world.paths.marker))

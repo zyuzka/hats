@@ -779,6 +779,7 @@ describe('the check of the anchor turn', () => {
 
     expect(scene.world.getStage()).toMatchObject({ stage: 'interrupted', reason: null })
     expect(scene.world.logs).toEqual([
+      'context 56% — this session restarts after saving; new work waits for the next session.',
       REQUEST_56,
       'anchoring was stopped; the note was saved.',
     ])

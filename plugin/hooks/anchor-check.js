@@ -12,9 +12,9 @@ import {
   isMarkerPlace,
   isMarkerShape,
   isMemoryLinkNote,
-  isExactStepsCommand,
   isNoteCandidate,
   isStepsCommand,
+  hasStepsArgument,
 } from './thresholds.js'
 import {
   findRealPath,
@@ -41,7 +41,7 @@ export const createTurn = (id, startedAt) => ({
 const isReadableStepsCall = call =>
   call.out.deny === undefined &&
   call.out.isError !== true &&
-  isExactStepsCommand(call.command)
+  !hasStepsArgument(call.command)
 
 export const recordStepsOutput = (turn, call) => {
   if (!isStepsCommand(call.command)) return
