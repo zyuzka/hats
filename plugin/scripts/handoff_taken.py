@@ -93,12 +93,13 @@ def get_taken_lock(create, until):
     if time.monotonic() >= until:
         os.close(fd)
         return None, "no-time"
-    set_signal("waiting")
-    while not try_lock(fd):
-        if time.monotonic() >= until:
-            os.close(fd)
-            return None, "lock-busy"
-        time.sleep(LOCK_STEP_S)
+    if not try_lock(fd):
+        set_signal("waiting")
+        while not try_lock(fd):
+            if time.monotonic() >= until:
+                os.close(fd)
+                return None, "lock-busy"
+            time.sleep(LOCK_STEP_S)
     set_signal("locked")
     hold_for_test(until)
 

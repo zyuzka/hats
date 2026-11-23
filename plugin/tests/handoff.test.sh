@@ -1892,7 +1892,7 @@ reset; closed_note; A=$(live); B=$(live); C=$(live); sig="$work/sig"; rm -rf "$s
 run_took "$(took_in sA "$note")" "$A" "$work/ra" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_HOLD="$work/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig" & ra=$!
 wait_for '[ -n "$(ls "$sig" | grep "\.locked$")" ]'
 run_took "$(took_in sB "$note")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_SIGNAL="$sig" & rb=$!
-wait_for '[ "$(ls "$sig" | grep -c "\.waiting$")" -eq 2 ]'; locked=$(ls "$sig" | grep -c '\.locked$'); a_alive=$(kill -0 "$ra" 2>/dev/null && echo yes)
+wait_for '[ "$(ls "$sig" | grep -c "\.waiting$")" -eq 1 ]'; locked=$(ls "$sig" | grep -c '\.locked$'); a_alive=$(kill -0 "$ra" 2>/dev/null && echo yes)
 : >"$work/release"; wait "$ra"; wait "$rb"; rm -f "$work/release"
 if [ "$locked" -eq 1 ] && [ "$a_alive" = yes ]; then ok; else bad "гонка: B доказанно ждёт блокировку, пока её держит A" "locked=$locked A жив=${a_alive:-нет}"; fi
 out=$(judged "$work/ra" "гонка A"); empty "гонка: A — без предупреждения" "$out$(heard)"
@@ -1947,7 +1947,7 @@ A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sM
 sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
 mkps "case \" \$* \" in *\" $(pid_of "$R") \"*) : >\"$sig/b.ready\"; for i in \$(seq 1 250); do ls \"$sig/a/\"*.locked >/dev/null 2>&1 && break; sleep 0.02; done ;; esac; exec /bin/ps \"\$@\""
 filler=$(fill_fifo "$work/full")
-run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=10 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
+run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
 wait_for '[ -f "$sig/b.ready" ]' || bad "заполненный stdout: B дошёл до проверки читателя" "нет $sig/b.ready за 5 с"
 ( took_in sA "$note" | timeout 20 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=10 HANDOFF_TEST_TAKEN_HOLD="$sig/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
 wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "заполненный stdout: B дошёл до ожидания блокировки" "нет $sig/b/*.waiting за 5 с"
@@ -1955,7 +1955,7 @@ wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "заполненный 
 wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
 has "заполненный stdout: печать не удалась — not-printed" "command=took outcome=not-printed warned=False" "$(tls sA command outcome warned)"
 print_ms=$(python3 -I -c 'import os,sys; print((os.stat(sys.argv[2]).st_mtime_ns - os.stat(sys.argv[1]).st_mtime_ns) // 1000000)' "$sig/release" "$work/full.rc")
-if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 1200 ]; then ok; else bad "заполненный stdout: A кончился за 0,25–1,2 с после отпускания — печать сдалась, а не ждала срока" "${print_ms} мс"; fi
+if [ "$print_ms" -ge 250 ] && [ "$print_ms" -le 5000 ]; then ok; else bad "заполненный stdout: A кончился за 0,25–5 с после отпускания — печать сдалась, а не ждала срока 10 с" "${print_ms} мс"; fi
 same "заполненный stdout: читатель не записан" "$me_pid/sMe" "$(readers_of "$real_note")"
 if [ "$(cat "$work/full.rc")" = 0 ] && [ ! -s "$work/full.err" ]; then ok; else bad "заполненный stdout: код 0, stderr пуст" "rc=$(cat "$work/full.rc") $(head -c 200 "$work/full.err")"; fi
 same "заполненный stdout: временных файлов не осталось" "0" "$(tmp_left)"

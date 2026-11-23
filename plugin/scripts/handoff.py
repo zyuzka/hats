@@ -417,7 +417,7 @@ behind a link, read by its real path outside <config>/projects, is not caught; c
 HANDOFF_OFF=1 silences the hook. With HANDOFF_TEST=1, HANDOFF_PROCESS=<pid>:<start> stands in
 for the claude process and HANDOFF_TEST_BUDGET for the time budget (of `took` too). HANDOFF_TEST_PAUSE
 also pauses under taken/.lock before the replace, HANDOFF_TEST_TAKEN_SIGNAL=<folder> gets <pid>.waiting
-before the wait for that lock and <pid>.locked once it is held, HANDOFF_TEST_TAKEN_HOLD=<path> keeps
+once it finds that lock busy and waits, and <pid>.locked once it is held, HANDOFF_TEST_TAKEN_HOLD=<path> keeps
 taken/.lock, once any call holds it (took, start, the unlisting), until the path exists or that call's
 deadline for the lock passes, and HANDOFF_TEST_FAIL=replace makes
 os.replace of the mark files fail.
