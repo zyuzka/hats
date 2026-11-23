@@ -102,21 +102,51 @@ final class KeychainWriteRouteTests: XCTestCase {
         XCTAssertEqual(command.utf8.count, Keychain.interactiveCommandLimit)
     }
 
-    func testAValueOverTheLimitIsRefusedAndNothingRuns() {
-        let fixed = "add-generic-password -U -a \"me\" -s \"ST\" -X \"\"\n".utf8.count
-        let bytes = (Keychain.interactiveCommandLimit - fixed) / 2 + 1
-        var ran = false
-
-        XCTAssertThrowsError(try Keychain.writeLiveItem(
+    private func writeLive(bytes: Int, interactive: inout [Data], arguments: inout [[String]]) throws {
+        var sentIn: [Data] = []
+        var sentArgs: [[String]] = []
+        defer {
+            interactive = sentIn
+            arguments = sentArgs
+        }
+        try Keychain.writeLiveItem(
             service: "ST",
             account: "me",
             data: Data(repeating: 0x41, count: bytes),
-            runInteractive: { _ in
-                ran = true
+            runInteractive: { input in
+                sentIn.append(input)
+                return Keychain.Result(status: 0, stdout: "", stderr: "")
+            },
+            runArguments: { list in
+                sentArgs.append(list)
                 return Keychain.Result(status: 0, stdout: "", stderr: "")
             }
-        ))
-        XCTAssertFalse(ran, "an oversized value must not reach security at all, so nothing is cut")
+        )
+    }
+
+    private var bytesAtTheLimit: Int {
+        (Keychain.interactiveCommandLimit - "add-generic-password -U -a \"me\" -s \"ST\" -X \"\"\n".utf8.count) / 2
+    }
+
+    func testAValueAtTheLimitGoesToStdinOnly() throws {
+        var interactive: [Data] = []
+        var arguments: [[String]] = []
+
+        try writeLive(bytes: bytesAtTheLimit, interactive: &interactive, arguments: &arguments)
+
+        XCTAssertEqual(interactive.map(\.count), [Keychain.interactiveCommandLimit])
+        XCTAssertEqual(arguments, [], "a command within the limit must not put the value in argv")
+    }
+
+    func testAValueOverTheLimitGoesToArgumentsAsClaudeCodeDoes() throws {
+        var interactive: [Data] = []
+        var arguments: [[String]] = []
+
+        try writeLive(bytes: bytesAtTheLimit + 1, interactive: &interactive, arguments: &arguments)
+
+        let hex = String(repeating: "41", count: bytesAtTheLimit + 1)
+        XCTAssertEqual(interactive, [], "an oversized command must not reach security -i, which would cut it")
+        XCTAssertEqual(arguments, [["add-generic-password", "-U", "-a", "me", "-s", "ST", "-X", hex]])
     }
 
     func testTheValueReachesSecurityOnStdinOnly() throws {
@@ -166,7 +196,14 @@ final class KeychainWriteRouteTests: XCTestCase {
         for file in files {
             let text = try String(contentsOf: sources.appendingPathComponent(file), encoding: .utf8)
             XCTAssertFalse(text.contains("\"-w\", value"), "\(file) passes the value with -w in argv")
-            XCTAssertFalse(text.contains("\"-X\", "), "\(file) passes the value with -X in argv")
+            let argvWrites = text.components(separatedBy: "\"-X\", ").count - 1
+            let allowed = file == "Keychain+LiveItem.swift" ? 1 : 0
+            XCTAssertEqual(
+                argvWrites,
+                allowed,
+                "\(file) passes the value with -X in argv; only Keychain+LiveItem.swift may, once: "
+                    + "the live item over the security -i limit, written as Claude Code writes it"
+            )
         }
     }
 }

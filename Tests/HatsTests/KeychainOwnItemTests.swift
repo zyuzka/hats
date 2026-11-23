@@ -175,6 +175,19 @@ final class KeychainOwnItemTests: XCTestCase {
         XCTAssertNil(value)
     }
 
+    func testACarriageReturnLineFeedPairInANameIsRefused() {
+        XCTAssertThrowsError(try Keychain.createInteractiveAddCommand(
+            service: "S\r\n",
+            account: "me",
+            data: Data("x".utf8)
+        ))
+        XCTAssertThrowsError(try Keychain.createInteractiveAddCommand(
+            service: "S",
+            account: "me\r\n",
+            data: Data("x".utf8)
+        ))
+    }
+
     func testACarriageReturnInANameIsRefused() {
         XCTAssertThrowsError(try Keychain.createInteractiveAddCommand(
             service: "S\r",
