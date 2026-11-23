@@ -197,6 +197,56 @@ final class SettingsDraftsTests: XCTestCase {
         XCTAssertEqual(SettingsCloseQuestion.getAnswer(at: -1), .cancel)
     }
 
+    func testClosingWithNothingLeftDoesNotAsk() {
+        // Arrange
+        var calls: [String] = []
+
+        // Act
+        let closes = SettingsCloseQuestion.canClose(
+            leftovers: [],
+            ask: { _ in
+                calls.append("ask")
+                return .cancel
+            },
+            discard: { calls.append("discard") }
+        )
+
+        // Assert
+        XCTAssertTrue(closes)
+        XCTAssertEqual(calls, [], "nothing left: the window closes without a question")
+    }
+
+    func testDiscardClosesAndDropsTheNumbersCancelKeepsTheWindowAndThem() {
+        // Arrange
+        let left = [SettingsLeftover(name: "Settle", text: "700", reason: "from 0 to 600 s")]
+        var calls: [String] = []
+        let discard = { calls.append("discard") }
+
+        // Act
+        let discarded = SettingsCloseQuestion.canClose(leftovers: left, ask: { _ in .discard }, discard: discard)
+        let afterDiscard = calls
+        let cancelled = SettingsCloseQuestion.canClose(leftovers: left, ask: { _ in .cancel }, discard: discard)
+
+        // Assert
+        XCTAssertTrue(discarded)
+        XCTAssertEqual(afterDiscard, ["discard"])
+        XCTAssertFalse(cancelled, "Cancel keeps the window open")
+        XCTAssertEqual(calls, ["discard"], "Cancel drops nothing")
+    }
+
+    func testTheWindowClosesThroughTheDecisionAfterTheFocusedFieldIsWritten() throws {
+        // Arrange
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+
+        // Act
+        let window = try String(contentsOf: root.appendingPathComponent("Sources/Hats/SettingsWindow.swift"), encoding: .utf8)
+
+        // Assert
+        let focus = try XCTUnwrap(window.range(of: "sender.makeFirstResponder(nil)"))
+        let decision = try XCTUnwrap(window.range(of: "return SettingsCloseQuestion.canClose("))
+        XCTAssertLessThan(focus.lowerBound, decision.lowerBound, "the focused field is written before the leftovers are read")
+    }
+
     func testTheCloseQuestionShortensAVeryLongPastedNumberAndKeepsItsReason() {
         // Arrange
         let stored = settings()

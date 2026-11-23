@@ -58,15 +58,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.makeFirstResponder(nil)
         guard let model else { return true }
-        let leftovers = drafts.getLeftovers(in: model.snapshot.settings)
-        guard !leftovers.isEmpty else { return true }
-        switch SettingsCloseQuestion.findAnswer(leftovers) {
-        case .discard:
-            drafts.discardAll()
-            return true
-        case .cancel:
-            return false
-        }
+
+        return SettingsCloseQuestion.canClose(
+            leftovers: drafts.getLeftovers(in: model.snapshot.settings),
+            ask: SettingsCloseQuestion.findAnswer,
+            discard: drafts.discardAll
+        )
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -82,6 +79,21 @@ enum SettingsCloseQuestion {
         .discard,
         .cancel,
     ]
+
+    static func canClose(
+        leftovers: [SettingsLeftover],
+        ask: ([SettingsLeftover]) -> SettingsCloseQuestion,
+        discard: () -> Void
+    ) -> Bool {
+        guard !leftovers.isEmpty else { return true }
+        switch ask(leftovers) {
+        case .discard:
+            discard()
+            return true
+        case .cancel:
+            return false
+        }
+    }
 
     static func findAnswer(_ leftovers: [SettingsLeftover]) -> SettingsCloseQuestion {
         getAnswer(at: PromptWindow.ask(getPrompt(leftovers)))
