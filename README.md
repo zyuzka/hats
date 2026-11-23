@@ -35,7 +35,7 @@ Not affiliated with Anthropic.
 ## What it does not do
 
 - **Its network traffic is to Anthropic, to OpenAI for Codex hats, and to GitHub for updates.** The
-  relay forwards your own Claude Code requests, and each hat's usage is read from Anthropic's usage
+  relay forwards your own Claude Code requests, and each Claude hat's usage is read from Anthropic's usage
   endpoint with that hat's own token; Codex hats sign in, renew and read usage at OpenAI
   (`auth.openai.com`, `chatgpt.com`), and the Codex gateway forwards Codex's own requests there.
   About every six hours Hats reads the release feed of this repository on GitHub (with the
