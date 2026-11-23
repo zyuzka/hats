@@ -185,7 +185,7 @@ mark at least as long) not — is reported as not verified; a code block left op
 the lines after it are not checked, and that problem comes first; a `(cite:` that does
 not parse is reported too, unless it sits in inline code. Numbers written in words are not
 caught, and the check cannot tell whether the words next to a quote mean what the quote says.
-`check` and `save` say "quotes and numbers: all verified" only when the note made at least one claim
+`check` and `save` say "quotes and numbers: quotes and arithmetic checked, other figures name a source that was not run" only when the note made at least one claim
 — a quote, an `N of M (P%)` or a number outside code, with or without its source — and none failed; a
 note with no such claim (empty, only a header, numbers only in code blocks) gets "quotes and numbers:
 none outside code and the header — nothing checked" instead, and `check` still exits 0: nothing to check is not an

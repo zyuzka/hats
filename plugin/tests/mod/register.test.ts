@@ -864,7 +864,7 @@ const getOwnNoteSave = (scene: any, root: string) => {
       const savedAt = `${new Date(scene.world.clock.now()).toISOString().slice(0, 19)}Z`
       const marker = { pid: 42, started: 'Sat Nov 14 12:00:00 2026', cwd: '/w', note, topic: 'task', saved_at: savedAt }
       scene.world.setFile(scene.world.paths.marker, JSON.stringify(marker))
-      scene.world.nextToolAnswer = createBashResult(`marker: ${scene.world.paths.marker}\nquotes and numbers: all verified`)
+      scene.world.nextToolAnswer = createBashResult(`marker: ${scene.world.paths.marker}\nquotes and numbers: quotes and arithmetic checked, other figures name a source that was not run`)
       return scene.callTool(58, { tool: 'Bash', command: `${script} save --note "${note}" --topic "task"` })
     },
   ]

@@ -245,7 +245,7 @@ const answerBash = async (world: World, command: string) => {
   const sha = note === undefined || world.isMarkerShaless ? {} : { sha256: await getSha256(note.text) }
   world.setFile(paths.marker, JSON.stringify({ ...marker, ...sha }, null, 1))
 
-  return createBashResult(`marker: ${paths.marker}\nindex: updated\nMEMORY.md: has the index line\nquotes and numbers: all verified`)
+  return createBashResult(`marker: ${paths.marker}\nindex: updated\nMEMORY.md: has the index line\nquotes and numbers: quotes and arithmetic checked, other figures name a source that was not run`)
 }
 
 const applyEdits = (text: string, edits: { old_string: string; new_string: string }[]) =>

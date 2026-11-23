@@ -38,7 +38,8 @@
 # quote checked, each N of M (P%), each clause with a figure up to the first without a source);
 # its fence and time-out handling stays the reference's own. With no problems render_own
 # appends the verdict line to the tail, render_list appends it indented for a note it could
-# read, and save and check print it ("nothing checked" at zero claims, "all verified" otherwise).
+# read, and save and check print it ("nothing checked" at zero claims,
+# "quotes and arithmetic checked" otherwise).
 #
 # Задача 8c: хук took (после Read) гоняется помощниками took и took_raw со входом из замера
 # 2026-11-13; его вывод проверяется той же формой с hookEventName PostToolUse, без сверки.
@@ -271,6 +272,7 @@ checkline() { printf '%s\n' "$1" >"$proj/n.md"; check "$proj/n.md"; }
 has()   { case "$3" in *"$2"*) ok ;; *) bad "$1" "ждали «$2», получили: ${3:0:300}" ;; esac; }
 lacks() { case "$3" in *"$2"*) bad "$1" "не ждали «$2», получили: ${3:0:300}" ;; *) ok ;; esac; }
 empty() { if [ -z "$2" ]; then ok; else bad "$1" "ждали тишину, получили: ${2:0:300}"; fi; }
+all_line='quotes and numbers: quotes and arithmetic checked, other figures name a source that was not run'
 same()  { if [ "$2" = "$3" ]; then ok; else bad "$1" "ждали «$2», получили «${3:0:400}»"; fi; }
 ok()  { pass=$((pass+1)); }
 bad() { fail=$((fail+1)); failures="$failures
@@ -390,7 +392,7 @@ empty "подмена процесса без HANDOFF_TEST не действуе
 
 # --- проверка записки
 reset; printf 'строка один\n| 2 слова или решения | 22 | 73%% |\n' >"$proj/src.md"
-has "цитата совпала" "all verified" "$(checkline "итог (цит. $proj/src.md:2 «| 22 | 73% |»)")"
+has "цитата совпала" "$all_line" "$(checkline "итог (цит. $proj/src.md:2 «| 22 | 73% |»)")"
 has "цитата не совпала" "text not found" "$(checkline "итог (цит. $proj/src.md:2 «| 22 | 74% |»)")"
 has "цитата: нет строки" "has no line 9" "$(checkline "итог (цит. $proj/src.md:9 «| 22 |»)")"
 has "цитата: нет файла" "no regular file" "$(checkline "итог (цит. $proj/nope.md:1 «x»)")"
@@ -426,9 +428,9 @@ out=$(timeout 2 env HOME="$work" python3 -I "$HOOK" check --cwd "$proj" "$proj/n
 has "строка короче предела из незакрытых цитат разбирается быстро и ответом проверки" "quote not parsed" "$out"
 has "случай пробы: процент без источника" "no source" "$(checkline '73% потерь — постоянные правила')"
 has "случай пробы в обратных кавычках" "no source" "$(checkline '`73%` — постоянные правила')"
-has "своя арифметика сходится" "all verified" "$(checkline 'правила — 13 из 30 (43%)')"
+has "своя арифметика сходится" "$all_line" "$(checkline 'правила — 13 из 30 (43%)')"
 has "своя арифметика не сходится" "arithmetic" "$(checkline 'правила — 22 из 30 (43%)')"
-has "число с командой-источником" "all verified" "$(checkline 'неделя 98% (система: cat weekly.json)')"
+has "число с командой-источником" "$all_line" "$(checkline 'неделя 98% (система: cat weekly.json)')"
 has "команда-источник освобождает только свою часть" "no source" "$(checkline 'правила 73%; неделя 98% (система: cat x)')"
 has "команда-источник не отменяет арифметику" "arithmetic" "$(checkline 'правила — 22 из 30 (43%) (система: wc -l x)')"
 has "числа в блоке кода не проверяются" "none outside code and the header — nothing checked" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
@@ -442,14 +444,14 @@ has "после закрытого блока числа снова провер
 has "шапка записки не проверяется" "none outside code and the header — nothing checked" "$(printf -- '---\nname: x 50%%\n---\nтекст\n' >"$proj/n.md"; check "$proj/n.md")"
 out=$(: >"$proj/n.md"; check "$proj/n.md"); rc=$?
 has "пустой файл: проверять нечего — так и сказано" "quotes and numbers: none outside code and the header — nothing checked" "$out"
-lacks "пустой файл: не «all verified»" "all verified" "$out"
+lacks "пустой файл: не «quotes and arithmetic checked»" "$all_line" "$out"
 if [ $rc -eq 0 ]; then ok; else bad "пустой файл: check — код 0" "rc=$rc"; fi
 out=$(printf -- '---\nname: x 50%%\n---\n' >"$proj/n.md"; check "$proj/n.md"); rc=$?
-has "только шапка: проверять нечего" "none outside code and the header — nothing checked" "$out"; lacks "только шапка: не «all verified»" "all verified" "$out"
+has "только шапка: проверять нечего" "none outside code and the header — nothing checked" "$out"; lacks "только шапка: не «quotes and arithmetic checked»" "$all_line" "$out"
 if [ $rc -eq 0 ]; then ok; else bad "только шапка: check — код 0" "rc=$rc"; fi
-lacks "числа только в блоке кода: не «all verified»" "all verified" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
-lacks "текст без чисел: не «all verified»" "all verified" "$(checkline 'просто текст')"
-has "одна цитата — уже «all verified»" "quotes and numbers: all verified" "$(printf 'a 73%%\n' >"$proj/src5.md"; checkline "x (cite: $proj/src5.md:1 \"a 73%\")")"
+lacks "числа только в блоке кода: не «quotes and arithmetic checked»" "$all_line" "$(printf '```\n41%%\n```\n' >"$proj/n.md"; check "$proj/n.md")"
+lacks "текст без чисел: не «quotes and arithmetic checked»" "$all_line" "$(checkline 'просто текст')"
+has "одна цитата — уже «quotes and arithmetic checked»" "$all_line" "$(printf 'a 73%%\n' >"$proj/src5.md"; checkline "x (cite: $proj/src5.md:1 \"a 73%\")")"
 out=$(for i in $(seq 1 15); do echo "строка $i: $i%"; done >"$proj/n.md"; check "$proj/n.md")
 has "замечаний сверх десяти — счётом" "and 5 more" "$out"
 n=$(count '^- line' "$out")
@@ -502,14 +504,13 @@ has "непроверенная строка приходит с пометко�
 
 # --- record 99: with no problems the note after /clear and the list say which verdict holds
 nothing_line='quotes and numbers: none outside code and the header — nothing checked'
-all_line='quotes and numbers: all verified'
 reset; mine
 printf '%s\n' 'строка один' '| 2 слова или решения | 22 | 73% |' >"$proj/src.md"
 printf '## СЕЙЧАС\n\nпросто текст\n' >"$note"
 out=$(start clear)
 has "clear: note with nothing to check ends with the nothing-checked line" "--- end of excerpt ---
 $nothing_line" "$out"
-lacks "clear: note with nothing to check is not all verified" "$all_line" "$out"
+lacks "clear: note with nothing to check is not the checked verdict" "$all_line" "$out"
 printf '## СЕЙЧАС\n\nитог (cite: %s/src.md:2 "| 22 | 73%% |")\n' "$proj" >"$note"
 out=$(start clear)
 has "clear: verified quote ends with the all-verified line" "--- end of excerpt ---
@@ -526,7 +527,7 @@ printf '%s\n' 'строка один' '| 2 слова или решения | 22
 out=$(start startup)
 has "list: note with nothing to check gets the indented nothing-checked line" "
    $nothing_line" "$out"
-lacks "list: note with nothing to check is not all verified" "$all_line" "$out"
+lacks "list: note with nothing to check is not the checked verdict" "$all_line" "$out"
 printf '## СЕЙЧАС\n\nитог (cite: %s/src.md:2 "| 22 | 73%% |")\n' "$proj" >"$note"
 out=$(start startup)
 has "list: verified quote gets the indented all-verified line" "
@@ -539,6 +540,29 @@ printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$note"
 out=$(start startup)
 has "list: unverified note keeps the count of lines" "   unverified lines: 1" "$out"
 lacks "list: unverified note carries no verdict line" "quotes and numbers:" "$out"
+# A list that fits only without its verdict lines drops all of them and keeps every path and warning.
+near_list() {  # near_list <pad> — four notes with nothing to check, then an unverified one, oldest last
+  reset; local i
+  for i in 1 2 3 4; do
+    printf '## СЕЙЧАС\n\nпросто текст\n' >"$mem/n$i.md"
+    marker "n$i" "9998$i" "$dead_started" "$proj" "$mem/n$i.md" "$([ "$i" = 1 ] && printf "%${1}s" '' | tr ' ' x)тема $i" "$(days_ago "$i")"
+  done
+  printf '## СЕЙЧАС\n\nпроцент 50%%\n' >"$mem/n5.md"; last_saved=$(days_ago 5)
+  marker n0 99980 "$dead_started" "$proj" "$mem/n5.md" "последняя" "$last_saved"
+}
+days_ago() { date -u -v-"$1"d '+%Y-%m-%dT%H:00:00Z'; }
+units_of() { python3 -I -c 'import sys; print(len(sys.stdin.read().encode("utf-16-le")) // 2)'; }
+near_list 0; base=$(CMP=0 start startup | units_of)
+verdicts=$(( 4 * $(printf '   %s\n' "$nothing_line" | units_of) ))
+near_list $(( 9500 - base + verdicts / 2 ))
+out=$(start startup)
+has "list near the limit: the last note keeps its path" "\"последняя\" — saved $last_saved: $real_mem/n5.md" "$out"
+has "list near the limit: the last note keeps its unverified count" "$real_mem/n5.md
+   unverified lines: 1" "$out"
+lacks "list near the limit: verdict lines are dropped" "quotes and numbers:" "$out"
+near_list 0; out=$(start startup)
+has "list well under the limit keeps its verdict lines" "
+   $nothing_line" "$out"
 
 # --- пределы вывода
 reset; python3 -I -c 'import sys; print("## СЕЙЧАС\n"); print("\n".join("слово " * 20 for _ in range(200)))' >"$note"; mine
@@ -903,18 +927,18 @@ if [ $rc -eq 0 ]; then ok; else bad "проверка упала: save — ко�
 
 # --- метки на английском (основные) и русские (прежние, по-прежнему принимаются)
 reset; printf 'first\n| 22 | 73%% |\nhe said "hi" 5 times\n' >"$proj/src.md"
-has "cite: прямые кавычки" "all verified" "$(checkline "x (cite: $proj/src.md:2 \"| 22 | 73% |\")")"
-has "cite: ёлочки" "all verified" "$(checkline "x (cite: $proj/src.md:2 «| 22 | 73% |»)")"
-has "cite: лапки" "all verified" "$(checkline "x (cite: $proj/src.md:2 “| 22 | 73% |”)")"
-has "cite: прямые кавычки внутри цитаты" "all verified" "$(checkline "x (cite: $proj/src.md:3 \"he said \"hi\" 5 times\")")"
+has "cite: прямые кавычки" "$all_line" "$(checkline "x (cite: $proj/src.md:2 \"| 22 | 73% |\")")"
+has "cite: ёлочки" "$all_line" "$(checkline "x (cite: $proj/src.md:2 «| 22 | 73% |»)")"
+has "cite: лапки" "$all_line" "$(checkline "x (cite: $proj/src.md:2 “| 22 | 73% |”)")"
+has "cite: прямые кавычки внутри цитаты" "$all_line" "$(checkline "x (cite: $proj/src.md:3 \"he said \"hi\" 5 times\")")"
 has "cite: текст не совпал" "text not found" "$(checkline "x (cite: $proj/src.md:2 \"| 22 | 74% |\")")"
 has "cite: непарные кавычки — цитата не разобрана" "not parsed" "$(checkline "x (cite: $proj/src.md:2 «| 22 | 73% |\")")"
 has "цит.: без номера строки — цитата не разобрана" "not parsed" "$(checkline "x (цит. $proj/src.md «73%»)")"
 lacks "метка в обратных кавычках — это не цитата" "not parsed" "$(checkline 'метки: `(cite: …)` и `(цит. …)`')"
-has "cmd: число с командой-источником" "all verified" "$(checkline 'week 98% (cmd: cat weekly.json)')"
+has "cmd: число с командой-источником" "$all_line" "$(checkline 'week 98% (cmd: cat weekly.json)')"
 has "cmd: освобождает только свою часть" "no source" "$(checkline 'rules 73%; week 98% (cmd: cat x)')"
 has "and — граница фразы" "no source" "$(checkline 'rules 73% and week 98% (cmd: cat x)')"
-has "N of M (P%) сходится" "all verified" "$(checkline 'rules — 13 of 30 (43%)')"
+has "N of M (P%) сходится" "$all_line" "$(checkline 'rules — 13 of 30 (43%)')"
 has "N of M (P%) не сходится" "arithmetic" "$(checkline 'rules — 22 of 30 (43%)')"
 has "голое N of M — без источника" "no source" "$(checkline 'step 2 of 3 done')"
 has "percent — без источника" "no source" "$(checkline 'rules — 73 percent')"
@@ -929,10 +953,10 @@ reset; has "«СЕЙЧАС 2026-…» — прежние записки" "now li
 reset; has "NOW: с двоеточием" "now line" "$(heading '## NOW: after the release')"
 reset; has "NOW: с дефисом и пробелом" "now line" "$(heading '## NOW - after the release')"
 reset; has "NOW: с датой" "now line" "$(heading '## NOW 2026-11-11')"
-reset; has "Cite: с заглавной" "all verified" "$(printf 'a 73%%\n' >"$proj/src.md"; checkline "x (Cite: $proj/src.md:1 \"a 73%\")")"
+reset; has "Cite: с заглавной" "$all_line" "$(printf 'a 73%%\n' >"$proj/src.md"; checkline "x (Cite: $proj/src.md:1 \"a 73%\")")"
 has "Percent с заглавной — без источника" "no source" "$(checkline 'rules — 73 Percent')"
-has "and внутри (cmd: …) не режет фразу" "all verified" "$(checkline 'share 73% (cmd: grep a and b x)')"
-has "и внутри (система: …) не режет фразу" "all verified" "$(checkline 'доля 73% (система: grep a и b x)')"
+has "and внутри (cmd: …) не режет фразу" "$all_line" "$(checkline 'share 73% (cmd: grep a and b x)')"
+has "и внутри (система: …) не режет фразу" "$all_line" "$(checkline 'доля 73% (система: grep a и b x)')"
 
 
 # --- другая обстановка: CLAUDE_PID, CLAUDE_CONFIG_DIR, memory-ссылка, /proc вместо lsof, нет fcntl
@@ -1116,7 +1140,7 @@ if [ "$(markerfield "$markers" note)" = "$(realp "$p")" ]; then ok; else bad "ne
 
 reset; own_dir=$(notes_of "$proj"); other_dir=$(notes_of "$other")
 printf 'share 73%%\n' >"$own_dir/x.md"; printf 'share 73%%\n' >"$other_dir/y.md"; printf 'share 73%%\n' >"$proj/src.md"
-has "цитата обычного файла — источник" "all verified" "$(checkline "x (cite: $proj/src.md:1 \"share 73%\")")"
+has "цитата обычного файла — источник" "$all_line" "$(checkline "x (cite: $proj/src.md:1 \"share 73%\")")"
 has "цитата своей папки — не источник" "quote of the notes folder is not a source" "$(checkline "x (cite: $own_dir/x.md:1 \"share 73%\")")"
 has "цитата записки чужого проекта — не источник" "quote of the notes folder is not a source" "$(checkline "x (cite: $other_dir/y.md:1 \"share 73%\")")"
 printf '## NOW\n\nx 73%% (cite: %s:1 "share 73%%")\n' "$own_dir/x.md" >"$own_dir/r.md"
@@ -1124,7 +1148,7 @@ out=$(save "$proj" "$own_dir/r.md" "цитата"); has "цитата своей
 has "цитата своей папки в записке: строка в «not verified»" "not verified in the note:
 - line 3: quote of the notes folder is not a source" "$out"
 shouty=$(printf '%s' "$own_dir" | sed 's|/Hats/notes/|/HATS/NOTES/|')
-lacks "цитата своей папки в другом регистре — не «all verified»" "all verified" "$(checkline "x (cite: $shouty/x.md:1 \"share 73%\")")"
+lacks "цитата своей папки в другом регистре — не «quotes and arithmetic checked»" "$all_line" "$(checkline "x (cite: $shouty/x.md:1 \"share 73%\")")"
 
 reset; own_dir=$(notes_of "$proj"); printf '## NOW\n\nx\n' >"$own_dir/r.md"
 marker dead "$dead_pid" "$dead_started" "$proj" "$own_dir/r.md" "та же"
