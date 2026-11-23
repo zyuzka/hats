@@ -8,6 +8,8 @@ enum Slot {
     static func codexParked(_ id: String) -> String { "Hats Codex parked \(id)" }
 
     static let claudePrefixes = [parked(""), legacyParked("")]
+
+    static let hatsOwnedPrefixes = claudePrefixes + [codexParked("")]
 }
 
 struct KeychainError: LocalizedError {
@@ -17,16 +19,6 @@ struct KeychainError: LocalizedError {
 }
 
 enum Keychain {
-    static func read(service: String, account: String) throws -> Data? {
-        let result = run(["find-generic-password", "-s", service, "-a", account, "-w"])
-        if result.status == 44 { return nil }
-        guard result.status == 0 else {
-            if result.stderr.contains("could not be found") { return nil }
-            throw KeychainError(operation: "read \(service)", detail: result.stderr)
-        }
-        return storedValue(printed: result.stdout)
-    }
-
     static func storedValue(printed: String) -> Data {
         let digits = Array(printed.utf8)
         guard !digits.isEmpty, digits.count % 2 == 0, digits.allSatisfy(isLowerHexDigit) else {
@@ -52,22 +44,6 @@ enum Keychain {
 
     private static func isNotPrintable(_ byte: UInt8) -> Bool {
         byte < 0x20 || byte == 0x7f
-    }
-
-    static func write(service: String, account: String, data: Data) throws {
-        guard let value = String(data: data, encoding: .utf8) else {
-            throw KeychainError(operation: "write \(service)", detail: "payload is not UTF-8")
-        }
-        let result = run([
-            "add-generic-password",
-            "-U",
-            "-s", service,
-            "-a", account,
-            "-w", value,
-        ])
-        guard result.status == 0 else {
-            throw KeychainError(operation: "write \(service)", detail: result.stderr)
-        }
     }
 
     static func delete(service: String, account: String) throws {
@@ -122,18 +98,26 @@ enum Keychain {
         let stderr: String
     }
 
-    private static func run(_ arguments: [String]) -> Result {
+    static func run(_ arguments: [String], input: Data? = nil, executable: String = "/usr/bin/security") -> Result {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
 
         let out = Pipe()
         let err = Pipe()
+        let stdin = Pipe()
         process.standardOutput = out
         process.standardError = err
+        if input != nil { process.standardInput = stdin }
 
         do { try process.run() } catch {
             return Result(status: -1, stdout: "", stderr: error.localizedDescription)
+        }
+        if let input {
+            let writer = stdin.fileHandleForWriting
+            _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
+            try? writer.write(contentsOf: input)
+            try? writer.close()
         }
 
         let outData = out.fileHandleForReading.readDataToEndOfFile()
