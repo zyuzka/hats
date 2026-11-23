@@ -1939,19 +1939,18 @@ has "took: медленный ps — предупреждение «could not ch
 has "took: занятая runs.lock — строка журнала дописана" "outcome=took-shared unknown=1" "$(tl outcome unknown)"
 
 # --- took: stdout не принимает — печать сдаётся за 0,3 с, took другой записки записан
-# Ordered by events, not by time: B starts first and checks its reader R before the lock; that ps marks
-# "B ready" and waits until A takes the lock. A starts only after that mark and holds the lock
-# (HANDOFF_TEST_TAKEN_HOLD) until the test sees B waiting for it; only then does the test release A, and A
-# tries to print. Both get a long took budget so a slow start does not use it up. File times prove the order,
-# not polling.
+# Ordered by events, not by time: A starts first and holds the lock (HANDOFF_TEST_TAKEN_HOLD); B starts only
+# once A holds it, and waits for the lock. Only when the test sees B waiting does it release A, and A tries to
+# print. No ps call waits for another process, so the 2 s bound of one ps call in took cannot cut it. B's
+# budget is longer than the 5 s the test polls for its wait. File times then prove what the test did not
+# arrange itself: B took the lock only after A was released.
 reset; closed_note; printf '## NOW\n\nвторая\n' >"$mem/n2.md"; closed_note b "$mem/n2.md" "вторая"
 A=$(live); B=$(live); R=$(live); mark_file "$real_note" "[$(reader_json "$me" sMe)]"; mark_file "$real_mem/n2.md" "[$(reader_json "$R" sR)]"
 sig="$work/sig"; rm -rf "$sig" "$work/rb"; mkdir -p "$sig/a" "$sig/b"
-mkps "case \" \$* \" in *\" $(pid_of "$R") \"*) : >\"$sig/b.ready\"; for i in \$(seq 1 250); do ls \"$sig/a/\"*.locked >/dev/null 2>&1 && break; sleep 0.02; done ;; esac; exec /bin/ps \"\$@\""
 filler=$(fill_fifo "$work/full")
-run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=5 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" PATH="$work/psbin:$PATH" & fb=$!
-wait_for '[ -f "$sig/b.ready" ]' || bad "заполненный stdout: B дошёл до проверки читателя" "нет $sig/b.ready за 5 с"
 ( took_in sA "$note" | timeout 20 env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$A" HANDOFF_TEST_BUDGET=10 HANDOFF_TEST_TAKEN_HOLD="$sig/release" HANDOFF_TEST_TAKEN_SIGNAL="$sig/a" python3 -I "$HOOK" took >"$work/full" 2>"$work/full.err"; echo $? >"$work/full.rc" ) & fa=$!
+wait_for 'ls "$sig/a/"*.locked >/dev/null 2>&1' || bad "full stdout: A holds the lock before B starts" "no $sig/a/*.locked within 5 s"
+run_took "$(took_in sB "$mem/n2.md")" "$B" "$work/rb" HANDOFF_TEST_BUDGET=8 HANDOFF_TEST_TAKEN_SIGNAL="$sig/b" & fb=$!
 wait_for 'ls "$sig/b/"*.waiting >/dev/null 2>&1' || bad "full stdout: B reached the wait for the lock" "no $sig/b/*.waiting within 5 s"
 : >"$sig/release"
 wait "$fa"; wait "$fb"; kill "$filler" 2>/dev/null; wait "$filler" 2>/dev/null
@@ -1967,8 +1966,10 @@ def at(pattern):
     found = glob.glob(os.path.join(sig, pattern))
     return os.stat(found[0]).st_mtime_ns if found else None
 a_locked, b_waiting, b_locked, a_end = at("a/*.locked"), at("b/*.waiting"), at("b/*.locked"), os.stat(rc).st_mtime_ns
-print("ok" if None not in (a_locked, b_waiting, b_locked) and a_locked < b_waiting < a_end and b_locked > a_locked else
-      "a_locked=%s b_waiting=%s b_locked=%s a_end=%s" % (a_locked, b_waiting, b_locked, a_end))' "$sig" "$work/full.rc")
+released = at("release")
+print("ok" if None not in (a_locked, b_waiting, b_locked, released) and a_locked < b_waiting < a_end
+      and b_locked > a_locked and b_locked >= released else
+      "a_locked=%s b_waiting=%s b_locked=%s released=%s a_end=%s" % (a_locked, b_waiting, b_locked, released, a_end))' "$sig" "$work/full.rc")
 same "заполненный stdout: took другой записки ждал блокировку, пока A держал её и пытался печатать" "ok" "$order"
 out=$(judged "$work/rb" "заполненный stdout, B")
 same "заполненный stdout: took другой записки записан" "$(pid_of "$R")/sR $(pid_of "$B")/sB" "$(readers_of "$real_mem/n2.md")"
