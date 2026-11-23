@@ -212,11 +212,6 @@ export const DRAFT_AFTER_LINE = 'cleared; the note is in context — send your m
 export const getPauseLine = (percent, save) =>
   `context ${percent}% (anchor threshold ${save}%): not anchoring within 10 minutes of the last automatic clear. Say "anchor" to save.`
 
-export const getContinueText = percent =>
-  `Hats: this session reached ${percent}% of its context window, was anchored and cleared. ` +
-  'Continue the task from the resume note the plugin gave you after /clear: read the whole note with the Read tool, ' +
-  'tell the user in one short line, in their language, which note you picked up, then go on with its next step.'
-
 export const UNEXPECTED_INPUT = 'unexpected'
 
 export const isOwnOrigin = origin => origin?.kind === 'plugin' && origin?.name === 'hats'

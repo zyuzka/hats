@@ -618,12 +618,22 @@ context; the session goes on from its note.`, runs `/clear`, waits up to 5 secon
 to give the note back to the new session, and then sends `Hats: this session reached 56% of its
 context window, was anchored and cleared. Continue the task from the resume note …` as your prompt;
 Claude Code marks it as a prompt from the plugin, and the model names the note it picked up and goes
-on with its next step. It clears only when nothing stands in the way: nobody but the plugin sent input
-since it asked to anchor — you, a notice of a background task, a `/loop`, another session or a channel;
+on with its next step. When background tasks ended while it anchored, the prompt also names each of
+them — its id (cut to 64 characters), its state (32) and the path of its output (300), at most 10, then
+`and N more not listed` — says they ended even where the note calls them running and their notices were
+read in the old session, and tells the model not to wait for them. A notice without a task id is not
+named. It clears only when nothing stands in the way: nobody but the plugin sent input since it asked
+to anchor — you, a `/loop`, another session, a channel or another plugin; a notice of a background
+task is not input, here or after `/clear` before the prompt goes;
 the prompt holds no draft; your own steps had nothing to run after the anchor; the note is still what
 the session wrote; every background task still running is named in the note by its id; and nothing is
 scheduled to wake the session. When `/clear` starts to run, three of these are checked once more: no
-input arrived, the prompt holds no draft, and the session is still the same one. Otherwise it says `anchored at 56%, not cleared: <why>. Type /clear when ready: the plugin
+input arrived, the prompt holds no draft, and the session is still the same one. When a turn ran
+between the checks and `/clear` — the model answering a notice — every check runs again, and the
+background work is read from a snapshot written after that turn began; the check of your own steps
+after the anchor still reads the anchor turn. A turn started by a notice before `/hats:anchor` is not
+taken for the anchor turn. While its `/clear` waits in the queue, the plugin opens no new request to
+anchor. Otherwise it says `anchored at 56%, not cleared: <why>. Type /clear when ready: the plugin
 gives the note back.` When the note does not come back, or something was typed after `/clear`, it
 sends no prompt and says so. For 10 minutes after its own clear it does not ask to anchor again; it
 says so, and «анкор» still works. To see the background work it reads

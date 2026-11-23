@@ -7,7 +7,6 @@ import {
   findStepsReason,
   getClearRefusal,
   getClearingLine,
-  getContinueText,
   getHandedKey,
   getHandedPath,
   getInputKind,
@@ -16,6 +15,7 @@ import {
   getNotBackLine,
   isOwnOrigin,
 } from './thresholds.js'
+import { getContinueText } from './continue-text.js'
 import {
   findStageFile,
   queueStage,
@@ -35,18 +35,40 @@ import {
 } from './clear-check.js'
 
 const NOT_WAITING = 'hats: no clear of this plugin is waiting to go on'
+export const TASK_NOTICE = 'task-notification'
+const NOTICE_BLOCK = /<task-notification>[\s\S]*?<\/task-notification>/g
 
 let chain = null
 let foreign = null
+let tasks = new Map()
 let lastClearAt = null
 let lastToolEndAt = 0
 let lastMainToolEndAt = 0
 
 export const watchInputs = () => {
   foreign = null
+  tasks = new Map()
 }
 
-export const noteInput = origin => {
+const findTag = (text, tag) => {
+  const found = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(text)
+
+  return found === null ? null : found[1].replace(/\s+/g, ' ').trim()
+}
+
+const noteTasks = text => {
+  for (const block of text.match(NOTICE_BLOCK) ?? []) {
+    const id = findTag(block, 'task-id')
+    if (id === null || id === '') continue
+    tasks.set(id, { id, status: findTag(block, 'status'), output: findTag(block, 'output-file') })
+  }
+}
+
+export const noteInput = (origin, text) => {
+  if (origin?.kind === TASK_NOTICE) {
+    noteTasks(text)
+    return
+  }
   const kind = getInputKind(origin)
   if (kind === null) return
   if (foreign === null) foreign = kind
@@ -63,6 +85,10 @@ export const noteMainToolEnd = at => {
 
 export const getLastMainToolEnd = () => lastMainToolEndAt
 
+export const noteMainTurnStart = at => {
+  if (chain !== null && isBeforeClear(chain)) chain.turnAfterAt = at
+}
+
 export async function passAgentCall($, e, next) {
   const out = await next(e)
   noteToolEnd(await $.clock.now())
@@ -75,6 +101,8 @@ export const forgetClear = () => {
 }
 
 export const isClearOpen = () => chain !== null
+
+export const isClearBeforeRun = () => chain !== null && isBeforeClear(chain)
 
 export const isPausedAfterClear = now => lastClearAt !== null && now - lastClearAt < CLEAR_PAUSE_MS
 
@@ -114,7 +142,7 @@ async function findKeptReason($, current) {
   if (early !== null) return early
   if (!(await isPluginInPlace($))) return KEPT.noPlugin
   if (await isHandoffOff($)) return KEPT.handoffOff
-  const snapshot = await waitForSnapshot($, { id: request.sessionId, getAfter: () => lastToolEndAt })
+  const snapshot = await waitForSnapshot($, { id: request.sessionId, getAfter: () => Math.max(current.turnAfterAt ?? 0, lastToolEndAt) })
   current.facts = await findAnchorFacts($, turn)
   const note = await findNoteState($, current.facts)
   if (note.reason !== null) return note.reason
@@ -167,6 +195,8 @@ export async function startClear($, job) {
     hasHookFailed: false,
     isCleared: false,
     foreignAfter: null,
+    turnAfterAt: null,
+    tasks: [],
     facts: null,
     newId: null,
   }
@@ -209,6 +239,7 @@ export async function refuseLostClear($, state) {
 }
 
 async function findRunReason($, current) {
+  if (current.turnAfterAt !== null) return findKeptReason($, current)
   const reason = (await findPromptReason($)) ?? (await findSessionReason($, current.request.sessionId))
   if (current.hasHookFailed) return KEPT.hookFailed
   if (foreign !== null) return getInputReason(foreign)
@@ -232,7 +263,7 @@ async function goOn($, current) {
     return
   }
   current.stage = 'continuing'
-  current.text = getContinueText(current.request.percent)
+  current.text = getContinueText(current.request.percent, current.tasks)
   $.prompt.submit({ text: current.text, asUser: true })
     .then(() => finish(current), () => finish(current))
     .catch(() => {})
@@ -250,6 +281,7 @@ export async function runOwnClear($, e, next) {
   current.stage = 'clearing'
   current.isCleared = true
   current.ranAt = await $.clock.now()
+  current.tasks = [...tasks.values()]
   const out = await next(e).catch(error => keep($, current, getClearRefusal(String(error?.message ?? error))))
   if (current.stage !== 'clearing') return {}
   lastClearAt = current.ranAt

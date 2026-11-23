@@ -46,6 +46,14 @@ import {
   isWarnDue,
   setArm,
 } from '../../hooks/thresholds.js'
+import {
+  CONTINUE_ID_LIMIT,
+  CONTINUE_OUTPUT_LIMIT,
+  CONTINUE_STATUS_LIMIT,
+  CONTINUE_TASKS_HEAD,
+  CONTINUE_TASK_LIMIT,
+  getContinueText,
+} from '../../hooks/continue-text.js'
 
 const ROOT = '/p'
 const SAVE = `sh "${ROOT}/scripts/py.sh" "${ROOT}/scripts/handoff.py" save --note "/n.md" --topic "t"`
@@ -588,5 +596,68 @@ describe('the kind of an input', () => {
     expect(getInputKind({})).toBe('unexpected')
     expect(getInputKind(null)).toBe('unexpected')
     expect(getInputKind(undefined)).toBe('unexpected')
+  })
+})
+
+describe('the prompt after the own clear', () => {
+  const createTask = (_: unknown, index: number) => ({
+    id: `t${index}`,
+    status: 'completed',
+    output: `/o/t${index}`,
+  })
+
+  const getTaskLines = (text: string) => text.split('\n').filter(line => line.startsWith('- '))
+
+  test('names no task when no notice came', () => {
+    expect(getContinueText(56, [])).toBe(getContinueText(56))
+    expect(getContinueText(56)).not.toContain(CONTINUE_TASKS_HEAD)
+  })
+
+  test('names each task by its id, its state and its output, after a line on what to do with them', () => {
+    const text = getContinueText(56, [
+      createTask(null, 0),
+    ])
+
+    expect(text).toBe(`${getContinueText(56)}\n\n${CONTINUE_TASKS_HEAD}\n- t0: completed; output: /o/t0`)
+  })
+
+  test('names at most 10 tasks and says how many more were left out', () => {
+    const tasks = Array.from({ length: 12 }, createTask)
+
+    const text = getContinueText(56, tasks)
+
+    expect(CONTINUE_TASK_LIMIT).toBe(10)
+    expect(getTaskLines(text).length).toBe(10)
+    expect(getTaskLines(text)[9]).toBe('- t9: completed; output: /o/t9')
+    expect(text.endsWith('\nand 2 more not listed')).toBe(true)
+  })
+
+  test('ten tasks need no line about more', () => {
+    const text = getContinueText(56, Array.from({ length: 10 }, createTask))
+
+    expect(getTaskLines(text).length).toBe(10)
+    expect(text).not.toContain('more not listed')
+  })
+
+  test('cuts each field at its limit by characters and keeps it on one line', () => {
+    const pair = '\u{1F600}'
+    const task = {
+      id: `${pair.repeat(70)}`,
+      status: `done\nnow ${'s'.repeat(40)}`,
+      output: `/o/${'p'.repeat(400)}`,
+    }
+
+    const line = getTaskLines(getContinueText(56, [task]))[0]
+
+    expect([CONTINUE_ID_LIMIT, CONTINUE_STATUS_LIMIT, CONTINUE_OUTPUT_LIMIT]).toEqual([64, 32, 300])
+    const status = `done now ${'s'.repeat(40)}`.slice(0, 32)
+    const output = `/o/${'p'.repeat(400)}`.slice(0, 300)
+    expect(line).toBe(`- ${pair.repeat(64)}: ${status}; output: ${output}`)
+  })
+
+  test('says what a notice left out', () => {
+    const text = getContinueText(56, [{ id: 'a1', status: null, output: null }])
+
+    expect(text.endsWith('\n- a1: no status; output: none')).toBe(true)
   })
 })

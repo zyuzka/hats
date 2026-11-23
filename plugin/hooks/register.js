@@ -35,9 +35,12 @@ import {
   setRequestFailed,
 } from './stages.js'
 import {
+  bindTurn,
   finishRequest,
   isCurrent,
   judgeTurnEnd,
+  noteAnchorArrival,
+  noteNoticeArrival,
   setCurrentGetter,
 } from './requests.js'
 import {
@@ -61,12 +64,14 @@ import {
   endClearOnSessionEnd,
   failOwnRun,
   forgetClear,
+  isClearBeforeRun,
   isClearOpen,
   isOwnClear,
   isOwnContinuation,
   markChainFailed,
   noteInput,
   noteMainToolEnd,
+  noteMainTurnStart,
   noteToolEnd,
   passAgentCall,
   passContinuation,
@@ -186,6 +191,7 @@ const submitOwnAnchor = async ($, job) => {
   if (request.turnId === null) request.isRaised = true
   const out = await next(e)
   if (out.drop === undefined && request.turnId === null) request.isSubmitted = true
+  if (out.drop === undefined) noteAnchorArrival(e)
   if (out.drop !== undefined && state.request === request) await failRequest($, { state, reason: REASONS.notStarted })
 
   return out
@@ -282,7 +288,8 @@ const onPromptSubmit = async (
   next,
 ) => {
   if (!isActive) return next(e)
-  noteInput(e.origin)
+  noteInput(e.origin, e.text)
+  noteNoticeArrival(e)
   if (isOwnContinuation(e)) return passContinuation($, e, next)
   const state = await findState($)
   if (isOwnAnchor(e)) return submitOwnAnchor($, { state, e, next })
@@ -321,8 +328,8 @@ const onTurnStart = async (
   if (!isActive || e.agentId !== undefined) return next(e)
   const state = await findState($)
   const startedAt = await $.clock.now()
-  const request = state.request
-  if (request !== null && request.isSubmitted && request.turnId === null) request.turnId = e.turnId
+  bindTurn(state.request, e.turnId)
+  noteMainTurnStart(startedAt)
   state.turn = createTurn(e.turnId, startedAt)
   await updateArm($, state)
   await notePace($, state)
@@ -386,7 +393,7 @@ const onTurnComplete = async (
   if (state.request !== null && state.request.turnId === e.turnId) {
     const reading = await updateArm($, state)
     await finishRequest($, { state, reason: e.reason, turn, turnId: e.turnId, reading })
-  } else if (e.reason === 'answer') {
+  } else if (e.reason === 'answer' && !isClearBeforeRun()) {
     await judgeTurnEnd($, { state, turn })
   }
 
