@@ -15,7 +15,7 @@ export const CONTINUE_TASKS_HEAD =
 const getField = (value, limit) => Array.from(String(value).replace(/\s+/g, ' ').trim()).slice(0, limit).join('')
 
 const getTaskLine = task =>
-  `- ${getField(task.id, CONTINUE_ID_LIMIT)}: ${task.status === null ? 'no status' : getField(task.status, CONTINUE_STATUS_LIMIT)}; ` +
+  `- ${getField(task.id, CONTINUE_ID_LIMIT)}: ${getField(task.status, CONTINUE_STATUS_LIMIT)}; ` +
   `output: ${task.output === null ? 'none' : getField(task.output, CONTINUE_OUTPUT_LIMIT)}`
 
 export const getContinueText = (percent, tasks = []) => {
