@@ -25,7 +25,7 @@ what it shipped is folded into the single entry below, and public numbering star
 - **A background task that ends no longer stops the clear after an anchor on the threshold.** Its notice
   used to count as input, and the session stayed as it was. Now the clear goes on; if Claude answered the
   notice in a turn of its own first, every check runs again before `/clear`. The prompt after the clear names
-  each task that ended, with its state and the path of its output.
+  the tasks that ended, with their state and the path of their output: up to 10, then how many more.
 - **Discard means discard for the Codex gateway port too.** Closing Settings with a new Codex port asks
   about the Codex sessions first, so a question can no longer come after **Discard** and move the port.
 

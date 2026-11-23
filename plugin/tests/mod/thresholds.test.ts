@@ -655,9 +655,9 @@ describe('the prompt after the own clear', () => {
     expect(line).toBe(`- ${pair.repeat(64)}: ${status}; output: ${output}`)
   })
 
-  test('says what a notice left out', () => {
-    const text = getContinueText(56, [{ id: 'a1', status: null, output: null }])
+  test('says when a notice gave no output path', () => {
+    const text = getContinueText(56, [{ id: 'a1', status: 'completed', output: null }])
 
-    expect(text.endsWith('\n- a1: no status; output: none')).toBe(true)
+    expect(text.endsWith('\n- a1: completed; output: none')).toBe(true)
   })
 })

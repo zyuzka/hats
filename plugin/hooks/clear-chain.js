@@ -69,8 +69,9 @@ const findShaped = (block, tag, shape) => {
 const noteTasks = text => {
   for (const block of text.match(NOTICE_BLOCK) ?? []) {
     const id = findShaped(block, 'task-id', TASK_ID_SHAPE)
-    if (id === null) continue
-    tasks.set(id, { id, status: findShaped(block, 'status', TASK_STATUS_SHAPE), output: findShaped(block, 'output-file', TASK_OUTPUT_SHAPE) })
+    const status = findShaped(block, 'status', TASK_STATUS_SHAPE)
+    if (id === null || status === null) continue
+    tasks.set(id, { id, status, output: findShaped(block, 'output-file', TASK_OUTPUT_SHAPE) })
   }
 }
 

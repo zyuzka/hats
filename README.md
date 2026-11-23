@@ -621,8 +621,8 @@ Claude Code marks it as a prompt from the plugin, and the model names the note i
 on with its next step. When background tasks ended while it anchored, the prompt also names each of
 them — its id (cut to 64 characters), its state (32) and the path of its output (300), at most 10, then
 `and N more not listed` — says they ended even where the note calls them running and their notices were
-read in the old session, and tells the model not to wait for them. A notice without a task id is not
-named. Since this prompt goes as your own words, it takes only fields of their plain shape — an id of
+read in the old session, and tells the model not to wait for them. A notice without a task id, or
+without the state the task ended in — such as a check-in on a command still running — is not named. Since this prompt goes as your own words, it takes only fields of their plain shape — an id of
 letters, digits, `-` and `_`, a state of one word, an absolute path without spaces — and leaves out any
 other text a notice carries. It clears only when nothing stands in the way: nobody but the plugin sent input since it asked
 to anchor — you, a `/loop`, another session, a channel or another plugin; a notice of a background
