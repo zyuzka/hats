@@ -57,9 +57,9 @@ Not affiliated with Anthropic.
   collect, store, or intermediate Claude.ai credentials or session tokens"
   ([Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)).
   The same section lets "an end user" sign in "to the unmodified Claude Code binary with their own
-  Claude subscription", which Hats leaves as it is; whether keeping copies of those sign-ins in a
-  tool you run on your own accounts is allowed, the page does not say, and that is Anthropic's to
-  decide.
+  Claude subscription". Hats does not change the Claude Code binary, but it does store those
+  sign-ins and pass the requests through its gateway. Whether a tool you run on your own accounts
+  may do that, the page does not say, and that is Anthropic's to decide.
 - **The risk is on your accounts.** The same page says "Anthropic reserves the right to take measures
   to enforce these restrictions and may do so without prior notice". Use Hats knowing that.
 
