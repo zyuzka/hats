@@ -55,6 +55,10 @@ final class PopoverSettleTests: XCTestCase {
 
         // Assert
         XCTAssertTrue(source.contains("PopoverSettle.run(\n            isShown: popover.isShown,"))
+        XCTAssertTrue(
+            source.contains("later: afterThePopoverSettles,\n            work: ask\n        )"),
+            "the question goes straight to PopoverSettle, not wrapped in another delay"
+        )
         XCTAssertFalse(source.contains("popover.close()\n        afterThePopoverSettles"))
     }
 }
