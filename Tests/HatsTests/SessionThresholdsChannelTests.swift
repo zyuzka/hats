@@ -128,8 +128,8 @@ final class SessionThresholdsChannelTests: XCTestCase {
 
         wait(for: [speaker], timeout: 5)
         XCTAssertEqual(told, [
-            HatsCopy.getContextNoticeTitle(label: "hats", percent: 58),
-            HatsCopy.getContextNoticeTitle(label: "hats", percent: 61),
+            HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "hats", percent: 58),
+            HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "hats", percent: 61),
         ], "the record already there at start is not told, and round 2 is not told again after the bad write")
     }
 
@@ -264,7 +264,7 @@ final class SessionThresholdsChannelTests: XCTestCase {
         try place(["stage": "requested", "warn_round": 1, "save_round": 2, "percent": 58])
 
         wait(for: [toldNew], timeout: 5)
-        XCTAssertEqual(told, [HatsCopy.getContextNoticeTitle(label: "hats", percent: 58)],
+        XCTAssertEqual(told, [HatsCopy.getContextNoticeTitle(tool: .claudeCode, label: "hats", percent: 58)],
                        "the record that lay there before the first read is not told")
     }
 
