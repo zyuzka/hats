@@ -47,6 +47,12 @@ def set_signal(kind):
     os.close(fd)
 
 
+def hold_for_test(until):
+    path = os.environ.get("HANDOFF_TEST_TAKEN_HOLD") if testing() else None
+    while path and not os.path.exists(path) and time.monotonic() < until:
+        time.sleep(LOCK_STEP_S)
+
+
 def create_taken_folder():
     try:
         os.mkdir(get_taken_folder(), 0o700)
@@ -94,6 +100,7 @@ def get_taken_lock(create, until):
             return None, "lock-busy"
         time.sleep(LOCK_STEP_S)
     set_signal("locked")
+    hold_for_test(until)
 
     return fd, None
 
