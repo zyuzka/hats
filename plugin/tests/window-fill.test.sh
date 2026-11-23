@@ -687,8 +687,8 @@ if [ "$got" = ok ] && [ -f "$rr_hats/session-windows/failures.log" ]; then ok
 else bad "правило корня: с абсолютным корнем журнал ошибок пишется (контроль)" "$got"; fi
 rm -rf "$rr_hats/session-windows" "$rr/run/rel"
 
-# --- get_field (запись 100): строка длиннее FAILURE_FIELD_LIMIT режется ровно до него, строка в предел
-# остаётся целой, не строка — None
+# --- get_field (ledger entry 100): a string longer than FAILURE_FIELD_LIMIT is cut exactly to it, a string at
+# the limit stays whole, anything but a string gives None
 fields=$(python3 -I -B -c 'import sys
 sys.path.insert(0, sys.argv[1])
 import hats_common
@@ -702,7 +702,7 @@ print(*(repr(hats_common.get_field(value)) for value in (None, 7, {"a": "b"}, ["
 if [ "$fields" = "limit: 80
 over: True True
 at: True short: 'ab'
-None None None None None" ]; then ok; else bad "get_field: FAILURE_FIELD_LIMIT — 80, до него знаков, не строка — None" "$fields"; fi
+None None None None None" ]; then ok; else bad "get_field: FAILURE_FIELD_LIMIT is 80, cut to that many characters, anything but a string gives None" "$fields"; fi
 
 # --- уборка ---
 ago() { python3 -I -c 'import sys, time; print(time.strftime("%Y%m%d%H%M", time.localtime(time.time() - float(sys.argv[1]))))' "$1"; }

@@ -2741,8 +2741,8 @@ if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *--cwd* ]]; then
 out=$(env HOME="$work" python3 -I "$HOOK" list --cwd proj 2>&1); rc=$?
 if [ $rc -eq 2 ] && [[ "$out" != *Traceback* ]] && [[ "$out" == *"absolute"* ]]; then ok; else bad "list с относительной папкой — отказ, код 2, без трассировки" "rc=$rc ${out:0:300}"; fi
 
-# --- list: исключение (запись 106) — код 1, одна строка в stderr, stdout пуст
-list_harness() {  # list_harness <код на Python, правит модули до запуска> — list через exec, stdout и stderr раздельно
+# --- list: an exception (ledger entry 106) — exit 1, one line on stderr, nothing on stdout
+list_harness() {  # list_harness <Python code that patches modules before the run> — list through exec, stdout and stderr apart
   local call; call=$(mktemp -d "$work/list.XXXXXX") || return 1
   env HOME="$work" HANDOFF_TEST=1 HANDOFF_PROCESS="$own" python3 -I -c 'import os,sys
 '"$swap_py"'
@@ -2765,11 +2765,11 @@ sys.exit(scope["main"](["list", "--cwd", sys.argv[3]]))' "$HOOK" "$1" "$proj" >"
 reset; marker a "$dead_pid" "$dead_started" "$proj" "$note" "закрытая"
 out=$(list_harness 'pass')
 if [[ "$out" == "rc=0"$'\n'"out=<"*additionalContext*">"$'\n'"err=<>" ]]; then ok
-else bad "list: контроль — без исключения код 0, список в stdout, stderr пуст" "${out:0:300}"; fi
+else bad "list: control — without an exception exit 0, the list on stdout, stderr empty" "${out:0:300}"; fi
 out=$(list_harness 'def broken(*args):
     raise RuntimeError("boom")
 swap("find_closed_list", broken)')
-same "list: исключение — код 1, stdout пуст, в stderr одна строка с типом и текстом" "rc=1
+same "list: an exception — exit 1, stdout empty, one line on stderr with the type and the text" "rc=1
 out=<>
 err=<handoff.py list: RuntimeError: boom
 >" "$out"
