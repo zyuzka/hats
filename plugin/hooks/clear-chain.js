@@ -56,11 +56,21 @@ const findTag = (text, tag) => {
   return found === null ? null : found[1].replace(/\s+/g, ' ').trim()
 }
 
+const TASK_ID_SHAPE = /^[A-Za-z0-9_-]{1,64}$/
+const TASK_STATUS_SHAPE = /^[a-z_]{1,32}$/
+const TASK_OUTPUT_SHAPE = /^\/[^\s<>"'`]{1,299}$/
+
+const findShaped = (block, tag, shape) => {
+  const value = findTag(block, tag)
+
+  return value !== null && shape.test(value) ? value : null
+}
+
 const noteTasks = text => {
   for (const block of text.match(NOTICE_BLOCK) ?? []) {
-    const id = findTag(block, 'task-id')
-    if (id === null || id === '') continue
-    tasks.set(id, { id, status: findTag(block, 'status'), output: findTag(block, 'output-file') })
+    const id = findShaped(block, 'task-id', TASK_ID_SHAPE)
+    if (id === null) continue
+    tasks.set(id, { id, status: findShaped(block, 'status', TASK_STATUS_SHAPE), output: findShaped(block, 'output-file', TASK_OUTPUT_SHAPE) })
   }
 }
 
