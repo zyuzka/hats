@@ -37,8 +37,9 @@ Not affiliated with Anthropic.
 - **Its network traffic is to Anthropic, to OpenAI for Codex hats, and to GitHub for updates.** The
   relay forwards your own Claude Code requests, and each hat's usage is read from Anthropic's usage
   endpoint with that hat's own token; Codex hats sign in, renew and read usage at OpenAI
-  (`auth.openai.com`, `chatgpt.com`), and the Codex gateway forwards Codex's own requests there. About every six hours Hats reads the release feed of this repository on GitHub (with
-  the automatic look turned off, only when you press Check for Updates…; see [Updating](#updating)),
+  (`auth.openai.com`, `chatgpt.com`), and the Codex gateway forwards Codex's own requests there.
+  About every six hours Hats reads the release feed of this repository on GitHub (with the
+  automatic look turned off, only when you press Check for Updates…; see [Updating](#updating)),
   and it downloads a release only after you press Install. Nothing goes anywhere else.
 - **It cannot sign you out.** Removing a hat forgets its stored copy; the account that is currently
   live keeps working.
@@ -49,9 +50,9 @@ Not affiliated with Anthropic.
 
 ## Your accounts and Anthropic's terms
 
-- **Every hat is an account of your own** — a Claude subscription, or for Codex an OpenAI login.
+- **Add only accounts of your own as hats** — a Claude subscription, or for Codex an OpenAI login.
   Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) do not let you share an
-  account, so a Claude hat is never someone else's login.
+  account, and Hats does not check whose account a hat is.
 - **Hats keeps a copy of each hat's sign-in in your Mac's keychain, and its gateway relays Claude
   Code's requests.** Anthropic's rules for third-party developers say that "developers may not
   collect, store, or intermediate Claude.ai credentials or session tokens"
