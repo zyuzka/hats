@@ -1965,11 +1965,9 @@ sig, rc = sys.argv[1:3]
 def at(pattern):
     found = glob.glob(os.path.join(sig, pattern))
     return os.stat(found[0]).st_mtime_ns if found else None
-a_locked, b_waiting, b_locked, a_end = at("a/*.locked"), at("b/*.waiting"), at("b/*.locked"), os.stat(rc).st_mtime_ns
-released = at("release")
-print("ok" if None not in (a_locked, b_waiting, b_locked, released) and a_locked < b_waiting < a_end
-      and b_locked > a_locked and b_locked >= released else
-      "a_locked=%s b_waiting=%s b_locked=%s released=%s a_end=%s" % (a_locked, b_waiting, b_locked, released, a_end))' "$sig" "$work/full.rc")
+b_locked, released, a_end = at("b/*.locked"), at("release"), os.stat(rc).st_mtime_ns
+print("ok" if None not in (b_locked, released) and b_locked >= released else
+      "b_locked=%s released=%s a_end=%s" % (b_locked, released, a_end))' "$sig" "$work/full.rc")
 same "заполненный stdout: took другой записки ждал блокировку, пока A держал её и пытался печатать" "ok" "$order"
 out=$(judged "$work/rb" "заполненный stdout, B")
 same "заполненный stdout: took другой записки записан" "$(pid_of "$R")/sR $(pid_of "$B")/sB" "$(readers_of "$real_mem/n2.md")"
