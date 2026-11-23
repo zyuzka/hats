@@ -55,6 +55,7 @@ import {
   fireWarning,
 } from './stages.js'
 import {
+  TASK_NOTICE,
   isPausedAfterClear,
   startClear,
   watchInputs,
@@ -74,12 +75,29 @@ import {
 
 let getCurrent = () => null
 let requestCount = 0
+let arrival = { isNotice: false, isAnchor: false }
 
 export const setCurrentGetter = getter => {
   getCurrent = getter
 }
 
 export const isCurrent = state => getCurrent() === state
+
+export const noteNoticeArrival = e => {
+  if (e.origin?.kind === TASK_NOTICE && e.turnId === undefined) arrival.isNotice = true
+}
+
+export const noteAnchorArrival = e => {
+  if (e.turnId === undefined) arrival.isAnchor = true
+}
+
+export const bindTurn = (request, turnId) => {
+  const isNoticeTurn = arrival.isNotice && !arrival.isAnchor
+  arrival = { isNotice: false, isAnchor: false }
+  if (request === null || !request.isSubmitted || request.turnId !== null) return
+  request.turnId = turnId
+  request.isNoticeTurn = isNoticeTurn
+}
 
 async function isChainAlive($, job) {
   return isCurrent(job.state) && job.state.request === job.request && (await $.session.id()) === job.request.sessionId
@@ -151,6 +169,11 @@ export async function finishRequest($, job) {
   const { state, reason, turn, reading } = job
   const request = state.request
   if (request === null || request.turnId !== job.turnId) return
+  if (request.isNoticeTurn) {
+    request.turnId = null
+    request.isNoticeTurn = false
+    return
+  }
   const verdict = await findTurnVerdict($, { request, reason, turn })
   const counted = verdict === null ? await findLimitAsks($, state) : []
   const now = await $.clock.now()
@@ -225,6 +248,7 @@ const createRequest = (state, job) => {
     turnId: null,
     isRaised: false,
     isSubmitted: false,
+    isNoticeTurn: false,
     hasHookFailed: false,
     previous: isWindow ? createPrevious(state) : null,
   }

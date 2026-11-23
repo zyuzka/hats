@@ -21,6 +21,26 @@ export const SNAPSHOT = `${SNAPSHOTS}/${SESSION}.json`
 export const NEXT_SESSION = '7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f'
 export const HANDED = `${CONFIG}/state/handoff/42-Sat-Nov-14-12-00-00-2026.handed`
 
+export const RELEASE_CLEAR = 'hats-test-release-clear'
+
+export const HOLD_CLEAR = {
+  name: 'hold-clear',
+  tier: 'prepend' as const,
+  register(on: any) {
+    const held: (() => void)[] = []
+    on('command.run', (_: any, e: any, next: any) => {
+      const isRelease = e.command === e.args
+      if (isRelease) {
+        for (const release of held.splice(0)) release()
+        return { text: '' }
+      }
+      if (e.command !== 'clear' || next.origin?.plugin !== 'hats') return next(e)
+
+      return new Promise(resolve => held.push(() => resolve(next(e))))
+    })
+  },
+}
+
 type Entry = { text: string; mtimeMs: number; kind: 'file' | 'dir' | 'other' }
 
 type SceneOptions = {
@@ -103,6 +123,7 @@ const createWorld = (options: SceneOptions) => {
     rateLimits: [] as unknown[],
     readPaths: [] as string[],
     sessionId: SESSION,
+    lastTurnId: null as string | null,
     runs: [] as string[],
     logs: [] as string[],
     writes: [] as { path: string; text: string }[],
@@ -336,6 +357,7 @@ export const createScene = ($: any, options: SceneOptions) => {
     startTurn: async (percent: number | undefined, agentId?: string) => {
       turnCount += 1
       const turnId = `turn-${turnCount}`
+      world.lastTurnId = agentId === undefined ? turnId : world.lastTurnId
       world.percent = percent
       await $.turn.start({ text: 'go', turnId, ...(agentId === undefined ? {} : { agentId }) })
       await world.clock.advance(500)
@@ -402,6 +424,12 @@ export const createScene = ($: any, options: SceneOptions) => {
       world.nextToolAnswer = createBashResult(stdout)
 
       return scene.callTool(58, { tool: 'Bash', command: `${world.paths.stepsCommand}${tail}` })
+    },
+    notice: (text: string, turnId?: string) =>
+      $.prompt.submit({ text, wait: false, origin: { kind: 'task-notification' }, ...(turnId === undefined ? {} : { turnId }) }),
+    releaseClear: async () => {
+      await $.command.run({ command: RELEASE_CLEAR, args: RELEASE_CLEAR, origin: { kind: 'composer' } })
+      await world.clock.settle()
     },
     setSnapshot: (fields: Record<string, unknown> = {}) => {
       const snapshot = { session: SESSION, at_ms: world.clock.now(), ok: true, tasks: [], crons: 0, ...fields }

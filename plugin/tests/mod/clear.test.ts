@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import {
   HANDED,
+  HOLD_CLEAR,
   MARKER,
   NEXT_SESSION,
   NOTE,
@@ -10,9 +11,12 @@ import {
   SNAPSHOT,
   SNAPSHOTS,
   STAGES,
+  START,
+  STATE,
   THRESHOLDS,
   createScene,
 } from './world.ts'
+import { CONTINUE_TASKS_HEAD } from '../../hooks/continue-text.js'
 
 const REQUEST_56 = 'context 56% (anchor threshold 55%) — anchoring this session.'
 const CLEARING = 'anchored at 56% — clearing the context; the session goes on from its note.'
@@ -69,6 +73,29 @@ const KEPT_WRITES = [
   'saved',
   'kept',
 ]
+
+const NO_MARKER = 'no marker this turn'
+
+const getNotice = (id: string) =>
+  '<task-notification>\n' +
+  `<task-id>${id}</task-id>\n` +
+  '<tool-use-id>toolu_01</tool-use-id>\n' +
+  `<output-file>/tmp/tasks/${id}.output</output-file>\n` +
+  '<status>completed</status>\n' +
+  `<summary>Background command "run ${id}" completed (exit code 0)</summary>\n` +
+  '</task-notification>'
+
+const getNoticeLine = (id: string) => `- ${id}: completed; output: /tmp/tasks/${id}.output`
+
+const getContinueWith = (ids: string[]) => [
+  `${CONTINUE}\n\n${CONTINUE_TASKS_HEAD}`,
+  ...ids.map(getNoticeLine),
+].join('\n')
+
+const getOwnPrompts = (scene: any) =>
+  scene.world.prompts
+    .filter((prompt: any) => prompt.origin?.name === 'hats' && prompt.origin?.asUser === true)
+    .map((prompt: any) => prompt.text)
 
 const getStageOrder = (scene: any) => scene.world.getStageWrites().map((write: any) => write.stage)
 
@@ -262,19 +289,22 @@ describe('input during anchoring', () => {
     expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
   })
 
-  test('a background notice between the request and the anchor turn: kept', async ($, on) => {
+  test('a background notice between the request and the anchor turn: cleared, and the prompt names the task', async ($, on) => {
     const scene = createScene($, { on })
     useClear(scene)
     await scene.askToAnchor()
-    await $.prompt.submit({ text: '<task-notification/>', wait: false, origin: { kind: 'task-notification' } })
+    await scene.notice(getNotice('b7x3k9'))
 
     await scene.runAnchorTurn({ steps: getClearSteps(scene) })
 
-    expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'input arrived during anchoring (task-notification)' })
-    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'cleared' })
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
     expect(scene.world.logs).toEqual([
       REQUEST_56,
-      getKept('input arrived during anchoring (task-notification)'),
+      CLEARING,
+    ])
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9']),
     ])
   })
 
@@ -1431,5 +1461,337 @@ describe('ten minutes after an own clear', () => {
       'hats:anchor',
     ])
     expect(scene.world.getStage(`${STAGES}/${NEXT_SESSION}.json`)).toMatchObject({ stage: 'requested', save_round: 1 })
+  })
+})
+
+const HAT_USAGE = {
+  worn: 'work',
+  five_hour: null,
+  weekly: null,
+  measured_at: null,
+  has_a_hat_to_switch_to: false,
+  auto_switch_on: true,
+  credential_service: 'Claude Code-credentials',
+  switch_covers: { five_hour: false, seven_day: false },
+  alive_at: new Date(START).toISOString(),
+  written_at: '2026-11-14T12:00:00Z',
+}
+
+const holdClear = async (scene: any) => {
+  await clearWith(scene, getClearSteps(scene))
+  expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  expect(scene.world.logs).toEqual([
+    REQUEST_56,
+    CLEARING,
+  ])
+}
+
+const runNoticeTurn = async (scene: any, steps: (() => Promise<unknown>)[]) => {
+  await scene.notice(getNotice('b7x3k9'))
+  const turnId = await scene.startTurn(58)
+  for (const step of steps) await step()
+  await scene.endTurn(turnId, { percent: 58 })
+}
+
+const runLooseTurn = async (scene: any, ending: { percent: number; reason?: string } = { percent: 56 }) => {
+  const turnId = await scene.startTurn(56)
+  await scene.endTurn(turnId, ending)
+}
+
+const sendAnchor = async (scene: any) => {
+  await scene.ownAnchor()
+  scene.world.releaseRuns()
+  await scene.world.clock.settle()
+}
+
+const runUnsavedTurn = async (scene: any) => {
+  const turnId = await scene.startTurn(56)
+  await scene.endTurn(turnId, { percent: 56 })
+}
+
+const expectNoMarker = (scene: any) => {
+  expect(scene.world.getStage()).toMatchObject({ stage: 'failed', reason: NO_MARKER })
+  expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+}
+
+describe('a notice of a background task', () => {
+  test('a notice inside the anchor turn is no input: cleared, and the prompt names the task', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice(getNotice('b7x3k9'), scene.world.lastTurnId),
+    ]
+
+    await clearWith(scene, steps)
+
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9']),
+    ])
+  })
+
+  test('two notices of one task and one of another: each task once, in the order they came', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice(getNotice('b7x3k9'), scene.world.lastTurnId),
+      () => scene.notice(getNotice('c8y4l0'), scene.world.lastTurnId),
+      () => scene.notice(getNotice('b7x3k9'), scene.world.lastTurnId),
+    ]
+
+    await clearWith(scene, steps)
+
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9', 'c8y4l0']),
+    ])
+  })
+
+  test('one notice carrying two tasks names both', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice(`${getNotice('b7x3k9')}\n${getNotice('c8y4l0')}`, scene.world.lastTurnId),
+    ]
+
+    await clearWith(scene, steps)
+
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9', 'c8y4l0']),
+    ])
+  })
+
+  test('a notice without a task id is no input and stays out of the prompt', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice('<task-notification>\n<status>completed</status>\n</task-notification>', scene.world.lastTurnId),
+    ]
+
+    await clearWith(scene, steps)
+
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      CONTINUE,
+    ])
+  })
+
+  test('text of that kind outside a notice block names no task', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice('<task-id>b7x3k9</task-id>', scene.world.lastTurnId),
+    ]
+
+    await clearWith(scene, steps)
+
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      CONTINUE,
+    ])
+  })
+
+  test('the user wrote beside a notice: kept, with the kind of the user', async ($, on) => {
+    const scene = createScene($, { on })
+    const steps = [
+      ...getClearSteps(scene),
+      () => scene.notice(getNotice('b7x3k9'), scene.world.lastTurnId),
+      () => scene.prompt('and one more thing'),
+    ]
+
+    await keptWith(scene, { steps, reason: 'input arrived during anchoring (composer)' })
+  })
+
+  test('a notice before the request is not named in the prompt', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.start()
+    await scene.notice(getNotice('a1b2c3'))
+    const turnId = await scene.startTurn(10)
+    await scene.endTurn(turnId, { percent: 56 })
+
+    await scene.runAnchorTurn({ steps: getClearSteps(scene) })
+
+    expect(getOwnPrompts(scene)).toEqual([
+      CONTINUE,
+    ])
+  })
+
+  test('a notice turn before /hats:anchor is sent is not the anchor turn: the anchor turn saves and clears', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    await scene.notice(getNotice('b7x3k9'))
+    await runLooseTurn(scene)
+
+    await scene.runAnchorTurn({ steps: getClearSteps(scene) })
+
+    expect(getStageOrder(scene)).toEqual([
+      'requested',
+      'saved',
+      'cleared',
+    ])
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9']),
+    ])
+  })
+
+  test('a notice turn before /hats:anchor is sent, then an anchor turn without a note: failed', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    await scene.notice(getNotice('b7x3k9'))
+    await runLooseTurn(scene)
+    await sendAnchor(scene)
+
+    await runUnsavedTurn(scene)
+
+    expectNoMarker(scene)
+  })
+
+  test('two notices before one notice turn, then an anchor turn without a note: failed', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    await scene.notice(getNotice('b7x3k9'))
+    await scene.notice(getNotice('c8y4l0'))
+    await runLooseTurn(scene)
+    await sendAnchor(scene)
+
+    await runUnsavedTurn(scene)
+
+    expectNoMarker(scene)
+  })
+
+  test('a notice and /hats:anchor before one turn without a note: that turn is the anchor turn, and it fails', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    await sendAnchor(scene)
+    await scene.notice(getNotice('b7x3k9'))
+
+    await runUnsavedTurn(scene)
+
+    expectNoMarker(scene)
+  })
+
+  test('a notice inside a turn that is not saving: that turn still fails without a marker', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    await sendAnchor(scene)
+    const turnId = await scene.startTurn(56)
+    await scene.notice(getNotice('b7x3k9'), turnId)
+
+    await scene.endTurn(turnId, { percent: 56 })
+
+    expectNoMarker(scene)
+  })
+
+  test('a notice turn bound to the request and stopped: the request waits for the anchor turn, no refusal', async ($, on) => {
+    const scene = createScene($, { on })
+    useClear(scene)
+    await scene.askToAnchor()
+    const running = await scene.startTurn(56)
+    await $.prompt.submit({
+      text: '/hats:anchor',
+      wait: false,
+      origin: { kind: 'plugin', name: 'hats' },
+      command: { name: 'hats:anchor', args: '' },
+      turnId: running,
+    })
+    scene.world.releaseRuns()
+    await scene.endTurn(running, { percent: 56 })
+    await scene.notice(getNotice('b7x3k9'))
+    await runLooseTurn(scene, { percent: 56, reason: 'aborted' })
+
+    expect(scene.world.getStage()).toMatchObject({ stage: 'requested' })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+    ])
+    const anchorTurn = await scene.startTurn(56)
+    for (const step of getClearSteps(scene)) await step()
+    await scene.endTurn(anchorTurn, { percent: 58 })
+
+    expect(getStageOrder(scene)).toEqual([
+      'requested',
+      'saved',
+      'cleared',
+    ])
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9']),
+    ])
+  })
+})
+
+describe('a notice turn while the own /clear waits in the queue', () => {
+  test('a fresh clean snapshot: /clear runs after the turn, and the prompt names the task', { plugins: [HOLD_CLEAR] }, async ($, on) => {
+    const scene = createScene($, { on })
+    await holdClear(scene)
+
+    await runNoticeTurn(scene, [
+      async () => scene.setSnapshot(),
+    ])
+    await scene.releaseClear()
+
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
+    expect(getOwnPrompts(scene)).toEqual([
+      getContinueWith(['b7x3k9']),
+    ])
+  })
+
+  test('work the note does not name started in the turn: kept, with its id, no /clear', { plugins: [HOLD_CLEAR] }, async ($, on) => {
+    const scene = createScene($, { on })
+    await holdClear(scene)
+
+    await runNoticeTurn(scene, [
+      async () => scene.setSnapshot({ tasks: BACKGROUND }),
+    ])
+    await scene.releaseClear()
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'background work not in the note: b7x3k9' })
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      CLEARING,
+      getKept('background work not in the note: b7x3k9'),
+    ])
+    expect(getOwnPrompts(scene)).toEqual([])
+  })
+
+  test('a turn without tools and no snapshot after its start: kept, and /clear does not run', { plugins: [HOLD_CLEAR] }, async ($, on) => {
+    const scene = createScene($, { on })
+    await holdClear(scene)
+
+    await runNoticeTurn(scene, [])
+    await scene.releaseClear()
+    await scene.world.clock.advance(2100)
+    await scene.world.clock.settle()
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.getStage()).toMatchObject({ stage: 'kept', reason: 'background work could not be checked' })
+    expect(getOwnPrompts(scene)).toEqual([])
+  })
+
+  test('a turn past the limit threshold opens no new request while the clear is open', { plugins: [HOLD_CLEAR] }, async ($, on) => {
+    const scene = createScene($, { on })
+    scene.world.setFile(`${STATE}/hat-usage.json`, JSON.stringify(HAT_USAGE))
+    await holdClear(scene)
+    scene.world.rateLimits = [
+      { kind: 'five_hour', percentUsed: 81, resetsAt: '2026-11-14T15:00:00.000Z' },
+    ]
+
+    await runNoticeTurn(scene, [
+      async () => scene.setSnapshot(),
+    ])
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.logs).toEqual([
+      REQUEST_56,
+      CLEARING,
+    ])
+    await scene.releaseClear()
+    expect(scene.world.runs).toEqual(ANCHOR_AND_CLEAR)
   })
 })
