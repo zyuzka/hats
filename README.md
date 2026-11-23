@@ -48,17 +48,17 @@ Not affiliated with Anthropic.
 
 ## Your accounts and Anthropic's terms
 
-- **Every hat is a Claude subscription of your own.** Anthropic's
-  [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) do not let you share an account,
-  so a hat is never someone else's login.
+- **Every hat is an account of your own** — a Claude subscription, or for Codex an OpenAI login.
+  Anthropic's [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) do not let you share an
+  account, so a Claude hat is never someone else's login.
 - **Hats keeps a copy of each hat's sign-in in your Mac's keychain, and its gateway relays Claude
   Code's requests.** Anthropic's rules for third-party developers say that "developers may not
   collect, store, or intermediate Claude.ai credentials or session tokens"
   ([Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)).
-  Whether that covers a tool you run on your own accounts is Anthropic's to decide, and they have
-  not said.
-- **The risk is on your accounts.** The same page says Anthropic "may take measures to enforce these
-  restrictions and may do so without prior notice". Use Hats knowing that.
+  Whether that covers a tool you run on your own accounts is Anthropic's to decide; the page does
+  not say.
+- **The risk is on your accounts.** The same page says "Anthropic reserves the right to take measures
+  to enforce these restrictions and may do so without prior notice". Use Hats knowing that.
 
 ## Install
 
