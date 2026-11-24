@@ -1353,4 +1353,23 @@ describe('a limit anchored before in the same window, with the clear action', ()
     expect(scene.world.readPaths).not.toContain(FIVE_SAVE)
     expect(scene.world.readPaths).not.toContain(SEVEN_SAVE)
   })
+
+  test('a late save of an older window leaves the newer window on file', async ($, on) => {
+    const scene = await askAt81($, on, CLEAR)
+    const newer = { cell: CELL, resets_at: '2026-11-14T20:00:00Z', saved_at: '2026-11-14T12:00:00Z' }
+    scene.world.setFile(FIVE_SAVE, JSON.stringify(newer))
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+
+    expect(getLimitSaves(scene)).toEqual(newer)
+  })
+
+  test('a saved file without its save time does not count', async ($, on) => {
+    const scene = await startScene($, on, CLEAR)
+    scene.world.setFile(FIVE_SAVE, JSON.stringify({ cell: CELL, resets_at: '2026-11-14T15:00:00Z' }))
+
+    await endTurnAt(scene, { five: 81 })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
 })

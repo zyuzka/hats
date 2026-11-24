@@ -26,7 +26,8 @@ const findData = text => {
 }
 
 const findResetsMs = (data, cell) => {
-  const seconds = data.cell === cell ? getStampSeconds(data.resets_at) : null
+  const isWhole = data.cell === cell && getStampSeconds(data.saved_at) !== null
+  const seconds = isWhole ? getStampSeconds(data.resets_at) : null
 
   return seconds === null ? null : seconds * 1000
 }
@@ -52,6 +53,8 @@ async function writeLimitSave($, job) {
   const { cell, item, now } = job
   const place = await findPlace($, cell, item.kind)
   if (place === null || !(await isWritablePlace($, place))) return
+  const held = findResetsMs(findData(await findSmallText($, place.file)), cell)
+  if (held !== null && held > item.episode.resetsMs) return
   const record = { cell, resets_at: getStamp(item.episode.resetsMs), saved_at: getStamp(now) }
   await $.fs.write(place.file, `${JSON.stringify(record, null, 1)}\n`)
 }
