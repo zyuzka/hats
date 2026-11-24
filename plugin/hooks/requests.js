@@ -67,6 +67,7 @@ import {
 import {
   findLimitAsks,
   findLimitView,
+  noteLimitSaves,
   setAskFailed,
   setAsked,
   setAskedBack,
@@ -167,6 +168,7 @@ async function finishAborted($, job) {
     ...request.limits,
     ...counted,
   ]
+  if (verdict === null) await noteLimitSaves($, { items: limits, now })
   if (verdict === null && limits.length > 0) tellUser($, getLimitSavedLine(limits, now))
   tellUser($, getStoppedLine(verdict))
 }
@@ -202,6 +204,7 @@ export async function finishRequest($, job) {
     ...request.limits,
     ...counted,
   ]
+  await noteLimitSaves($, { items: limits, now })
   if (limits.length > 0) tellUser($, getLimitSavedLine(limits, now))
   if (!request.isWindow) return
   if (request.after === 'clear') {
@@ -297,11 +300,13 @@ async function acceptManualSave($, job) {
   const { state, turn, reading, isWindow, limits } = job
   if (turn === null || turn.save === null) return false
   if ((await findVerdict($, { turn, askedAt: turn.startedAt })) !== null || !isCurrent(state)) return false
-  setAsked(limits, await $.clock.now())
+  const now = await $.clock.now()
+  setAsked(limits, now)
   forgetCounted(state, { isWindow, kinds: limits.map(item => item.kind) })
   if (isWindow) setWindowSaved(state, reading)
   if (isWindow) setStage(state, { stage: 'saved', reason: REASONS.manual, marker: turn.save.path })
   await queueStage($, state)
+  await noteLimitSaves($, { items: limits, now })
 
   return true
 }

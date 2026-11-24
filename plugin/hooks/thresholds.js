@@ -17,6 +17,7 @@ export const STAGE_FOLDER = 'session-thresholds'
 export const HATS_FOLDER = 'Library/Application Support/Hats'
 export const NOTES_NAME = 'notes'
 export const SNAPSHOT_FOLDER = 'stop-snapshots'
+export const LIMIT_SAVES_FILE = 'limit-saves.json'
 export const STOPPED = 'the session was stopped and nobody has sent input since'
 export const REMOVED = 'the command was removed from the queue before it ran'
 export const CLEAR_PAUSE_MS = 10 * 60 * 1000

@@ -105,7 +105,7 @@ const createEpisode = (job, previous) => ({
   previous,
 })
 
-const isSameEpisode = (episode, resetsMs) => episode !== null && Math.abs(resetsMs - episode.resetsMs) < EPISODE_MS
+export const isSameEpisode = (episode, resetsMs) => episode !== null && Math.abs(resetsMs - episode.resetsMs) < EPISODE_MS
 
 export const setEpisode = (limits, job) => {
   const { kind, reading, thresholds } = job
@@ -287,6 +287,12 @@ const getSavedPart = (item, now) =>
 
 export const getLimitSavedLine = (items, now) =>
   `anchored: this session's account is ${items.map(item => getSavedPart(item, now)).join(', and ')}.`
+
+const getTakenPart = (item, now) => `${getSavedPart(item, now)}, and ${WHY[item.why]}`
+
+export const getLimitTakenLine = (items, now) =>
+  `hat limit: this session's account is ${items.map(item => getTakenPart(item, now)).join('; it is also ')}; ` +
+  'a session before this one anchored in this window, so this one goes on without anchoring.'
 
 const getEventRecord = event => (event === null ? null : { ...event })
 

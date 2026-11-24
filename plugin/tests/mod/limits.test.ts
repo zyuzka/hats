@@ -1194,3 +1194,138 @@ describe('the rules of the limits', () => {
     expect(findRefusalOutcome(`Error: ${STOPPED}`, null)).toMatchObject({ kind: 'stopped', fields: {} })
   })
 })
+
+const LIMIT_SAVES = `${STATE}/limit-saves.json`
+const CLEAR = { thresholds: { after_save: 'clear' } }
+
+const getTakenLine = (percent: number, nowMs: number) =>
+  `hat limit: this session's account is at ${percent}% of its 5-hour limit (threshold 80%), ` +
+  `which resets at ${getLocalWhen(FIVE_RESETS, nowMs)}, and ${NO_HAT}; ` +
+  'a session before this one anchored in this window, so this one goes on without anchoring.'
+
+const getLimitSaves = (scene: any) => JSON.parse(scene.world.files.get(LIMIT_SAVES).text)
+
+const saveAndMoveOn = async ($: any, on: any, files: Parameters<typeof useFiles>[1] = CLEAR) => {
+  const scene = await askAt81($, on, files)
+  await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+  scene.world.sessionId = NEXT_SESSION
+
+  return scene
+}
+
+describe('a limit anchored before in the same window, with the clear action', () => {
+  test('a checked save writes the episode to the shared file under the login cell', async ($, on) => {
+    const scene = await askAt81($, on, CLEAR)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+
+    expect(getLimitSaves(scene)).toEqual({
+      [CELL]: { five_hour: { resets_at: '2026-11-14T15:00:00Z', saved_at: expect.stringMatching(/^2026-11-14T12:\d{2}:\d{2}Z$/) } },
+    })
+  })
+
+  test('a request without a save writes nothing to the shared file', async ($, on) => {
+    const scene = await askAt81($, on, CLEAR)
+
+    await scene.runAnchorTurn({ steps: [] })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.files.has(LIMIT_SAVES)).toBe(false)
+  })
+
+  test('a checked save in a stopped anchor turn writes the episode too', async ($, on) => {
+    const scene = await askAt81($, on, CLEAR)
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene), reason: 'aborted' })
+
+    expect(getLimitSaves(scene)[CELL].five_hour.resets_at).toBe('2026-11-14T15:00:00Z')
+  })
+
+  test('a manual anchor past the threshold writes the episode too', async ($, on) => {
+    const scene = await startScene($, on, CLEAR)
+    setLimits(scene, { five: 82 })
+
+    const turnId = await scene.startTurn(10)
+    for (const step of getSaveSteps(scene)) await step()
+    await scene.endTurn(turnId, { percent: 10 })
+
+    expect(scene.world.runs).toEqual([])
+    expect(getLimitSaves(scene)[CELL].five_hour.resets_at).toBe('2026-11-14T15:00:00Z')
+  })
+
+  test('a new session in the same episode: one line, no warning and no request', async ($, on) => {
+    const scene = await saveAndMoveOn($, on)
+    const before = scene.world.logs.length
+
+    const turnId = await scene.startTurn(10)
+    const out = await toolAt(scene, { five: 82 })
+    await scene.endTurn(turnId, { percent: 10 })
+    await endTurnAt(scene, { five: 83 })
+
+    expect(getContext(out)).toEqual([])
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.logs.slice(before)).toEqual([
+      getTakenLine(82, scene.world.clock.now()),
+    ])
+    expect(getLimitStage(scene, `${STAGES}/${NEXT_SESSION}.json`).five_hour.asked).toMatchObject({ percent: 82 })
+  })
+
+  test('a new session after a reload of the plugin: the same one line, no request', async ($, on) => {
+    const scene = await saveAndMoveOn($, on)
+    const before = scene.world.logs.length
+    await scene.start()
+
+    await endTurnAt(scene, { five: 82 })
+    await endTurnAt(scene, { five: 83 })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(scene.world.logs.slice(before)).toEqual([
+      getTakenLine(82, scene.world.clock.now()),
+    ])
+  })
+
+  test('another action after the save: the new session is warned and asked again', async ($, on) => {
+    const scene = await saveAndMoveOn($, on, { thresholds: { after_save: 'offer_clear' } })
+
+    await endTurnAt(scene, { five: 82 })
+
+    expect(scene.world.files.has(LIMIT_SAVES)).toBe(true)
+    expect(scene.world.runs).toEqual([
+      'hats:anchor',
+      'hats:anchor',
+    ])
+  })
+
+  test('a reset an hour or more from the saved one is a new window: the request again', async ($, on) => {
+    const scene = await saveAndMoveOn($, on)
+
+    await endTurnAt(scene, { five: 81, fiveResets: '2026-11-14T16:00:00.000Z' })
+
+    expect(scene.world.runs).toEqual([
+      'hats:anchor',
+      'hats:anchor',
+    ])
+  })
+
+  test('a save under another login cell does not count for this one', async ($, on) => {
+    const scene = await startScene($, on, CLEAR)
+    scene.world.setFile(LIMIT_SAVES, JSON.stringify({ other: { five_hour: { resets_at: '2026-11-14T15:00:00Z', saved_at: '2026-11-14T11:00:00Z' } } }))
+
+    await endTurnAt(scene, { five: 81 })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+  })
+
+  test('a shared file that is not JSON reads as no saves, and the next save writes it whole', async ($, on) => {
+    const scene = await startScene($, on, CLEAR)
+    scene.world.setFile(LIMIT_SAVES, '{')
+
+    await endTurnAt(scene, { five: 81 })
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+
+    expect(scene.world.runs).toEqual(ANCHOR_ONLY)
+    expect(Object.keys(getLimitSaves(scene))).toEqual([
+      CELL,
+    ])
+  })
+})

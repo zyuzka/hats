@@ -10,6 +10,11 @@ what it shipped is folded into the single entry below, and public numbering star
 
 ## Unreleased
 
+- **A hat limit anchors once per limit window when the session clears after its anchor.** With the clear
+  action, a new session in the same 5-hour or weekly window that was already anchored for that limit no
+  longer anchors again at the end of its first turn: it says once, in one line, the percent, when the limit
+  resets and why Hats cannot switch, and goes on. A new window anchors as before, and other actions keep
+  anchoring each new session.
 - **Codex's background service follows the hat you wear.** After Hats writes a new Codex login — a hat
   change, a sign-in again, a renewed login — it asks a running `codex app-server` to read the login again,
   without a restart and without stopping a turn in progress. `/status` limits and the account the service

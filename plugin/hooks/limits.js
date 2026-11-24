@@ -1,4 +1,8 @@
-import { THRESHOLDS_FILE } from './thresholds.js'
+import {
+  DEFAULTS,
+  THRESHOLDS_FILE,
+  findThresholds,
+} from './thresholds.js'
 import {
   HAT_USAGE_FILE,
   LIMIT_DEFAULTS,
@@ -11,9 +15,11 @@ import {
   getCredentialService,
   getLimitDenyText,
   getLimitLowest,
+  getLimitTakenLine,
   getLimitWarningText,
   isLimitAskDue,
   isLimitWarnDue,
+  isSameEpisode,
   isUnderHats,
   setEpisode,
 } from './limit-rules.js'
@@ -21,6 +27,7 @@ import {
   findSmallText,
   getStateRoot,
   queueStage,
+  tellUser,
 } from './files.js'
 import {
   DRAIN_OFF,
@@ -36,6 +43,10 @@ import {
   setPoints,
 } from './pace.js'
 import { noteLimitsTold } from './drain-release.js'
+import {
+  findLimitSaves,
+  queueLimitSaves,
+} from './limit-saves.js'
 
 let cell = null
 
@@ -56,11 +67,12 @@ async function findCell($) {
 
 async function findThresholdsNow($, root) {
   const path = `${root}/${THRESHOLDS_FILE}`
-  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS, lead: getLeadSeconds(DRAIN_OFF), drain: DRAIN_OFF }
+  if (!(await $.fs.exists(path).catch(() => true))) return { ...LIMIT_DEFAULTS, lead: getLeadSeconds(DRAIN_OFF), drain: DRAIN_OFF, after: DEFAULTS.after }
   const text = await findSmallText($, path)
   const thresholds = text === null ? null : findLimitThresholds(text)
+  if (thresholds === null) return null
 
-  return thresholds === null ? null : { ...thresholds, lead: findLeadSeconds(text), drain: findDrainSetting(text) }
+  return { ...thresholds, lead: findLeadSeconds(text), drain: findDrainSetting(text), after: findThresholds(text)?.after ?? null }
 }
 
 async function findHatUsageNow($, root) {
@@ -119,8 +131,37 @@ export async function findLimitView($, state) {
   const hat = await findHatUsageNow($, root)
   if (hat === null || !isUnderHats(hat, await findCell($))) return createView(now, { ...known, hat, isUnder: false })
   const all = episodes.map(item => ({ ...item, why: findWhy(hat, item.kind, now), worn: hat.worn }))
+  const view = createView(now, { ...known, hat, isUnder: true, all, items: all.filter(item => item.why !== null) })
+  if (thresholds.after === 'clear') await takeEarlierSaves($, { state, view })
 
-  return createView(now, { ...known, hat, isUnder: true, all, items: all.filter(item => item.why !== null) })
+  return view
+}
+
+const isSavedBefore = (item, saves) => saves[item.kind] !== null && isLimitAskDue(item.episode) && isSameEpisode(item.episode, saves[item.kind])
+
+async function takeEarlierSaves($, job) {
+  const { state, view } = job
+  const saves = await findLimitSaves($, await findCell($))
+  const taken = view.items.filter(item => isSavedBefore(item, saves))
+  if (taken.length === 0) return
+  for (const item of taken) {
+    const event = createEvent({
+      now: view.now,
+      percent: item.episode.percent,
+      worn: item.worn,
+      reason: item.why,
+      target: item.episode.save,
+      lead: item.episode.lead,
+    })
+    if (item.episode.warned === null) item.episode.warned = event
+    item.episode.asked = event
+  }
+  await queueStage($, state)
+  tellUser($, getLimitTakenLine(taken, view.now))
+}
+
+export async function noteLimitSaves($, job) {
+  await queueLimitSaves($, { cell: await findCell($), items: job.items, now: job.now })
 }
 
 const isWarningDue = item => isLimitWarnDue(item.episode) || (item.early !== null && item.episode.warned === null)
