@@ -239,7 +239,7 @@ export const hasStepsArgument = command => {
   if (parts === null) return false
   const head = command.slice(parts[0].length).split(/[|<>;&]/)[0]
 
-  return head.split(/\s+/).some(token => token.startsWith('-'))
+  return head.split(/\s+/).some(token => token.replace(/^["'\\]+/, '').startsWith('-'))
 }
 
 export const isStepsCommand = command => {
