@@ -74,7 +74,10 @@ extension CodexDesk {
                 }
                 return .write
             }
-            if written { saveToTheSlot(data, for: hat) }
+            if written {
+                saveToTheSlot(data, for: hat)
+                world.rereadServiceLogin?(hat.id, data)
+            }
         } catch {
             Journal.log("codex.wornRenew.notWritten", [
                 "hat": String(hat.id.prefix(8)),

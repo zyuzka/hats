@@ -49,6 +49,20 @@ final class CodexServiceClientTests: XCTestCase {
         XCTAssertEqual(service.received.last?.params["threadId"] as? String, thread)
     }
 
+    func testRereadingTheLoginAsksForARefreshAndReturnsTheAccountEmail() throws {
+        try service.start()
+        service.onCall = { call in
+            guard call.method == "account/read" else { return (.result([:]), []) }
+            return (.result(["account": ["type": "chatgpt", "email": "work@example.com"]]), [])
+        }
+        let session = CodexServiceSession(client: try connect())
+        defer { session.close() }
+        let account = try session.findAccountAfterRereadingLogin()
+        XCTAssertEqual(account, "work@example.com")
+        XCTAssertEqual(service.received.last?.method, "account/read")
+        XCTAssertEqual(service.received.last?.params["refreshToken"] as? Bool, true)
+    }
+
     func testAnErrorAnswerIsARefusalWithItsCodeAndMessage() throws {
         try service.start()
         service.onCall = { call in

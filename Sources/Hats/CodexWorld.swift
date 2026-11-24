@@ -18,6 +18,7 @@ struct CodexWorld {
     var waitForCodex: TimeInterval = 30
     var sendUsage: ((URLRequest) -> (status: Int, body: Data?))?
     var runUsage: ((@escaping () -> Void) -> Void)?
+    var rereadServiceLogin: ((String, Data) -> Void)?
 
     static func oneShot(within budget: TimeInterval) -> (URLRequest) -> (status: Int, body: Data?) {
         { request in OneShotRequest.answer(to: request, within: budget, unreachable: (0, nil)) { ($0, $1) } }
@@ -38,6 +39,8 @@ struct CodexWorld {
         )
         world.sendUsage = oneShot(within: CodexUsageFetch.budget)
         world.runUsage = { usageQueue.async(execute: $0) }
+        let reread = CodexServiceLoginReread()
+        world.rereadServiceLogin = { reread.reread(for: $0, login: $1) }
         return world
     }
 }

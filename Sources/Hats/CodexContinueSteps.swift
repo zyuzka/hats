@@ -138,3 +138,11 @@ final class CodexServiceSession: CodexServiceLink {
         client.close()
     }
 }
+
+extension CodexServiceSession: CodexLoginLink {
+    func findAccountAfterRereadingLogin() throws -> String? {
+        let result = try client.call("account/read", ["refreshToken": true], within: Self.callWait)
+
+        return (result["account"] as? [String: Any])?["email"] as? String
+    }
+}

@@ -126,6 +126,7 @@ extension CodexDesk {
         guard written else { return .alreadyWorn(target.id) }
         forget(target.id)
         Journal.log("codex.wear.done", ["target": String(target.id.prefix(8)), "now": Journal.fingerprint(incoming)])
+        world.rereadServiceLogin?(target.id, incoming)
 
         return .worn(target: target.id, outgoing: outgoing?.id, parked: parked)
     }
@@ -143,6 +144,7 @@ extension CodexDesk {
         }
         noteWornHere(target.id)
         onLiveWritten?(target.id, data)
+        world.rereadServiceLogin?(target.id, data)
 
         return .worn(target: target.id, outgoing: nil, parked: nil)
     }
