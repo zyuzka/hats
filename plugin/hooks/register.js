@@ -158,6 +158,15 @@ const isDone = out => out.deny === undefined && out.isError !== true
 
 const isDrainWarning = warning => warning !== null && warning.told.length > 0
 
+const findNews = (state, job) => {
+  const { news, reading, isRestart } = job
+  const warning = isRestart ? null : (news?.warning ?? null)
+  const found = news === null ? null : findReleaseText(state, { view: news.view, reading, isRestart })
+  if (isRestart) state.pending = null
+
+  return { warning, release: isDrainWarning(warning) ? null : found }
+}
+
 const noteReached = async ($, state, reading) => {
   const isNew = noteSaveReached(state, { reading, now: await $.clock.now() })
   if (isNew && reading.thresholds.after === 'clear') await queueStage($, state)
@@ -178,13 +187,9 @@ const findDelivered = async ($, job) => {
   const reading = await updateArm($, state)
   if (reading !== null && isCurrent(state) && isWarnDue(state.arm, reading)) await fireWarning($, { state, reading })
   if (out.deny !== undefined) await notePace($, state)
-  const isRestart = state.isRestartOn
   const news = out.deny === undefined ? await findLimitNews($, state) : null
-  const warning = isRestart ? null : (news?.warning ?? null)
-  const found = news === null ? null : findReleaseText(state, { view: news.view, reading, isRestart })
-  const release = isDrainWarning(warning) ? null : found
+  const { warning, release } = findNews(state, { news, reading, isRestart: state.isRestartOn })
   const list = getDrainList(state)
-  if (isRestart) state.pending = null
   const texts = [
     release,
     warning?.text ?? null,
@@ -321,10 +326,7 @@ const onPromptSubmit = async (
   const restart = await findRestart($, { state, reading })
   const isRestart = restart !== null
   const news = await findLimitNews($, state)
-  const warning = isRestart ? null : news.warning
-  const found = findReleaseText(state, { view: news.view, reading, isRestart })
-  const release = isDrainWarning(warning) ? null : found
-  if (isRestart) state.pending = null
+  const { warning, release } = findNews(state, { news, reading, isRestart })
   const text = state.pending
   const texts = [
     isRestart && isUserInput(e) ? restart : null,
