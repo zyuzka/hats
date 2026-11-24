@@ -1,34 +1,35 @@
 import XCTest
 @testable import Hats
 
-final class CodexServiceLoginRereadTests: XCTestCase {
-    private final class FakeLink: CodexLoginLink {
-        var answer: Result<String?, Error> = .success("work@example.com")
+final class CodexRereadHarness {
+    final class FakeLink: CodexLoginLink {
+        var answer: Result<CodexServiceAccount, Error> = .success(CodexRereadHarness.work)
+        var duringTheCall: (() -> Void)?
         var asked = 0
         var closed = 0
 
-        func findAccountAfterRereadingLogin() throws -> String? {
+        func findAccountAfterRereadingLogin() throws -> CodexServiceAccount {
             asked += 1
+            duringTheCall?()
             return try answer.get()
         }
 
         func close() { closed += 1 }
     }
 
-    private var folder = FileManager.default.temporaryDirectory
-        .appendingPathComponent("hats-reread-\(UUID().uuidString)")
-    private let link = FakeLink()
-    private var connects: [String] = []
-    private var connectFails: CodexServiceError?
-    private var lines: [(String, [String: String])] = []
-    private var queued: [() -> Void] = []
+    static let work = CodexServiceAccount(email: "work@example.com", owner: CodexFixture.work.owner)
+    static let expectingWork: CodexServiceLoginReread.Expected = ("work@example.com", CodexFixture.work.owner)
 
-    override func tearDown() {
-        try? FileManager.default.removeItem(at: folder)
-        super.tearDown()
-    }
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("hats-reread-\(UUID().uuidString)")
+    let link = FakeLink()
+    var connects: [String] = []
+    var connectFails: CodexServiceError?
+    var lines: [(String, [String: String])] = []
+    var queued: [() -> Void] = []
 
-    private func makeReread() -> CodexServiceLoginReread {
+    var socket: URL { folder.appendingPathComponent(CodexContinueRun.socketPath) }
+
+    func makeReread() -> CodexServiceLoginReread {
         CodexServiceLoginReread(
             codex: folder,
             connect: { [unowned self] path in
@@ -41,8 +42,7 @@ final class CodexServiceLoginRereadTests: XCTestCase {
         )
     }
 
-    private func makeTheSocketFile() throws {
-        let socket = folder.appendingPathComponent(CodexContinueRun.socketPath)
+    func makeTheSocketFile() throws {
         try FileManager.default.createDirectory(
             at: socket.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -50,100 +50,90 @@ final class CodexServiceLoginRereadTests: XCTestCase {
         try Data().write(to: socket)
     }
 
-    func testWithoutTheSocketNothingConnectsAndTheSkipIsLogged() {
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
+    func runTheQueue() {
+        while !queued.isEmpty { queued.removeFirst()() }
+    }
+}
 
-        XCTAssertEqual(connects, [])
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.skipped"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "reason": "noService"])
+final class CodexServiceLoginRereadTests: XCTestCase {
+    private let harness = CodexRereadHarness()
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: harness.folder)
+        super.tearDown()
+    }
+
+    func testWithoutTheSocketNothingConnectsAndTheSkipIsLogged() {
+        harness.makeReread().rereadNow(for: "hat-work-123", expecting: CodexRereadHarness.expectingWork)
+
+        XCTAssertEqual(harness.connects, [])
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.skipped"])
+        XCTAssertEqual(harness.lines.first?.1, ["hat": "hat-work", "reason": "noService"])
     }
 
     func testTheServiceRereadsTheLoginAndTheAccountItNowHoldsIsLogged() throws {
-        try makeTheSocketFile()
+        try harness.makeTheSocketFile()
 
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
+        harness.makeReread().rereadNow(for: "hat-work-123", expecting: CodexRereadHarness.expectingWork)
 
-        XCTAssertEqual(connects, [folder.appendingPathComponent(CodexContinueRun.socketPath).path])
-        XCTAssertEqual(link.asked, 1)
-        XCTAssertEqual(link.closed, 1)
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
+        XCTAssertEqual(harness.connects, [harness.socket.path])
+        XCTAssertEqual(harness.link.asked, 1)
+        XCTAssertEqual(harness.link.closed, 1)
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.done"])
+        XCTAssertEqual(harness.lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
     }
 
     func testAServiceThatIsNotListeningIsASkipNotAFailure() throws {
-        try makeTheSocketFile()
-        connectFails = .noService("connection refused")
+        try harness.makeTheSocketFile()
+        harness.connectFails = .noService("connection refused")
 
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
+        harness.makeReread().rereadNow(for: "hat-work-123", expecting: CodexRereadHarness.expectingWork)
 
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.skipped"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "reason": "noService", "detail": "connection refused"])
-    }
-
-    func testARefusedCallIsLoggedAsAFailureAndTheLinkIsClosed() throws {
-        try makeTheSocketFile()
-        link.answer = .failure(CodexServiceError.refused(code: -32601, message: "unknown method"))
-
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
-
-        XCTAssertEqual(link.closed, 1)
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.failed"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "detail": "refused: -32601 unknown method"])
-    }
-
-    func testAServiceStillOnAnotherAccountIsLoggedAsSuch() throws {
-        try makeTheSocketFile()
-        link.answer = .success("personal@example.com")
-
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
-
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.otherAccount"])
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.skipped"])
         XCTAssertEqual(
-            lines.first?.1,
-            ["hat": "hat-work", "account": "personal@example.com", "expected": "work@example.com"]
+            harness.lines.first?.1,
+            ["hat": "hat-work", "reason": "noService", "detail": "connection refused"]
         )
     }
 
-    func testAServiceThatNamesNoAccountIsNotLoggedAsDone() throws {
-        try makeTheSocketFile()
-        link.answer = .success(nil)
+    func testARefusedCallIsLoggedAsAFailureAndTheLinkIsClosed() throws {
+        try harness.makeTheSocketFile()
+        harness.link.answer = .failure(CodexServiceError.refused(code: -32601, message: "unknown method"))
 
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
+        harness.makeReread().rereadNow(for: "hat-work-123", expecting: CodexRereadHarness.expectingWork)
 
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.otherAccount"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "account": "-", "expected": "work@example.com"])
-    }
-
-    func testTheAccountIsMatchedWithoutRegardToLetterCase() throws {
-        try makeTheSocketFile()
-        link.answer = .success("Work@Example.com")
-
-        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
-
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
-    }
-
-    func testALoginThatNamesNoEmailTakesWhateverTheServiceHolds() throws {
-        try makeTheSocketFile()
-        link.answer = .success("work@example.com")
-
-        makeReread().rereadNow(for: "hat-work-123", expecting: nil)
-
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
+        XCTAssertEqual(harness.link.closed, 1)
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.failed"])
+        XCTAssertEqual(harness.lines.first?.1, ["hat": "hat-work", "detail": "refused: -32601 unknown method"])
     }
 
     func testTwoWritesInARowAskTheServiceOnceForTheLatestLogin() throws {
-        try makeTheSocketFile()
-        link.answer = .success("work@example.com")
-        let reread = makeReread()
+        try harness.makeTheSocketFile()
+        let reread = harness.makeReread()
 
         reread.reread(for: "hat-personal", login: CodexFixture.login(CodexFixture.personal, refresh: "p-1"))
         reread.reread(for: "hat-work-123", login: CodexFixture.login(CodexFixture.work, refresh: "w-1"))
-        queued.forEach { $0() }
+        XCTAssertEqual(harness.queued.count, 2)
+        harness.runTheQueue()
 
-        XCTAssertEqual(queued.count, 2)
-        XCTAssertEqual(link.asked, 1)
-        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
-        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
+        XCTAssertEqual(harness.link.asked, 1)
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.done"])
+        XCTAssertEqual(harness.lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
+    }
+
+    func testAnAnswerForALoginReplacedDuringTheCallIsLeftToTheNewerOne() throws {
+        try harness.makeTheSocketFile()
+        let reread = harness.makeReread()
+        reread.reread(for: "hat-personal", login: CodexFixture.login(CodexFixture.personal, refresh: "p-1"))
+        harness.link.duringTheCall = { [harness] in
+            harness.link.duringTheCall = nil
+            reread.reread(for: "hat-work-123", login: CodexFixture.login(CodexFixture.work, refresh: "w-1"))
+        }
+
+        harness.runTheQueue()
+
+        XCTAssertEqual(harness.link.asked, 2)
+        XCTAssertEqual(harness.lines.map(\.0), ["codexService.loginReread.done"])
+        XCTAssertEqual(harness.lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
     }
 }

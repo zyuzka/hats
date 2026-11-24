@@ -1,21 +1,36 @@
 import Foundation
 
 protocol CodexLoginLink: AnyObject {
-    func findAccountAfterRereadingLogin() throws -> String?
+    func findAccountAfterRereadingLogin() throws -> CodexServiceAccount
     func close()
+}
+
+struct CodexServiceAccount: Equatable {
+    let email: String?
+    let owner: CodexOwner?
+
+    static func of(_ result: [String: Any]) -> CodexServiceAccount {
+        let workspace = (result["workspaceRouting"] as? [String: Any])?["chatgptAccountId"] as? String
+        let owner = (result["userId"] as? String).flatMap { user in
+            workspace.map { CodexOwner(userID: user, accountID: $0) }
+        }
+
+        return CodexServiceAccount(email: (result["account"] as? [String: Any])?["email"] as? String, owner: owner)
+    }
 }
 
 final class CodexServiceLoginReread {
     typealias Log = (String, [String: String]) -> Void
     typealias Connect = (String) throws -> CodexLoginLink
     typealias Run = (@escaping () -> Void) -> Void
+    typealias Expected = (email: String?, owner: CodexOwner?)
 
     private let socket: URL
     private let connect: Connect
     private let log: Log
     private let run: Run
     private let lock = NSLock()
-    private var latest: (hat: String, expected: String?)?
+    private var latest: (hat: String, expected: Expected)?
 
     init(
         codex: URL = CodexHome.real.url,
@@ -33,13 +48,14 @@ final class CodexServiceLoginReread {
     }
 
     func reread(for hat: String, login: Data) {
+        let identity = CodexAuth(data: login)?.identity
         lock.lock()
-        latest = (hat, CodexAuth(data: login)?.identity?.email)
+        latest = (hat, (identity?.email, identity?.owner))
         lock.unlock()
         run { [self] in rereadTheLatest() }
     }
 
-    func rereadNow(for hat: String, expecting expected: String?) {
+    func rereadNow(for hat: String, expecting expected: Expected) {
         let short = String(hat.prefix(8))
         guard FileManager.default.fileExists(atPath: socket.path) else {
             return log("codexService.loginReread.skipped", ["hat": short, "reason": "noService"])
@@ -48,14 +64,15 @@ final class CodexServiceLoginReread {
             let link = try connect(socket.path)
             defer { link.close() }
             let account = try link.findAccountAfterRereadingLogin()
-            guard let account, Self.isTheExpectedAccount(account, expected) else {
+            guard !hasANewerLogin() else { return }
+            guard Self.isTheExpectedAccount(account, expected) else {
                 return log("codexService.loginReread.otherAccount", [
                     "hat": short,
-                    "account": account ?? "-",
-                    "expected": expected ?? "-",
+                    "account": account.email ?? "-",
+                    "expected": expected.email ?? "-",
                 ])
             }
-            log("codexService.loginReread.done", ["hat": short, "account": account])
+            log("codexService.loginReread.done", ["hat": short, "account": account.email ?? "-"])
         } catch CodexServiceError.noService(let detail) {
             log("codexService.loginReread.skipped", ["hat": short, "reason": "noService", "detail": detail])
         } catch {
@@ -73,9 +90,18 @@ final class CodexServiceLoginReread {
         rereadNow(for: next.hat, expecting: next.expected)
     }
 
-    private static func isTheExpectedAccount(_ account: String, _ expected: String?) -> Bool {
-        guard let expected else { return true }
+    private func hasANewerLogin() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
 
-        return account.caseInsensitiveCompare(expected) == .orderedSame
+        return latest != nil
+    }
+
+    private static func isTheExpectedAccount(_ account: CodexServiceAccount, _ expected: Expected) -> Bool {
+        if let owner = account.owner, let wanted = expected.owner { return owner == wanted }
+        guard let email = account.email else { return false }
+        guard let wanted = expected.email else { return true }
+
+        return email.caseInsensitiveCompare(wanted) == .orderedSame
     }
 }
