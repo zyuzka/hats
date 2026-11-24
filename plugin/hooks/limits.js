@@ -141,6 +141,7 @@ const isSavedBefore = (item, saves) => saves[item.kind] !== null && isLimitAskDu
 
 async function takeEarlierSaves($, job) {
   const { state, view } = job
+  if (!view.items.some(item => isLimitAskDue(item.episode))) return
   const saves = await findLimitSaves($, await findCell($))
   const taken = view.items.filter(item => isSavedBefore(item, saves))
   if (taken.length === 0) return

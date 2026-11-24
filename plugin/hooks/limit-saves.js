@@ -1,5 +1,5 @@
 import {
-  LIMIT_SAVES_FILE,
+  LIMIT_SAVE_PREFIX,
   getStamp,
   getStampSeconds,
 } from './thresholds.js'
@@ -10,9 +10,9 @@ import {
 } from './files.js'
 import { LIMIT_KINDS } from './limit-rules.js'
 
-let writes = Promise.resolve()
-
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value)
+
+export const getLimitSaveName = (cell, kind) => `${LIMIT_SAVE_PREFIX}${cell.replace(/[^A-Za-z0-9-]/g, '-')}-${kind}.json`
 
 const findData = text => {
   let data
@@ -25,43 +25,38 @@ const findData = text => {
   return isObject(data) ? data : {}
 }
 
-const findResetsMs = value => {
-  const seconds = isObject(value) ? getStampSeconds(value.resets_at) : null
+const findResetsMs = (data, cell) => {
+  const seconds = data.cell === cell ? getStampSeconds(data.resets_at) : null
 
   return seconds === null ? null : seconds * 1000
 }
 
-async function findPlace($) {
+async function findPlace($, cell, kind) {
   const root = await getStateRoot($)
 
-  return root === null ? null : { folder: root, file: `${root}/${LIMIT_SAVES_FILE}` }
+  return root === null ? null : { folder: root, file: `${root}/${getLimitSaveName(cell, kind)}` }
 }
 
 export async function findLimitSaves($, cell) {
   const saves = { five_hour: null, seven_day: null }
-  const place = cell === null ? null : await findPlace($)
-  if (place === null) return saves
-  const data = findData(await findSmallText($, place.file))
-  const own = isObject(data[cell]) ? data[cell] : {}
-  for (const kind of LIMIT_KINDS) saves[kind] = findResetsMs(own[kind])
+  if (cell === null) return saves
+  for (const kind of LIMIT_KINDS) {
+    const place = await findPlace($, cell, kind)
+    if (place !== null) saves[kind] = findResetsMs(findData(await findSmallText($, place.file)), cell)
+  }
 
   return saves
 }
 
-async function writeLimitSaves($, job) {
-  const { cell, items, now } = job
-  const place = await findPlace($)
+async function writeLimitSave($, job) {
+  const { cell, item, now } = job
+  const place = await findPlace($, cell, item.kind)
   if (place === null || !(await isWritablePlace($, place))) return
-  const data = findData(await findSmallText($, place.file))
-  const own = isObject(data[cell]) ? data[cell] : {}
-  for (const item of items) own[item.kind] = { resets_at: getStamp(item.episode.resetsMs), saved_at: getStamp(now) }
-  data[cell] = own
-  await $.fs.write(place.file, `${JSON.stringify(data, null, 1)}\n`)
+  const record = { cell, resets_at: getStamp(item.episode.resetsMs), saved_at: getStamp(now) }
+  await $.fs.write(place.file, `${JSON.stringify(record, null, 1)}\n`)
 }
 
-export function queueLimitSaves($, job) {
-  if (job.cell === null || job.items.length === 0) return writes
-  writes = writes.then(() => writeLimitSaves($, job)).catch(() => {})
-
-  return writes
+export async function queueLimitSaves($, job) {
+  if (job.cell === null) return
+  for (const item of job.items) await writeLimitSave($, { cell: job.cell, item, now: job.now }).catch(() => {})
 }
