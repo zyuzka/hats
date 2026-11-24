@@ -495,6 +495,9 @@ describe('the output of the own steps command', () => {
   test('has an argument when a token starting with - follows the script before any pipe, redirect or ;', () => {
     expect(hasStepsArgument(`${ROOTED} --cwd "/w"`)).toBe(true)
     expect(hasStepsArgument(`${ROOTED} -h`)).toBe(true)
+    expect(hasStepsArgument(`${ROOTED} "--cwd" "/w"`)).toBe(true)
+    expect(hasStepsArgument(`${ROOTED} '--cwd' /w`)).toBe(true)
+    expect(hasStepsArgument(`${ROOTED} \\--cwd /w`)).toBe(true)
     expect(hasStepsArgument(ROOTED)).toBe(false)
     expect(hasStepsArgument(`${ROOTED} | tail -1`)).toBe(false)
     expect(hasStepsArgument(`${ROOTED} 2>&1 | head -5`)).toBe(false)
