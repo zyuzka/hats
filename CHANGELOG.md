@@ -10,6 +10,11 @@ what it shipped is folded into the single entry below, and public numbering star
 
 ## Unreleased
 
+- **Codex's background service follows the hat you wear.** After Hats writes a new Codex login — a hat
+  change, a sign-in again, a renewed login — it asks a running `codex app-server` to read the login again,
+  without a restart and without stopping a turn in progress. `/status` limits and the account the service
+  reports move to the new hat. An already open Codex window still shows its old «Account» line until it
+  restarts.
 - **A session that clears after its anchor starts no new work past the threshold.** With the clear action,
   the plugin says once that the session restarts after saving, refuses new subagents, workflows, monitors,
   background commands, cron jobs and wake-ups until the session is cleared, and tells the model on each of
