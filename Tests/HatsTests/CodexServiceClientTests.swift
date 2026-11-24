@@ -53,12 +53,17 @@ final class CodexServiceClientTests: XCTestCase {
         try service.start()
         service.onCall = { call in
             guard call.method == "account/read" else { return (.result([:]), []) }
-            return (.result(["account": ["type": "chatgpt", "email": "work@example.com"]]), [])
+            return (.result([
+                "account": ["type": "chatgpt", "email": "work@example.com"],
+                "userId": "user-work",
+                "workspaceRouting": ["chatgptAccountId": "acct-work"],
+            ]), [])
         }
         let session = CodexServiceSession(client: try connect())
         defer { session.close() }
         let account = try session.findAccountAfterRereadingLogin()
-        XCTAssertEqual(account, "work@example.com")
+        XCTAssertEqual(account.email, "work@example.com")
+        XCTAssertEqual(account.owner, CodexOwner(userID: "user-work", accountID: "acct-work"))
         XCTAssertEqual(service.received.last?.method, "account/read")
         XCTAssertEqual(service.received.last?.params["refreshToken"] as? Bool, true)
     }
