@@ -62,16 +62,18 @@ jobs:
         run: ./Dev/plugin-version-check.sh
 
   lint:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     # Blocking since AccountStore.swift was split: swiftlint exits 0 here, so anything
     # that turns it red is new. Warnings still ride along without failing the job —
     # only error-severity rules stop it.
+    # Linux, not macOS: on 2026-11-24 both attempts of this job waited for a macos-15
+    # runner and were cancelled before their first step. The Linux image of the same
+    # swiftlint gave the same errors as macOS on the same tree, a planted comment included.
+    container: ghcr.io/realm/swiftlint@sha256:f47e083201e47a136cda5ae847595bfe00226c444ca226fa74fa5dc648a9b057 # 0.65.1
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: SwiftLint
-        run: |
-          brew install swiftlint
-          swiftlint --reporter github-actions-logging
+        run: swiftlint --reporter github-actions-logging
 
   plugin-tests:
     runs-on: macos-15
