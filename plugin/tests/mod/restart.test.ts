@@ -446,6 +446,26 @@ describe('the order of the refusals', () => {
     expect(getContext(fallen).some((text: string) => text.includes(RELEASE))).toBe(false)
   })
 
+  test('a limit warning while the restart holds: neither a tool result nor a prompt carries it', async ($, on) => {
+    const scene = createScene($, { on })
+    const file = { warn_percent: 60, save_percent: 70, after_save: 'clear', drain: false, drain_minutes: 10 }
+    scene.world.setFile(THRESHOLDS, JSON.stringify(file))
+    setHat(scene)
+    await scene.start()
+    const first = await scene.startTurn(10)
+    await scene.endTurn(first, { percent: 10 })
+    await scene.startTurn(10)
+    await scene.callTool(71, READ)
+
+    setFive(scene, 72)
+    const onTool = await scene.callTool(71, READ)
+    setFive(scene, 73)
+    const onPrompt = await promptOnce(scene)
+
+    expect(getContext(onTool).some((text: string) => text.startsWith('Hats limit threshold'))).toBe(false)
+    expect(onPrompt).toEqual([getRestartText(71, false)])
+  })
+
   test('the drain turned off while the restart holds: no release until the window falls', async ($, on) => {
     const scene = createScene($, { on })
     useFile(scene, { drain: true, drain_minutes: 5 })
