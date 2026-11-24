@@ -1,5 +1,4 @@
 import Foundation
-import NIOPosix
 
 protocol CodexLoginLink: AnyObject {
     func findAccountAfterRereadingLogin() throws -> String?
@@ -9,23 +8,35 @@ protocol CodexLoginLink: AnyObject {
 final class CodexServiceLoginReread {
     typealias Log = (String, [String: String]) -> Void
     typealias Connect = (String) throws -> CodexLoginLink
+    typealias Run = (@escaping () -> Void) -> Void
 
-    private let queue = DispatchQueue(label: "dev.tmk.hats.codex-login-reread")
     private let socket: URL
     private let connect: Connect
     private let log: Log
+    private let run: Run
+    private let lock = NSLock()
+    private var latest: (hat: String, expected: String?)?
 
-    init(codex: URL = CodexHome.real.url, connect: Connect? = nil, log: @escaping Log = Journal.log) {
+    init(
+        codex: URL = CodexHome.real.url,
+        connect: Connect? = nil,
+        log: @escaping Log = Journal.log,
+        run: Run? = nil
+    ) {
         socket = codex.appendingPathComponent(CodexContinueRun.socketPath)
         self.connect = connect ?? { path in
-            CodexServiceSession(client: try CodexServiceClient.connect(path: path, group: Self.group))
+            CodexServiceSession(client: try CodexServiceClient.connect(path: path, group: CodexContinueRun.group))
         }
         self.log = log
+        let queue = DispatchQueue(label: "dev.tmk.hats.codex-login-reread")
+        self.run = run ?? { queue.async(execute: $0) }
     }
 
     func reread(for hat: String, login: Data) {
-        let expected = CodexAuth(data: login)?.identity?.email
-        queue.async { [self] in rereadNow(for: hat, expecting: expected) }
+        lock.lock()
+        latest = (hat, CodexAuth(data: login)?.identity?.email)
+        lock.unlock()
+        run { [self] in rereadTheLatest() }
     }
 
     func rereadNow(for hat: String, expecting expected: String?) {
@@ -37,7 +48,7 @@ final class CodexServiceLoginReread {
             let link = try connect(socket.path)
             defer { link.close() }
             let account = try link.findAccountAfterRereadingLogin()
-            guard let account, account == expected else {
+            guard let account, Self.isTheExpectedAccount(account, expected) else {
                 return log("codexService.loginReread.otherAccount", [
                     "hat": short,
                     "account": account ?? "-",
@@ -53,5 +64,18 @@ final class CodexServiceLoginReread {
         }
     }
 
-    private static let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    private func rereadTheLatest() {
+        lock.lock()
+        let next = latest
+        latest = nil
+        lock.unlock()
+        guard let next else { return }
+        rereadNow(for: next.hat, expecting: next.expected)
+    }
+
+    private static func isTheExpectedAccount(_ account: String, _ expected: String?) -> Bool {
+        guard let expected else { return true }
+
+        return account.caseInsensitiveCompare(expected) == .orderedSame
+    }
 }

@@ -129,7 +129,7 @@ final class CodexContinueRun {
         log(name, details)
     }
 
-    private static let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    static let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
     private static func connectToTheService(
         _ path: String,

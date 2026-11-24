@@ -21,6 +21,7 @@ final class CodexServiceLoginRereadTests: XCTestCase {
     private var connects: [String] = []
     private var connectFails: CodexServiceError?
     private var lines: [(String, [String: String])] = []
+    private var queued: [() -> Void] = []
 
     override func tearDown() {
         try? FileManager.default.removeItem(at: folder)
@@ -35,7 +36,8 @@ final class CodexServiceLoginRereadTests: XCTestCase {
                 if let connectFails { throw connectFails }
                 return link
             },
-            log: { [unowned self] name, details in lines.append((name, details)) }
+            log: { [unowned self] name, details in lines.append((name, details)) },
+            run: { [unowned self] in queued.append($0) }
         )
     }
 
@@ -110,5 +112,38 @@ final class CodexServiceLoginRereadTests: XCTestCase {
 
         XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.otherAccount"])
         XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "account": "-", "expected": "work@example.com"])
+    }
+
+    func testTheAccountIsMatchedWithoutRegardToLetterCase() throws {
+        try makeTheSocketFile()
+        link.answer = .success("Work@Example.com")
+
+        makeReread().rereadNow(for: "hat-work-123", expecting: "work@example.com")
+
+        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
+    }
+
+    func testALoginThatNamesNoEmailTakesWhateverTheServiceHolds() throws {
+        try makeTheSocketFile()
+        link.answer = .success("work@example.com")
+
+        makeReread().rereadNow(for: "hat-work-123", expecting: nil)
+
+        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
+    }
+
+    func testTwoWritesInARowAskTheServiceOnceForTheLatestLogin() throws {
+        try makeTheSocketFile()
+        link.answer = .success("work@example.com")
+        let reread = makeReread()
+
+        reread.reread(for: "hat-personal", login: CodexFixture.login(CodexFixture.personal, refresh: "p-1"))
+        reread.reread(for: "hat-work-123", login: CodexFixture.login(CodexFixture.work, refresh: "w-1"))
+        queued.forEach { $0() }
+
+        XCTAssertEqual(queued.count, 2)
+        XCTAssertEqual(link.asked, 1)
+        XCTAssertEqual(lines.map(\.0), ["codexService.loginReread.done"])
+        XCTAssertEqual(lines.first?.1, ["hat": "hat-work", "account": "work@example.com"])
     }
 }
