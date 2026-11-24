@@ -133,7 +133,7 @@ export async function findStageFile($, id) {
   return rounds === null ? null : { ...rounds, limits: findLimits(JSON.parse(text).limits) }
 }
 
-async function isWritablePlace($, place) {
+export async function isWritablePlace($, place) {
   const folder = await $.fs.stat(place.folder).catch(() => null)
   if (folder === null || folder.isLink || folder.kind !== 'dir') return false
   const own = await $.fs.stat(place.file).catch(() => null)
