@@ -1195,7 +1195,9 @@ describe('the rules of the limits', () => {
   })
 })
 
-const LIMIT_SAVES = `${STATE}/limit-saves.json`
+const getSavePath = (cell: string, kind: string) => `${STATE}/limit-save-${cell.replace(/[^A-Za-z0-9-]/g, '-')}-${kind}.json`
+const FIVE_SAVE = getSavePath(CELL, 'five_hour')
+const SEVEN_SAVE = getSavePath(CELL, 'seven_day')
 const CLEAR = { thresholds: { after_save: 'clear' } }
 
 const getTakenLine = (percent: number, nowMs: number) =>
@@ -1203,7 +1205,7 @@ const getTakenLine = (percent: number, nowMs: number) =>
   `which resets at ${getLocalWhen(FIVE_RESETS, nowMs)}, and ${NO_HAT}; ` +
   'a session before this one anchored in this window, so this one goes on without anchoring.'
 
-const getLimitSaves = (scene: any) => JSON.parse(scene.world.files.get(LIMIT_SAVES).text)
+const getLimitSaves = (scene: any) => JSON.parse(scene.world.files.get(FIVE_SAVE).text)
 
 const saveAndMoveOn = async ($: any, on: any, files: Parameters<typeof useFiles>[1] = CLEAR) => {
   const scene = await askAt81($, on, files)
@@ -1220,7 +1222,9 @@ describe('a limit anchored before in the same window, with the clear action', ()
     await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
 
     expect(getLimitSaves(scene)).toEqual({
-      [CELL]: { five_hour: { resets_at: '2026-11-14T15:00:00Z', saved_at: expect.stringMatching(/^2026-11-14T12:\d{2}:\d{2}Z$/) } },
+      cell: CELL,
+      resets_at: '2026-11-14T15:00:00Z',
+      saved_at: expect.stringMatching(/^2026-11-14T12:\d{2}:\d{2}Z$/),
     })
   })
 
@@ -1230,7 +1234,7 @@ describe('a limit anchored before in the same window, with the clear action', ()
     await scene.runAnchorTurn({ steps: [] })
 
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
-    expect(scene.world.files.has(LIMIT_SAVES)).toBe(false)
+    expect(scene.world.files.has(FIVE_SAVE)).toBe(false)
   })
 
   test('a checked save in a stopped anchor turn writes the episode too', async ($, on) => {
@@ -1238,7 +1242,7 @@ describe('a limit anchored before in the same window, with the clear action', ()
 
     await scene.runAnchorTurn({ steps: getSaveSteps(scene), reason: 'aborted' })
 
-    expect(getLimitSaves(scene)[CELL].five_hour.resets_at).toBe('2026-11-14T15:00:00Z')
+    expect(getLimitSaves(scene).resets_at).toBe('2026-11-14T15:00:00Z')
   })
 
   test('a manual anchor past the threshold writes the episode too', async ($, on) => {
@@ -1250,7 +1254,7 @@ describe('a limit anchored before in the same window, with the clear action', ()
     await scene.endTurn(turnId, { percent: 10 })
 
     expect(scene.world.runs).toEqual([])
-    expect(getLimitSaves(scene)[CELL].five_hour.resets_at).toBe('2026-11-14T15:00:00Z')
+    expect(getLimitSaves(scene).resets_at).toBe('2026-11-14T15:00:00Z')
   })
 
   test('a new session in the same episode: one line, no warning and no request', async ($, on) => {
@@ -1289,7 +1293,7 @@ describe('a limit anchored before in the same window, with the clear action', ()
 
     await endTurnAt(scene, { five: 82 })
 
-    expect(scene.world.files.has(LIMIT_SAVES)).toBe(true)
+    expect(scene.world.files.has(FIVE_SAVE)).toBe(true)
     expect(scene.world.runs).toEqual([
       'hats:anchor',
       'hats:anchor',
@@ -1309,7 +1313,7 @@ describe('a limit anchored before in the same window, with the clear action', ()
 
   test('a save under another login cell does not count for this one', async ($, on) => {
     const scene = await startScene($, on, CLEAR)
-    scene.world.setFile(LIMIT_SAVES, JSON.stringify({ other: { five_hour: { resets_at: '2026-11-14T15:00:00Z', saved_at: '2026-11-14T11:00:00Z' } } }))
+    scene.world.setFile(FIVE_SAVE, JSON.stringify({ cell: 'other', resets_at: '2026-11-14T15:00:00Z', saved_at: '2026-11-14T11:00:00Z' }))
 
     await endTurnAt(scene, { five: 81 })
 
@@ -1318,14 +1322,35 @@ describe('a limit anchored before in the same window, with the clear action', ()
 
   test('a shared file that is not JSON reads as no saves, and the next save writes it whole', async ($, on) => {
     const scene = await startScene($, on, CLEAR)
-    scene.world.setFile(LIMIT_SAVES, '{')
+    scene.world.setFile(FIVE_SAVE, '{')
 
     await endTurnAt(scene, { five: 81 })
     await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
 
     expect(scene.world.runs).toEqual(ANCHOR_ONLY)
-    expect(Object.keys(getLimitSaves(scene))).toEqual([
-      CELL,
-    ])
+    expect(getLimitSaves(scene).cell).toBe(CELL)
+  })
+
+  test('a save writes only the file of its own cell and kind; the file of the other kind stays as it was', async ($, on) => {
+    const scene = await askAt81($, on, CLEAR)
+    scene.world.setFile(SEVEN_SAVE, 'untouched')
+
+    await scene.runAnchorTurn({ steps: getSaveSteps(scene) })
+
+    expect(getLimitSaves(scene).resets_at).toBe('2026-11-14T15:00:00Z')
+    expect(scene.world.files.get(SEVEN_SAVE).text).toBe('untouched')
+  })
+
+  test('no limit awaits a decision: the saved files are not read', async ($, on) => {
+    const scene = await startScene($, on, CLEAR)
+    const saved = JSON.stringify({ cell: CELL, resets_at: '2026-11-14T15:00:00Z', saved_at: '2026-11-14T11:00:00Z' })
+    scene.world.setFile(FIVE_SAVE, saved)
+    scene.world.setFile(SEVEN_SAVE, saved)
+    scene.world.readPaths.length = 0
+
+    await endTurnAt(scene, { five: 75 })
+
+    expect(scene.world.readPaths).not.toContain(FIVE_SAVE)
+    expect(scene.world.readPaths).not.toContain(SEVEN_SAVE)
   })
 })
